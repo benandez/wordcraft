@@ -1,4 +1,5 @@
 use super::*;
+use wordcraft_doc::fill::Fill;
 use wordcraft_doc::para::InlineObject;
 use wordcraft_doc::props::{Align, Border, BorderStyle, Borders, ParaProps, TextDirection};
 use wordcraft_doc::{Pos, Table};
@@ -5430,7 +5431,7 @@ fn rotated_group_turns_its_members_and_their_shadows() {
         kind: ShapeKind::Rectangle,
         w: 60.0,
         h: 40.0,
-        fill: Some(wordcraft_doc::props::Rgb(1, 2, 3)),
+        fill: Some(Fill::solid(wordcraft_doc::props::Rgb(1, 2, 3))),
         stroke: None,
         stroke_width: 0.0,
         float: Float { rot, ..Default::default() },
@@ -5953,7 +5954,7 @@ fn rotated_canvas_draws_its_clipped_members_inside_the_turn() {
         kind: ShapeKind::Rectangle,
         w: 60.0,
         h: 40.0,
-        fill: Some(wordcraft_doc::props::Rgb(1, 2, 3)),
+        fill: Some(Fill::solid(wordcraft_doc::props::Rgb(1, 2, 3))),
         stroke: None,
         stroke_width: 0.0,
         float: Float { rot: 10.0, ..Default::default() },
@@ -5969,7 +5970,7 @@ fn rotated_canvas_draws_its_clipped_members_inside_the_turn() {
         ch_w: 200.0,
         ch_h: 100.0,
         children: vec![GroupChild { x: 20.0, y: 30.0, obj: member.clone() }],
-        canvas: Some(CanvasStyle { fill: Some(wordcraft_doc::props::Rgb(0xF0, 0xF4, 0xFF)), stroke: None, stroke_width: 0.0 }),
+        canvas: Some(CanvasStyle { fill: Some(Fill::solid(wordcraft_doc::props::Rgb(0xF0, 0xF4, 0xFF))), stroke: None, stroke_width: 0.0 }),
     };
     // Turned draws: (turn, background rect, clip rect, member rect and its own turn).
     let turned = |draws: &[Draw]| -> (Vec<f32>, Vec<Rect>, Vec<(Rect, Vec<(Rect, f32)>)>) {

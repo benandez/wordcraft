@@ -655,7 +655,7 @@ fn item_in(doc: &Document, it: &Placed, opts: &DisplayOptions, alpha: f32, outer
         Placed::Shape { rect, kind, fill, stroke, stroke_width, effects, freeform, spin, extra, .. } => {
             let mut items = Vec::new();
             let fx = effects_in(*effects, spin.within(outer));
-            shape_draws(*rect, *kind, *fill, *stroke, *stroke_width, fx, freeform.as_deref(), extra, opts, &mut items);
+            shape_draws(*rect, *kind, fill.as_ref(), *stroke, *stroke_width, fx, freeform.as_deref(), extra, opts, &mut items);
             spun(*spin, *rect, items, out)
         }
         Placed::Graphic { rect, graphic, spin, .. } => spun(*spin, *rect, graphic_draws(doc, graphic, *rect, alpha), out),
@@ -1457,7 +1457,7 @@ fn page_segs(segs: &[PathSeg], map: impl Fn(f32, f32) -> (f32, f32)) -> Vec<Path
 fn shape_draws(
     rect: Rect,
     kind: ShapeKind,
-    fill: Option<Rgb>,
+    fill: Option<&wordcraft_doc::fill::Fill>,
     stroke: Option<Rgb>,
     stroke_width: f32,
     effects: wordcraft_doc::effects::ShapeEffects,
@@ -1466,6 +1466,7 @@ fn shape_draws(
     opts: &DisplayOptions,
     out: &mut Vec<Draw>,
 ) {
+    let fill = fill.map(wordcraft_doc::fill::Fill::main_color);
     if kind.is_open() {
         line_draws(rect, kind, stroke, stroke_width, effects, extra, out);
         return;
@@ -1719,7 +1720,7 @@ fn object_draws(o: &InlineObject, rect: Rect, outer: Spin, alpha: f32, opts: &Di
         InlineObject::Shape { kind, fill, stroke, stroke_width, effects, freeform, extra, .. } => {
             let effects = effects_in(*effects, own.within(outer));
             let mut items = Vec::new();
-            shape_draws(rect, *kind, *fill, *stroke, *stroke_width, effects, freeform.as_deref(), extra, opts, &mut items);
+            shape_draws(rect, *kind, fill.as_ref(), *stroke, *stroke_width, effects, freeform.as_deref(), extra, opts, &mut items);
             spun(own, rect, items, out)
         }
         InlineObject::Group { .. } => {
@@ -1794,7 +1795,7 @@ fn canvas_background(rect: Rect, c: &wordcraft_doc::para::CanvasStyle) -> Draw {
     Draw::Shape {
         rect,
         kind: ShapeKind::Rectangle,
-        fill: c.fill,
+        fill: c.fill.as_ref().map(wordcraft_doc::fill::Fill::main_color),
         stroke: c.stroke,
         stroke_width: c.stroke_width,
         effects: Default::default(),

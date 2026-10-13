@@ -1343,7 +1343,7 @@ mod tests {
                 kind: ShapeKind::Rectangle,
                 w: 100.0,
                 h: 60.0,
-                fill: Some(Rgb(0, 0, 255)),
+                fill: Some(wordcraft_doc::fill::Fill::solid(Rgb(0, 0, 255))),
                 stroke: None,
                 stroke_width: 0.0,
                 float: Default::default(),

@@ -358,12 +358,12 @@ pub fn specs() -> Vec<CommandSpec> {
         .params(r#"{"index"?: n}"#)
         .pure(),
         CommandSpec::new("shape.fill", "Shape Fill", "Shape Format › Shape Styles", |s, v| {
-            let c = p::str(v, "color").and_then(Rgb::parse);
+            let c = p::str(v, "color").and_then(Rgb::parse).map(wordcraft_doc::fill::Fill::solid);
             with_obj(s, |o| {
                 if let InlineObject::Shape { fill, .. } = o {
-                    *fill = c;
+                    *fill = c.clone();
                 } else if let Some(style) = super::canvas::style_mut(o) {
-                    style.fill = c;
+                    style.fill = c.clone();
                 }
             })
         })

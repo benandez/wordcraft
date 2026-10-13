@@ -1,8 +1,12 @@
 //! DrawingML colours shared by charts and SmartArt: a colour element with its modifiers, and the
 //! paint of a fill or line (solid, the first stop of a gradient, a pattern's foreground).
 
+use std::sync::Arc;
+
 use wordcraft_doc::THEME_COLORS;
+use wordcraft_doc::fill::{Fill, Gradient, GradientFlip, GradientKind, PathShape};
 use wordcraft_doc::props::Rgb;
+use wordcraft_doc::wordart::{GradStop, MAX_STOPS};
 
 use crate::units::int;
 use crate::xml::El;
@@ -35,11 +39,20 @@ fn is_color(e: &El) -> bool {
 }
 
 /// A colour element (`a:srgbClr`, `a:schemeClr`, `a:sysClr`), or the one inside `e`, with its
-/// `lumMod` / `lumOff` / `tint` / `shade` applied in document order.
+/// `lumMod` / `lumOff` / `tint` / `shade` / `satMod` applied in document order.
 pub(crate) fn color(e: &El, theme: &[Rgb]) -> Option<Rgb> {
+    color_alpha(e, theme, None).map(|(c, _)| c)
+}
+
+/// [`color`] and its transparency, percent (`a:alpha` is opacity, so 30% opaque is 70%
+/// transparent). `ph` is the colour and transparency `phClr` stands for (in a theme's fill
+/// styles: the colour of the shape's style reference).
+pub(crate) fn color_alpha(e: &El, theme: &[Rgb], ph: Option<(Rgb, f32)>) -> Option<(Rgb, f32)> {
     let c = if is_color(e) { e } else { e.els().find(|c| is_color(c))? };
+    let mut opacity = 100.0 - ph.map_or(0.0, |(_, t)| t);
     let base = match c.name.as_str() {
         "a:srgbClr" => Rgb::parse(c.attr("val")?)?,
+        "a:schemeClr" if c.attr("val") == Some("phClr") => ph?.0,
         "a:schemeClr" => *theme.get(scheme_slot(c.attr("val")?)?)?,
         "a:sysClr" => match c.attr("lastClr").and_then(Rgb::parse) {
             Some(rgb) => rgb,
@@ -70,10 +83,71 @@ pub(crate) fn color(e: &El, theme: &[Rgb]) -> Option<Rgb> {
             "a:lumOff" => adjust_lum(rgb, |l| l + val(m)),
             "a:tint" => mix(rgb, 255.0, val(m)),
             "a:shade" => mix(rgb, 0.0, val(m)),
+            "a:satMod" => {
+                let (h, sat, l) = to_hsl(rgb);
+                from_hsl(h, (sat * val(m)).clamp(0.0, 1.0), l)
+            }
+            "a:alpha" => {
+                opacity = val(m) as f32 * 100.0;
+                rgb
+            }
+            "a:alphaMod" => {
+                opacity *= val(m) as f32;
+                rgb
+            }
+            "a:alphaOff" => {
+                opacity += val(m) as f32 * 100.0;
+                rgb
+            }
             _ => rgb,
         };
     }
-    Some(rgb)
+    Some((rgb, (100.0 - opacity).clamp(0.0, 100.0)))
+}
+
+/// Fill element `e` (`a:solidFill`, `a:gradFill`; a pattern as its foreground colour) as a
+/// shape's fill; `None` for no fill, picture and group fills. `ph` as in [`color_alpha`].
+pub(crate) fn fill(e: &El, theme: &[Rgb], ph: Option<(Rgb, f32)>) -> Option<Fill> {
+    let solid = |c: Option<&El>| c.and_then(|c| color_alpha(c, theme, ph)).map(|(color, transparency)| Fill::Solid { color, transparency });
+    match e.name.as_str() {
+        "a:solidFill" => solid(Some(e)),
+        "a:pattFill" => solid(e.child("a:fgClr")),
+        "a:gradFill" => {
+            let pct = |v: Option<&str>| v.and_then(int).map_or(0.0, |v| v.clamp(-100_000_000, 100_000_000) as f32 / 1000.0);
+            let rect = |r: Option<&El>| r.map_or([0.0; 4], |r| ["l", "t", "r", "b"].map(|k| pct(r.attr(k))));
+            let stops = e
+                .child("a:gsLst")
+                .into_iter()
+                .flat_map(|l| l.children("a:gs"))
+                .take(MAX_STOPS * 4)
+                .filter_map(|g| color_alpha(g, theme, ph).map(|(color, transparency)| GradStop { pos: pct(g.attr("pos")), color, transparency }))
+                .collect();
+            let on = |v: Option<&str>| v.is_some_and(|v| v == "1" || v == "true");
+            let kind = match (e.child("a:path"), e.child("a:lin")) {
+                (Some(p), _) => {
+                    let shape = match p.attr("path") {
+                        Some("rect") => PathShape::Rect,
+                        Some("shape") => PathShape::Shape,
+                        _ => PathShape::Circle,
+                    };
+                    GradientKind::Path { shape, focus: rect(p.child("a:fillToRect")) }
+                }
+                (None, l) => GradientKind::Linear {
+                    angle: l.and_then(|l| l.attr("ang")).and_then(int).map_or(0.0, |a| (a % 21_600_000) as f32 / 60_000.0),
+                    scaled: on(l.and_then(|l| l.attr("scaled"))),
+                },
+            };
+            let flip = match e.attr("flip") {
+                Some("x") => GradientFlip::X,
+                Some("y") => GradientFlip::Y,
+                Some("xy") => GradientFlip::Xy,
+                _ => GradientFlip::None,
+            };
+            let tile = e.child("a:tileRect").map(|r| rect(Some(r)));
+            Fill::Gradient(Arc::new(Gradient { stops, kind, tile, rot_with_shape: on(e.attr("rotWithShape")), flip })).sanitized()
+        }
+        _ => None,
+    }
 }
 
 /// A preset colour (`a:prstClr/@val`, ECMA-376 Part 1 §20.1.10.48): the common ones; others are

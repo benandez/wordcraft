@@ -1,10 +1,14 @@
 //! How a Word shape (`wps:wsp`) looks: its preset geometry, and the fill and outline it gets from its own properties (`wps:spPr`) or, failing those, from the theme through its
 //! style references (`wps:style`: `a:fillRef`, `a:lnRef`, ECMA-376 Part 1 §20.1.4.2).
 
+use std::sync::Arc;
+
+use wordcraft_doc::fill::{Fill, Gradient, GradientFlip, GradientKind, PathShape};
 use wordcraft_doc::para::ShapeKind;
 use wordcraft_doc::props::Rgb;
+use wordcraft_doc::wordart::{GradStop, MAX_STOPS};
 
-use super::drawing_color::{color, fill_colour};
+use super::drawing_color::{color, color_alpha, fill as read_fill, fill_colour};
 use crate::units::{int, measure};
 use crate::xml::El;
 
@@ -108,29 +112,68 @@ pub(crate) fn vml_preset_kind(spt: u32) -> Option<ShapeKind> {
 /// A shape's fill and outline.
 #[derive(Debug, Default, PartialEq)]
 pub(crate) struct ShapePaint {
-    pub fill: Option<Rgb>,
+    pub fill: Option<Fill>,
     pub stroke: Option<Rgb>,
     /// Points.
     pub stroke_width: f32,
+    /// The outline's gradient (drawn in its main colour, `stroke`).
+    pub outline_fill: Option<Fill>,
+}
+
+/// The theme's fill styles (`a:fmtScheme`): `a:fillStyleLst` and `a:bgFillStyleLst`, which a
+/// shape's `a:fillRef` 1–999 and 1001+ point to.
+#[derive(Debug, Default)]
+pub(crate) struct ThemeFills {
+    pub fill: Vec<El>,
+    pub bg: Vec<El>,
+}
+
+impl ThemeFills {
+    pub fn read(fmt: Option<&El>) -> ThemeFills {
+        let list = |n: &str| fmt.and_then(|f| f.child(n)).map(|l| l.els().take(MAX_THEME_FILLS).cloned().collect()).unwrap_or_default();
+        ThemeFills { fill: list("a:fillStyleLst"), bg: list("a:bgFillStyleLst") }
+    }
+    /// Style `idx` (1-based; 1001+ the background styles).
+    fn get(&self, idx: i64) -> Option<&El> {
+        let (list, i) = if idx > 1000 { (&self.bg, idx - 1001) } else { (&self.fill, idx - 1) };
+        list.get(usize::try_from(i).ok()?)
+    }
+}
+
+/// Most fill styles kept per theme list (hostile files; Word's themes have three).
+const MAX_THEME_FILLS: usize = 16;
+
+/// The fill a `…spPr` element states itself: `Some(None)` for none (`a:noFill`, picture fills),
+/// `group` for `a:grpFill`, `None` when it leaves the fill to the shape's style.
+pub(crate) fn own_fill(sppr: Option<&El>, theme: &[Rgb], group: Option<&Fill>) -> Option<Option<Fill>> {
+    let f = sppr?.els().find(|c| matches!(c.name.as_str(), "a:noFill" | "a:blipFill" | "a:grpFill" | "a:solidFill" | "a:gradFill" | "a:pattFill"))?;
+    Some(match f.name.as_str() {
+        "a:grpFill" => group.cloned(),
+        _ => read_fill(f, theme, None),
+    })
 }
 
 /// The paint of a shape from its properties `sppr`, falling back on its style `style` (theme
-/// colours `theme`) for what they leave out: an explicit `a:noFill` is no fill or outline, an
-/// explicit colour wins, and a style reference with index 0 is none.
-pub(crate) fn shape_paint(sppr: Option<&El>, style: Option<&El>, theme: &[Rgb]) -> ShapePaint {
+/// colours `theme`, fill styles `styles`) for what they leave out: an explicit `a:noFill` is no
+/// fill or outline, an explicit colour wins, `a:grpFill` is the enclosing group's fill `group`,
+/// and a style reference with index 0 is none.
+pub(crate) fn shape_paint(sppr: Option<&El>, style: Option<&El>, theme: &[Rgb], styles: &ThemeFills, group: Option<&Fill>) -> ShapePaint {
     let style_ref = |name: &str| -> Option<(i64, &El)> {
         let r = style?.child(name)?;
         Some((r.attr("idx").and_then(int).unwrap_or(0), r))
     };
-    let fill = match sppr {
-        Some(s) if s.child("a:noFill").is_some() || s.child("a:blipFill").is_some() => None,
-        Some(s) if s.els().any(|c| matches!(c.name.as_str(), "a:solidFill" | "a:gradFill" | "a:pattFill")) => fill_colour(s, theme),
-        _ => style_ref("a:fillRef").filter(|(idx, _)| *idx > 0).and_then(|(_, r)| color(r, theme)),
-    };
+    let fill = own_fill(sppr, theme, group).unwrap_or_else(|| {
+        let (idx, r) = style_ref("a:fillRef").filter(|(idx, _)| *idx > 0)?;
+        // The theme style in the reference's colour (`phClr`), else that colour.
+        let ph = color_alpha(r, theme, None)?;
+        styles.get(idx).map_or(Some(Fill::Solid { color: ph.0, transparency: ph.1 }), |st| read_fill(st, theme, Some(ph)))
+    });
     let ln = sppr.and_then(|s| s.child("a:ln"));
     let line_ref = style_ref("a:lnRef").filter(|(idx, _)| *idx > 0);
+    let outline_fill = ln.and_then(|l| l.child("a:gradFill")).and_then(|g| read_fill(g, theme, None)).filter(|f| matches!(f, Fill::Gradient(_)));
     let stroke = match ln {
         Some(l) if l.child("a:noFill").is_some() => None,
+        _ if outline_fill.is_some() => outline_fill.as_ref().map(Fill::main_color),
         Some(l) if l.els().any(|c| matches!(c.name.as_str(), "a:solidFill" | "a:gradFill" | "a:pattFill")) => fill_colour(l, theme),
         _ => line_ref.and_then(|(_, r)| color(r, theme)),
     };
@@ -142,7 +185,79 @@ pub(crate) fn shape_paint(sppr: Option<&El>, style: Option<&El>, theme: &[Rgb]) 
         // Word's default outline when the file names none (no outline: no width).
         .unwrap_or(if stroke.is_some() { 0.75 } else { 0.0 })
         .clamp(0.0, 100.0);
-    ShapePaint { fill, stroke, stroke_width }
+    ShapePaint { fill, stroke, stroke_width, outline_fill }
+}
+
+/// A VML shape's fill: `fillcolor` (white by default) and its `v:fill`: opacity, and a linear
+/// (`type="gradient"`) or circular (`gradientRadial`) gradient to `color2`, or through `colors`.
+/// A gradient's `focus` (where `color2` lies, −100%–100%) and `angle` are approximated: a focus
+/// strictly between 0 and ±100% mirrors the gradient there. `None` when not filled.
+pub(crate) fn vml_fill(shape: &El, shapetype: Option<&El>) -> Option<Fill> {
+    // What the shape leaves out comes from its shapetype (#1377).
+    let own = |n: &str| shape.attr(n).or_else(|| shapetype.and_then(|t| t.attr(n)));
+    let f = shape.child("v:fill").or_else(|| shapetype.and_then(|t| t.child("v:fill")));
+    let attr = |n: &str| f.and_then(|f| f.attr(n));
+    let off = |v: Option<&str>| v.is_some_and(|v| matches!(v, "f" | "false" | "0"));
+    if off(own("filled")) || off(attr("on")) {
+        return None;
+    }
+    let c1 = attr("color").or(own("fillcolor")).map_or(Some(Rgb::WHITE), vml_color)?;
+    let t1 = 100.0 - vml_fraction(attr("opacity")).unwrap_or(1.0) * 100.0;
+    let radial = match attr("type") {
+        Some("gradient") => false,
+        Some("gradientRadial") => true,
+        _ => return Some(Fill::Solid { color: c1, transparency: t1 }),
+    };
+    let c2 = attr("color2").and_then(vml_color).unwrap_or(Rgb::WHITE);
+    let t2 = 100.0 - vml_fraction(attr("o:opacity2")).unwrap_or(1.0) * 100.0;
+    let stop = |pos: f32, (color, transparency): (Rgb, f32)| GradStop { pos, color, transparency };
+    let (a, b) = ((c1, t1), (c2, t2));
+    let focus = attr("focus").and_then(|v| vml_fraction(Some(v))).unwrap_or(0.0).clamp(-1.0, 1.0) * 100.0;
+    let colors: Vec<GradStop> = attr("colors")
+        .into_iter()
+        .flat_map(|v| v.split(';'))
+        .take(MAX_STOPS)
+        .filter_map(|s| {
+            let (pos, c) = s.trim().split_once(' ')?;
+            Some(stop(vml_fraction(Some(pos))? * 100.0, (vml_color(c)?, t1)))
+        })
+        .collect();
+    let stops = if colors.len() >= 2 {
+        colors
+    } else if focus >= 100.0 || focus <= -100.0 {
+        vec![stop(0.0, b), stop(100.0, a)]
+    } else if focus > 0.0 {
+        vec![stop(0.0, a), stop(focus, b), stop(100.0, a)]
+    } else if focus < 0.0 {
+        vec![stop(0.0, b), stop(-focus, a), stop(100.0, b)]
+    } else {
+        vec![stop(0.0, a), stop(100.0, b)]
+    };
+    let kind = if radial {
+        // `focusposition` "x,y" (fractions of the shape) is the centre.
+        let fp = attr("focusposition").unwrap_or("0.5,0.5");
+        let (x, y) = fp.split_once(',').unwrap_or((fp, fp));
+        let (x, y) = (vml_fraction(Some(x)).unwrap_or(0.5) * 100.0, vml_fraction(Some(y)).unwrap_or(0.5) * 100.0);
+        GradientKind::Path { shape: PathShape::Circle, focus: [x, y, 100.0 - x, 100.0 - y] }
+    } else {
+        // VML's angle is counter-clockwise from a top-to-bottom gradient.
+        let ang = attr("angle").and_then(|v| v.trim().parse::<f32>().ok()).filter(|v| v.is_finite()).unwrap_or(0.0);
+        GradientKind::Linear { angle: 90.0 - ang, scaled: false }
+    };
+    Fill::Gradient(Arc::new(Gradient { stops, kind, tile: None, rot_with_shape: true, flip: GradientFlip::None })).sanitized()
+}
+
+/// A VML fraction: `0.5`, `50%`, or 65536ths (`32768f`).
+fn vml_fraction(v: Option<&str>) -> Option<f32> {
+    let v = v?.trim();
+    let n = if let Some(f) = v.strip_suffix('f') {
+        f.parse::<f32>().ok()? / 65536.0
+    } else if let Some(p) = v.strip_suffix('%') {
+        p.parse::<f32>().ok()? / 100.0
+    } else {
+        v.parse::<f32>().ok()?
+    };
+    n.is_finite().then_some(n)
 }
 
 /// Explicit DrawingML dash stops override the solid default.
@@ -222,7 +337,7 @@ mod tests {
         let st = el(
             r#"<wps:style xmlns:wps="w" xmlns:a="a"><a:lnRef idx="1"><a:schemeClr val="accent4"/></a:lnRef><a:fillRef idx="0"><a:schemeClr val="accent4"/></a:fillRef></wps:style>"#,
         );
-        let p = shape_paint(Some(&sp), Some(&st), &THEME_COLORS);
+        let p = shape_paint(Some(&sp), Some(&st), &THEME_COLORS, &ThemeFills::default(), None);
         assert_eq!(p.stroke, Some(THEME_COLORS[7]));
         assert_eq!(p.stroke_width, 0.5);
         assert_eq!(p.fill, None);
@@ -239,20 +354,20 @@ mod tests {
         let st = el(
             r#"<wps:style xmlns:wps="w" xmlns:a="a"><a:lnRef idx="2"><a:schemeClr val="accent1"><a:shade val="15000"/></a:schemeClr></a:lnRef><a:fillRef idx="1"><a:schemeClr val="accent1"/></a:fillRef></wps:style>"#,
         );
-        let p = shape_paint(Some(&sp), Some(&st), &THEME_COLORS);
+        let p = shape_paint(Some(&sp), Some(&st), &THEME_COLORS, &ThemeFills::default(), None);
         assert_eq!((p.fill, p.stroke, p.stroke_width), (None, Some(Rgb(0xEE, 0, 0)), 1.0));
         // Preset and scheme colours as the box's own fill and outline.
         let sp = el(
             r#"<wps:spPr xmlns:wps="w" xmlns:a="a"><a:solidFill><a:schemeClr val="lt1"/></a:solidFill><a:ln w="6350"><a:solidFill><a:prstClr val="black"/></a:solidFill></a:ln></wps:spPr>"#,
         );
-        let p = shape_paint(Some(&sp), None, &THEME_COLORS);
-        assert_eq!((p.fill, p.stroke, p.stroke_width), (Some(THEME_COLORS[1]), Some(Rgb(0, 0, 0)), 0.5));
+        let p = shape_paint(Some(&sp), None, &THEME_COLORS, &ThemeFills::default(), None);
+        assert_eq!((p.fill, p.stroke, p.stroke_width), (Some(Fill::solid(THEME_COLORS[1])), Some(Rgb(0, 0, 0)), 0.5));
         // A style fill with index 0 is none; an outline set to no fill is none.
         let sp = el(r#"<wps:spPr xmlns:wps="w" xmlns:a="a"><a:ln><a:noFill/></a:ln></wps:spPr>"#);
         let st = el(
             r#"<wps:style xmlns:wps="w" xmlns:a="a"><a:lnRef idx="2"><a:schemeClr val="accent1"/></a:lnRef><a:fillRef idx="0"><a:schemeClr val="accent1"/></a:fillRef></wps:style>"#,
         );
-        let p = shape_paint(Some(&sp), Some(&st), &THEME_COLORS);
+        let p = shape_paint(Some(&sp), Some(&st), &THEME_COLORS, &ThemeFills::default(), None);
         assert_eq!((p.fill, p.stroke), (None, None));
     }
 
@@ -261,10 +376,10 @@ mod tests {
         let st = el(
             r#"<wps:style xmlns:wps="w" xmlns:a="a"><a:lnRef idx="-99999999999"><a:schemeClr val="nope"/></a:lnRef><a:fillRef idx="99999999999"/></wps:style>"#,
         );
-        let p = shape_paint(None, Some(&st), &[]);
+        let p = shape_paint(None, Some(&st), &[], &ThemeFills::default(), None);
         assert_eq!((p.fill, p.stroke), (None, None));
         let st = el(r#"<wps:style xmlns:wps="w" xmlns:a="a"><a:lnRef idx="77"><a:srgbClr val="010203"/></a:lnRef></wps:style>"#);
-        assert_eq!(shape_paint(None, Some(&st), &[]).stroke_width, 1.5);
+        assert_eq!(shape_paint(None, Some(&st), &[], &ThemeFills::default(), None).stroke_width, 1.5);
     }
 
     #[test]
@@ -295,6 +410,35 @@ mod tests {
         for spt in [0, 24, 31, 136, 175, 75, 201, 203, u32::MAX] {
             assert_eq!(vml_preset_kind(spt), None, "{spt}");
         }
+    }
+
+    #[test]
+    fn vml_gradients_focus_and_colours() {
+        let v = |attrs: &str, fill: &str| {
+            let ns = r#"xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office""#;
+            vml_fill(&crate::xml::parse(format!(r#"<v:rect {ns} {attrs}>{fill}</v:rect>"#).as_bytes()).unwrap(), None)
+        };
+        let stops = |f: Option<Fill>| match f {
+            Some(Fill::Gradient(g)) => g.stops.iter().map(|s| (s.pos, s.color)).collect::<Vec<_>>(),
+            o => panic!("{o:?}"),
+        };
+        let (red, blue) = (Rgb(255, 0, 0), Rgb(0, 0, 255));
+        // A focus of 50% mirrors the gradient in the middle; 100% reverses it.
+        assert_eq!(
+            stops(v(r##"fillcolor="red""##, r##"<v:fill type="gradient" color2="blue" focus="50%"/>"##)),
+            [(0.0, red), (50.0, blue), (100.0, red)]
+        );
+        assert_eq!(stops(v(r##"fillcolor="red""##, r##"<v:fill type="gradient" color2="blue" focus="100%"/>"##)), [(0.0, blue), (100.0, red)]);
+        // `colors` lists the stops (fractions or 65536ths).
+        assert_eq!(stops(v("", r##"<v:fill type="gradient" colors="0 red;32768f blue;1 red"/>"##)), [(0.0, red), (50.0, blue), (100.0, red)]);
+        let Some(Fill::Gradient(g)) = v(r##"fillcolor="red""##, r##"<v:fill type="gradientRadial" color2="blue" focusposition=".25,.75"/>"##) else {
+            panic!()
+        };
+        assert_eq!(g.kind, GradientKind::Path { shape: PathShape::Circle, focus: [25.0, 75.0, 75.0, 25.0] });
+        assert_eq!(v(r##"filled="f""##, ""), None);
+        assert_eq!(v("", r##"<v:fill opacity="32768f"/>"##), Some(Fill::Solid { color: Rgb::WHITE, transparency: 50.0 }));
+        // Hostile values don't panic.
+        assert!(v("", r##"<v:fill type="gradient" colors="x;;1 #zz;NaN red" focus="NaN" angle="inf" opacity="1e99f"/>"##).is_some());
     }
 
     #[test]
