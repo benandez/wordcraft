@@ -11,7 +11,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::sync::Arc;
 
 use crate::props::Rgb;
-use crate::wordart::{GradStop, MAX_STOPS};
+#[cfg(test)]
+use crate::wordart::MAX_STOPS;
+use crate::wordart::{GradStop, clamp, sanitized_stops};
 
 /// A shape's fill. In `.json` documents an opaque solid fill is written `[r, g, b]` as before
 /// fills had transparency or gradients; the rest are tagged (`{"type": "gradient", ...}`).
@@ -81,10 +83,6 @@ impl GradientFlip {
 /// Largest rectangle inset kept, percent (hostile files).
 const MAX_INSET: f32 = 1000.0;
 
-fn clamp(v: f32, lo: f32, hi: f32, dflt: f32) -> f32 {
-    if v.is_finite() { v.clamp(lo, hi) } else { dflt }
-}
-
 fn rect(r: [f32; 4]) -> [f32; 4] {
     r.map(|v| clamp(v, -MAX_INSET, MAX_INSET, 0.0))
 }
@@ -93,9 +91,6 @@ impl Fill {
     /// An opaque solid fill.
     pub fn solid(color: Rgb) -> Fill {
         Fill::Solid { color, transparency: 0.0 }
-    }
-    pub fn is_opaque_solid(&self) -> bool {
-        matches!(self, Fill::Solid { transparency, .. } if *transparency == 0.0)
     }
     /// The one colour standing for the fill where only one fits: the solid colour, or a
     /// gradient's middle stop.
@@ -112,13 +107,7 @@ impl Fill {
         Some(match self {
             Fill::Solid { color, transparency } => Fill::Solid { color: *color, transparency: clamp(*transparency, 0.0, 100.0, 0.0) },
             Fill::Gradient(g) => {
-                let mut stops: Vec<GradStop> = g
-                    .stops
-                    .iter()
-                    .take(MAX_STOPS)
-                    .map(|s| GradStop { pos: clamp(s.pos, 0.0, 100.0, 0.0), color: s.color, transparency: clamp(s.transparency, 0.0, 100.0, 0.0) })
-                    .collect();
-                stops.sort_by(|a, b| a.pos.total_cmp(&b.pos));
+                let stops = sanitized_stops(&g.stops);
                 match stops[..] {
                     [] => return None,
                     [s] => return Some(Fill::Solid { color: s.color, transparency: s.transparency }),

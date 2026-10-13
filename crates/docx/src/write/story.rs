@@ -728,7 +728,7 @@ impl Writer<'_> {
                             Some(_) => w.open("a:ln", &[("w", &emu(c.stroke_width.clamp(0.0, 100.0)))]),
                             None => w.open("a:ln", &[]),
                         }
-                        solid_fill(w, c.stroke);
+                        write_fill(w, c.stroke.map(Fill::solid).as_ref());
                         w.close("a:ln");
                         w.close("wpc:whole");
                         "wpc:wpc"
@@ -1756,8 +1756,8 @@ fn write_fill(w: &mut W, f: Option<&Fill>) {
             w.close("a:solidFill");
         }
         Some(Fill::Gradient(g)) => {
-            let on = |b: bool| if b { "1" } else { "0" };
-            let mut attrs = vec![("rotWithShape", on(g.rot_with_shape))];
+            // `rotWithShape` and `scaled` are written only when set: an absent one reads back off.
+            let mut attrs = if g.rot_with_shape { vec![("rotWithShape", "1")] } else { vec![] };
             match g.flip {
                 GradientFlip::None => {}
                 GradientFlip::X => attrs.insert(0, ("flip", "x")),
@@ -1773,7 +1773,11 @@ fn write_fill(w: &mut W, f: Option<&Fill>) {
             }
             w.close("a:gsLst");
             match g.kind {
-                GradientKind::Linear { angle, scaled } => w.empty("a:lin", &[("ang", &n((angle * 60_000.0).round() as i64)), ("scaled", on(scaled))]),
+                GradientKind::Linear { angle, scaled } => {
+                    let ang = n((angle * 60_000.0).round() as i64);
+                    let attrs: &[(&str, &str)] = if scaled { &[("ang", &ang), ("scaled", "1")] } else { &[("ang", &ang)] };
+                    w.empty("a:lin", attrs)
+                }
                 GradientKind::Path { shape, focus } => {
                     let path = match shape {
                         PathShape::Circle => "circle",
@@ -1792,18 +1796,6 @@ fn write_fill(w: &mut W, f: Option<&Fill>) {
             }
             w.close("a:gradFill");
         }
-    }
-}
-
-/// A DrawingML `a:solidFill` in `c`, or `a:noFill`.
-fn solid_fill(w: &mut W, c: Option<wordcraft_doc::props::Rgb>) {
-    match c {
-        Some(c) => {
-            w.open("a:solidFill", &[]);
-            w.empty("a:srgbClr", &[("val", &c.hex())]);
-            w.close("a:solidFill");
-        }
-        None => w.empty("a:noFill", &[]),
     }
 }
 

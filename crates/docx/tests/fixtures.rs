@@ -3583,13 +3583,15 @@ fn shape_gradients_and_transparency_are_read_and_survive_saving() {
             r#"<wps:wsp><wps:cNvPr id="{id}" name="M{id}"/><wps:cNvSpPr/><wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm>{rect}{paint}</wps:spPr><wps:bodyPr/></wps:wsp>"#
         )
     };
-    // I: a group with a gradient fill; one member takes it (`a:grpFill`), one has its own.
+    // I: a group with a gradient fill; one member takes it (`a:grpFill`), one has its own, and
+    // one in a nested group without a fill of its own takes the outer group's.
     let group = format!(
-        r#"<w:r><w:drawing><wp:inline><wp:extent cx="914400" cy="914400"/><wp:docPr id="9" name="G"/><a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"><wpg:wgp><wpg:cNvGrpSpPr/><wpg:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/><a:chOff x="0" y="0"/><a:chExt cx="914400" cy="914400"/></a:xfrm><a:gradFill><a:gsLst>{}{}</a:gsLst><a:lin ang="0" scaled="0"/></a:gradFill></wpg:grpSpPr>{}{}</wpg:wgp></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>"#,
+        r#"<w:r><w:drawing><wp:inline><wp:extent cx="914400" cy="914400"/><wp:docPr id="9" name="G"/><a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"><wpg:wgp><wpg:cNvGrpSpPr/><wpg:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/><a:chOff x="0" y="0"/><a:chExt cx="914400" cy="914400"/></a:xfrm><a:gradFill><a:gsLst>{}{}</a:gsLst><a:lin ang="0" scaled="0"/></a:gradFill></wpg:grpSpPr>{}{}<wpg:grpSp><wpg:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/><a:chOff x="0" y="0"/><a:chExt cx="914400" cy="914400"/></a:xfrm></wpg:grpSpPr>{}</wpg:grpSp></wpg:wgp></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>"#,
         gs(0, "112233"),
         gs(100000, "445566"),
         member(10, "<a:grpFill/>"),
-        member(11, r#"<a:solidFill><a:srgbClr val="00FF00"/></a:solidFill>"#)
+        member(11, r#"<a:solidFill><a:srgbClr val="00FF00"/></a:solidFill>"#),
+        member(12, "<a:grpFill/>")
     );
     // VML: a linear gradient to `color2`, half opaque.
     let vml = r##"<w:r><w:pict><v:rect style="width:72pt;height:72pt" fillcolor="#ff0000" stroked="f"><v:fill type="gradient" color2="#0000ff" opacity="0.5"/></v:rect></w:pict></w:r>"##;
@@ -3632,7 +3634,7 @@ fn shape_gradients_and_transparency_are_read_and_survive_saving() {
         let InlineObject::Group { children, .. } = &objs[8] else { panic!("{:?}", objs[8]) };
         let fills: Vec<_> = children.iter().map(|c| if let InlineObject::Shape { fill, .. } = &c.obj { fill.clone() } else { None }).collect();
         let group_fill = grad(vec![stop(0.0, Rgb(0x11, 0x22, 0x33), 0.0), stop(100.0, Rgb(0x44, 0x55, 0x66), 0.0)], lin(0.0, false), false);
-        assert_eq!(fills, [Some(group_fill), Some(Fill::solid(green))], "a:grpFill takes the group's fill");
+        assert_eq!(fills, [Some(group_fill.clone()), Some(Fill::solid(green)), Some(group_fill)], "a:grpFill takes the group's fill");
         let InlineObject::Shape { fill, .. } = &objs[9] else { panic!("{:?}", objs[9]) };
         assert_eq!(fill.as_ref(), Some(&grad(vec![stop(0.0, red, 50.0), stop(100.0, blue, 0.0)], lin(90.0, false), true)), "VML gradient");
     };

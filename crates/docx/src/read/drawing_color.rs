@@ -49,10 +49,14 @@ pub(crate) fn color(e: &El, theme: &[Rgb]) -> Option<Rgb> {
 /// styles: the colour of the shape's style reference).
 pub(crate) fn color_alpha(e: &El, theme: &[Rgb], ph: Option<(Rgb, f32)>) -> Option<(Rgb, f32)> {
     let c = if is_color(e) { e } else { e.els().find(|c| is_color(c))? };
-    let mut opacity = 100.0 - ph.map_or(0.0, |(_, t)| t);
+    let mut opacity = 100.0;
     let base = match c.name.as_str() {
         "a:srgbClr" => Rgb::parse(c.attr("val")?)?,
-        "a:schemeClr" if c.attr("val") == Some("phClr") => ph?.0,
+        "a:schemeClr" if c.attr("val") == Some("phClr") => {
+            let (rgb, t) = ph?;
+            opacity -= t;
+            rgb
+        }
         "a:schemeClr" => *theme.get(scheme_slot(c.attr("val")?)?)?,
         "a:sysClr" => match c.attr("lastClr").and_then(Rgb::parse) {
             Some(rgb) => rgb,

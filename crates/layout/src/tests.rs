@@ -5980,7 +5980,7 @@ fn rotated_canvas_draws_its_clipped_members_inside_the_turn() {
             turns.push(spin.deg);
             for i in items {
                 match i {
-                    Draw::Shape { rect, fill: Some(c), .. } if c.0 == 0xF0 => bgs.push(*rect),
+                    Draw::Shape { rect, fill: Some(display::Paint::Solid(c, _)), .. } if c.0 == 0xF0 => bgs.push(*rect),
                     Draw::Clip { rect, items } => {
                         let members = items
                             .iter()
@@ -7832,6 +7832,42 @@ fn space_after_stays_clear_before_a_numbered_paragraph_without_a_label() {
         },
         wordcraft_doc::resolve::AUTO_SPACING,
     );
+
+/// #1500: how shape fills paint a frame: linear gradients across it at their angle, path
+/// gradients out from their focus to the farthest corner, transparency as opacity.
+#[test]
+fn shape_fills_paint_their_frame() {
+    use display::{Paint, paint_for};
+    use std::sync::Arc;
+    use wordcraft_doc::fill::{Gradient, GradientFlip, GradientKind, PathShape};
+    use wordcraft_doc::wordart::GradStop;
+    let frame = Rect::new(10.0, 20.0, 100.0, 50.0);
+    let stops = vec![GradStop { pos: 0.0, color: Rgb::BLACK, transparency: 0.0 }, GradStop { pos: 100.0, color: Rgb::WHITE, transparency: 40.0 }];
+    let grad = |kind| Fill::Gradient(Arc::new(Gradient { stops: stops.clone(), kind, tile: None, rot_with_shape: true, flip: GradientFlip::None }));
+    let ends = |p: Option<Paint>| match p {
+        Some(Paint::Linear { p0, p1, stops }) => {
+            assert_eq!(stops, [(0.0, Rgb::BLACK, 1.0), (1.0, Rgb::WHITE, 0.6)]);
+            [p0.0, p0.1, p1.0, p1.1].map(|v| (v * 100.0).round() / 100.0)
+        }
+        o => panic!("{o:?}"),
+    };
+    // 0°: left to right; 90°: top to bottom.
+    assert_eq!(ends(paint_for(&grad(GradientKind::Linear { angle: 0.0, scaled: false }), frame)), [10.0, 45.0, 110.0, 45.0]);
+    assert_eq!(ends(paint_for(&grad(GradientKind::Linear { angle: 90.0, scaled: false }), frame)), [60.0, 20.0, 60.0, 70.0]);
+    // Scaled 45°: corner to corner of the frame's diagonal direction across the stretched square.
+    let [x0, y0, x1, y1] = ends(paint_for(&grad(GradientKind::Linear { angle: 45.0, scaled: true }), frame));
+    assert!(x0 < 60.0 && y0 < 45.0 && x1 > 60.0 && y1 > 45.0 && (x1 - x0) < (y1 - y0) * 2.0 + 1.0, "{x0} {y0} {x1} {y1}");
+    // A circle from the centre reaches the corners.
+    match paint_for(&grad(GradientKind::Path { shape: PathShape::Circle, focus: [50.0; 4] }), frame) {
+        Some(Paint::Radial { c, r, .. }) => assert_eq!((c, (r * 100.0).round()), ((60.0, 45.0), (50f32.hypot(25.0) * 100.0).round())),
+        o => panic!("{o:?}"),
+    }
+    // From the top-left corner (a rectangular path, drawn circular).
+    match paint_for(&grad(GradientKind::Path { shape: PathShape::Rect, focus: [0.0, 0.0, 100.0, 100.0] }), frame) {
+        Some(Paint::Radial { c, .. }) => assert_eq!(c, (10.0, 20.0)),
+        o => panic!("{o:?}"),
+    }
+    assert_eq!(paint_for(&Fill::Solid { color: Rgb::WHITE, transparency: 70.0 }, frame), Some(Paint::Solid(Rgb::WHITE, 1.0 - 0.7)));
 }
 
 #[test]

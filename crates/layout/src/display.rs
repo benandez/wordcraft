@@ -12,6 +12,76 @@ use crate::math::MItem;
 use crate::para::{ClKind, LineEnd, ParaLayout};
 use crate::{Page, Placed};
 
+/// How an area is painted: one colour or a gradient (page points), opacities 0..1.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Paint {
+    Solid(Rgb, f32),
+    /// A linear gradient from `p0` to `p1`; stops are (offset 0..1, colour, opacity).
+    Linear {
+        p0: (f32, f32),
+        p1: (f32, f32),
+        stops: Vec<(f32, Rgb, f32)>,
+    },
+    /// A circular gradient out from `c` to radius `r`; stops as [`Paint::Linear`]'s.
+    Radial {
+        c: (f32, f32),
+        r: f32,
+        stops: Vec<(f32, Rgb, f32)>,
+    },
+}
+
+impl Paint {
+    /// Opaque `c`.
+    pub fn solid(c: Rgb) -> Paint {
+        Paint::Solid(c, 1.0)
+    }
+    /// This paint with every opacity times `a` (soft edges' bands).
+    pub fn faded(&self, a: f32) -> Paint {
+        let fade = |s: &Vec<(f32, Rgb, f32)>| s.iter().map(|(o, c, x)| (*o, *c, x * a)).collect();
+        match self {
+            Paint::Solid(c, x) => Paint::Solid(*c, x * a),
+            Paint::Linear { p0, p1, stops } => Paint::Linear { p0: *p0, p1: *p1, stops: fade(stops) },
+            Paint::Radial { c, r, stops } => Paint::Radial { c: *c, r: *r, stops: fade(stops) },
+        }
+    }
+}
+
+/// How shape fill `fill` paints the shape's frame `frame` (#1500). A linear gradient runs across
+/// the frame at its angle (`scaled`: the angle of the frame squashed to a square); a path
+/// gradient runs from the centre of its focus rectangle out to the farthest corner, drawn
+/// circular whatever its outline (rectangular and shape-following ones are approximated).
+/// `tileRect` and `flip` are kept but not drawn. `None` for no fill.
+pub fn paint_for(fill: &wordcraft_doc::fill::Fill, frame: Rect) -> Option<Paint> {
+    use wordcraft_doc::fill::{Fill, GradientKind};
+    let g = match fill.sanitized()? {
+        Fill::Solid { color, transparency } => return Some(Paint::Solid(color, 1.0 - transparency / 100.0)),
+        Fill::Gradient(g) => g,
+    };
+    let stops = g.stops.iter().map(|s| (s.pos / 100.0, s.color, 1.0 - s.transparency / 100.0)).collect();
+    let (cx, cy) = (frame.x + frame.w / 2.0, frame.y + frame.h / 2.0);
+    Some(match g.kind {
+        GradientKind::Linear { angle, scaled } => {
+            let (s, c) = angle.to_radians().sin_cos();
+            // Scaled: the isolines of the square's gradient stretched with the frame.
+            let (dx, dy) = if scaled && frame.w > 0.0 && frame.h > 0.0 { (c / frame.w, s / frame.h) } else { (c, s) };
+            let len = dx.hypot(dy);
+            let (dx, dy) = if len > 0.0 && len.is_finite() { (dx / len, dy / len) } else { (1.0, 0.0) };
+            let half = (frame.w * dx.abs() + frame.h * dy.abs()) / 2.0;
+            Paint::Linear { p0: (cx - dx * half, cy - dy * half), p1: (cx + dx * half, cy + dy * half), stops }
+        }
+        GradientKind::Path { focus: [l, t, r, b], .. } => {
+            let x0 = frame.x + frame.w * l / 100.0;
+            let x1 = frame.right() - frame.w * r / 100.0;
+            let y0 = frame.y + frame.h * t / 100.0;
+            let y1 = frame.bottom() - frame.h * b / 100.0;
+            let c = ((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+            let corners = [(frame.x, frame.y), (frame.right(), frame.y), (frame.x, frame.bottom()), (frame.right(), frame.bottom())];
+            let r = corners.iter().map(|(x, y)| (x - c.0).hypot(y - c.1)).fold(0.0f32, f32::max);
+            Paint::Radial { c, r: r.max(0.01), stops }
+        }
+    })
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Stroke {
     Solid,
@@ -74,7 +144,7 @@ pub enum Draw {
     Shape {
         rect: Rect,
         kind: ShapeKind,
-        fill: Option<Rgb>,
+        fill: Option<Paint>,
         stroke: Option<Rgb>,
         stroke_width: f32,
         /// Alternating dash/space lengths in page points; empty means solid.
@@ -88,7 +158,7 @@ pub enum Draw {
     /// wide, in `color` at opacity `alpha`.
     Ink { pts: Vec<(f32, f32)>, color: Rgb, width: f32, alpha: f32 },
     /// A vector path (a chart's or diagram's polygons, slices, lines): filled, then stroked.
-    Path { segs: Vec<PathSeg>, fill: Option<Rgb>, stroke: Option<Rgb>, stroke_width: f32, dash: Vec<f32> },
+    Path { segs: Vec<PathSeg>, fill: Option<Paint>, stroke: Option<Rgb>, stroke_width: f32, dash: Vec<f32> },
     /// An inline chart or diagram's draws, as one figure with its alt text (for tagged PDF).
     Figure { alt: String, kind: GraphicKind, draws: Vec<Draw> },
     /// A formatting mark (¶ · → ↵) in the UI's mark colour, or in `color` (a tracked
@@ -1386,7 +1456,7 @@ fn graphic_draws(doc: &Document, g: &Graphic, rect: Rect, alpha: f32) -> Vec<Dra
             GraphicItem::Shape { rect: r, kind, fill, stroke, stroke_width } => out.push(Draw::Shape {
                 rect: inside(r),
                 kind: *kind,
-                fill: *fill,
+                fill: fill.map(Paint::solid),
                 stroke: *stroke,
                 stroke_width: stroke_width * k,
                 effects: Default::default(),
@@ -1395,7 +1465,7 @@ fn graphic_draws(doc: &Document, g: &Graphic, rect: Rect, alpha: f32) -> Vec<Dra
             }),
             GraphicItem::Path { segs, fill, stroke, stroke_width } => {
                 let segs = page_segs(segs, |x, y| (rect.x + x * sx, rect.y + y * sy));
-                out.push(Draw::Path { segs, fill: *fill, stroke: *stroke, stroke_width: stroke_width * k, dash: Vec::new() })
+                out.push(Draw::Path { segs, fill: fill.map(Paint::solid), stroke: *stroke, stroke_width: stroke_width * k, dash: Vec::new() })
             }
             GraphicItem::Text { rect: r, .. } => out.extend(text_glyphs(doc, inside(r), it, alpha, k)),
             GraphicItem::Image { rect: r, media } => {
@@ -1466,7 +1536,8 @@ fn shape_draws(
     opts: &DisplayOptions,
     out: &mut Vec<Draw>,
 ) {
-    let fill = fill.map(wordcraft_doc::fill::Fill::main_color);
+    // Freeforms are painted across the shape's frame, not each path's bounds.
+    let fill = fill.and_then(|f| paint_for(f, rect));
     if kind.is_open() {
         line_draws(rect, kind, stroke, stroke_width, effects, extra, out);
         return;
@@ -1504,7 +1575,7 @@ fn shape_draws(
             segs.push(PathSeg::Close);
         }
         let width = path_stroke_width(width);
-        out.push(Draw::Path { segs, fill: if closed { fill } else { None }, stroke, stroke_width: width, dash: extra.dash.pattern(width) });
+        out.push(Draw::Path { segs, fill: if closed { fill.clone() } else { None }, stroke, stroke_width: width, dash: extra.dash.pattern(width) });
         if !closed
             && extra.arrow_end
             && let Some(color) = stroke
@@ -1537,7 +1608,7 @@ fn path_arrowhead(points: &[(f32, f32)], color: Rgb, stroke_width: f32) -> Optio
     let (bx, by) = (tip.0 - dx * len, tip.1 - dy * len);
     let (nx, ny) = (-dy * len * 0.45, dx * len * 0.45);
     let segs = vec![PathSeg::Move(tip.0, tip.1), PathSeg::Line(bx + nx, by + ny), PathSeg::Line(bx - nx, by - ny), PathSeg::Close];
-    Some(Draw::Path { segs, fill: Some(color), stroke: None, stroke_width: 0.0, dash: Vec::new() })
+    Some(Draw::Path { segs, fill: Some(Paint::solid(color)), stroke: None, stroke_width: 0.0, dash: Vec::new() })
 }
 
 /// A line or connector at `rect` (its unflipped frame: flips are the frame's turn), with its
@@ -1583,7 +1654,7 @@ fn line_draws(
         let (bx, by) = (tip.0 - dx * len, tip.1 - dy * len);
         let (nx, ny) = (-dy * len * 0.45, dx * len * 0.45);
         let segs = vec![PathSeg::Move(tip.0, tip.1), PathSeg::Line(bx + nx, by + ny), PathSeg::Line(bx - nx, by - ny), PathSeg::Close];
-        out.push(Draw::Path { segs, fill: Some(color), stroke: None, stroke_width: 0.0, dash: Vec::new() });
+        out.push(Draw::Path { segs, fill: Some(Paint::solid(color)), stroke: None, stroke_width: 0.0, dash: Vec::new() });
     }
 }
 
@@ -1795,7 +1866,7 @@ fn canvas_background(rect: Rect, c: &wordcraft_doc::para::CanvasStyle) -> Draw {
     Draw::Shape {
         rect,
         kind: ShapeKind::Rectangle,
-        fill: c.fill.as_ref().map(wordcraft_doc::fill::Fill::main_color),
+        fill: c.fill.as_ref().and_then(|f| paint_for(f, rect)),
         stroke: c.stroke,
         stroke_width: c.stroke_width,
         effects: Default::default(),

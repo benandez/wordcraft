@@ -190,8 +190,9 @@ pub(crate) fn shape_paint(sppr: Option<&El>, style: Option<&El>, theme: &[Rgb], 
 
 /// A VML shape's fill: `fillcolor` (white by default) and its `v:fill`: opacity, and a linear
 /// (`type="gradient"`) or circular (`gradientRadial`) gradient to `color2`, or through `colors`.
-/// A gradient's `focus` (where `color2` lies, −100%–100%) and `angle` are approximated: a focus
-/// strictly between 0 and ±100% mirrors the gradient there. `None` when not filled.
+/// A gradient's `focus` (−100%–100%) and `angle` are approximated: 0 and 100% run `color` to
+/// `color2`, −100% the other way, and a focus between mirrors the gradient there (`color2`
+/// there for a positive focus, `color` for a negative one). `None` when not filled.
 pub(crate) fn vml_fill(shape: &El, shapetype: Option<&El>) -> Option<Fill> {
     // What the shape leaves out comes from its shapetype (#1377).
     let own = |n: &str| shape.attr(n).or_else(|| shapetype.and_then(|t| t.attr(n)));
@@ -206,7 +207,7 @@ pub(crate) fn vml_fill(shape: &El, shapetype: Option<&El>) -> Option<Fill> {
     let radial = match attr("type") {
         Some("gradient") => false,
         Some("gradientRadial") => true,
-        _ => return Some(Fill::Solid { color: c1, transparency: t1 }),
+        _ => return Fill::Solid { color: c1, transparency: t1 }.sanitized(),
     };
     let c2 = attr("color2").and_then(vml_color).unwrap_or(Rgb::WHITE);
     let t2 = 100.0 - vml_fraction(attr("o:opacity2")).unwrap_or(1.0) * 100.0;
@@ -224,14 +225,14 @@ pub(crate) fn vml_fill(shape: &El, shapetype: Option<&El>) -> Option<Fill> {
         .collect();
     let stops = if colors.len() >= 2 {
         colors
-    } else if focus >= 100.0 || focus <= -100.0 {
+    } else if focus <= -100.0 {
         vec![stop(0.0, b), stop(100.0, a)]
+    } else if focus >= 100.0 || focus == 0.0 {
+        vec![stop(0.0, a), stop(100.0, b)]
     } else if focus > 0.0 {
         vec![stop(0.0, a), stop(focus, b), stop(100.0, a)]
-    } else if focus < 0.0 {
-        vec![stop(0.0, b), stop(-focus, a), stop(100.0, b)]
     } else {
-        vec![stop(0.0, a), stop(100.0, b)]
+        vec![stop(0.0, b), stop(-focus, a), stop(100.0, b)]
     };
     let kind = if radial {
         // `focusposition` "x,y" (fractions of the shape) is the centre.
@@ -423,12 +424,14 @@ mod tests {
             o => panic!("{o:?}"),
         };
         let (red, blue) = (Rgb(255, 0, 0), Rgb(0, 0, 255));
-        // A focus of 50% mirrors the gradient in the middle; 100% reverses it.
+        // A focus of 50% mirrors the gradient in the middle; 100% runs as 0%, −100% reverses it.
         assert_eq!(
             stops(v(r##"fillcolor="red""##, r##"<v:fill type="gradient" color2="blue" focus="50%"/>"##)),
             [(0.0, red), (50.0, blue), (100.0, red)]
         );
-        assert_eq!(stops(v(r##"fillcolor="red""##, r##"<v:fill type="gradient" color2="blue" focus="100%"/>"##)), [(0.0, blue), (100.0, red)]);
+        assert_eq!(stops(v(r##"fillcolor="red""##, r##"<v:fill type="gradient" color2="blue" focus="100%"/>"##)), [(0.0, red), (100.0, blue)]);
+        assert_eq!(stops(v(r##"fillcolor="red""##, r##"<v:fill type="gradient" color2="blue" focus="-100%"/>"##)), [(0.0, blue), (100.0, red)]);
+        assert_eq!(v("", r##"<v:fill opacity="-2"/>"##), Some(Fill::Solid { color: Rgb::WHITE, transparency: 100.0 }));
         // `colors` lists the stops (fractions or 65536ths).
         assert_eq!(stops(v("", r##"<v:fill type="gradient" colors="0 red;32768f blue;1 red"/>"##)), [(0.0, red), (50.0, blue), (100.0, red)]);
         let Some(Fill::Gradient(g)) = v(r##"fillcolor="red""##, r##"<v:fill type="gradientRadial" color2="blue" focusposition=".25,.75"/>"##) else {

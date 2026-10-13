@@ -373,8 +373,10 @@ pub fn specs() -> Vec<CommandSpec> {
             let c = p::str(v, "color").and_then(Rgb::parse);
             let w = p::f32(v, "width").map(|w| w.clamp(0.0, 72.0));
             with_obj(s, |o| {
-                if let InlineObject::Shape { stroke, stroke_width, .. } = o {
+                if let InlineObject::Shape { stroke, stroke_width, extra, .. } = o {
                     *stroke = c;
+                    // A colour chosen here replaces an outline gradient from a file.
+                    extra.outline_fill = None;
                     if let Some(w) = w {
                         *stroke_width = w;
                     }

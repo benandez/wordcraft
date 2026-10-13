@@ -47,9 +47,9 @@ use wordcraft_doc::para::{InlineObject, ShapeKind};
 use wordcraft_doc::{Document, Path as DocPath, Rgb, StoryRef};
 use wordcraft_fonts::FaceRef;
 use wordcraft_geom::Rect;
+use wordcraft_layout::display::Paint;
 use wordcraft_layout::display::{DisplayOptions, Draw, Stroke as LineStyle, page_display};
 use wordcraft_layout::para::{ClKind, LineEnd};
-use wordcraft_layout::wordart::ArtPaint;
 use wordcraft_layout::{DocLayout, LayoutCache, LayoutOptions, Page, Placed, layout};
 use wordcraft_metafile::{Picture, PlacedItem};
 
@@ -479,6 +479,44 @@ fn norm(v: f32) -> NormalizedF32 {
 
 fn fill(c: Rgb, alpha: f32) -> Fill {
     Fill { paint: rgb::Color::new(c.0, c.1, c.2).into(), opacity: norm(alpha), rule: FillRule::NonZero }
+}
+
+/// A fill in paint `p`: a colour with its opacity, or a gradient whose stops carry theirs.
+fn paint_fill(p: &Paint) -> Fill {
+    let stops = |stops: &[(f32, Rgb, f32)]| -> Vec<krilla::paint::Stop> {
+        stops
+            .iter()
+            .map(|(o, c, a)| krilla::paint::Stop { offset: norm(*o), color: rgb::Color::new(c.0, c.1, c.2).into(), opacity: norm(*a) })
+            .collect()
+    };
+    let paint: krilla::paint::Paint = match p {
+        Paint::Solid(c, a) => return fill(*c, *a),
+        Paint::Linear { p0, p1, stops: st } => krilla::paint::LinearGradient {
+            x1: p0.0,
+            y1: p0.1,
+            x2: p1.0,
+            y2: p1.1,
+            transform: Transform::default(),
+            spread_method: krilla::paint::SpreadMethod::Pad,
+            stops: stops(st),
+            anti_alias: true,
+        }
+        .into(),
+        Paint::Radial { c, r, stops: st } => krilla::paint::RadialGradient {
+            fx: c.0,
+            fy: c.1,
+            fr: 0.0,
+            cx: c.0,
+            cy: c.1,
+            cr: *r,
+            transform: Transform::default(),
+            spread_method: krilla::paint::SpreadMethod::Pad,
+            stops: stops(st),
+            anti_alias: true,
+        }
+        .into(),
+    };
+    Fill { paint, opacity: NormalizedF32::ONE, rule: FillRule::NonZero }
 }
 
 fn ok(v: f32) -> bool {
@@ -962,7 +1000,7 @@ impl Exporter<'_> {
                 let mut pb = PathBuilder::new();
                 append_path(&mut pb, &wordcraft_layout::display::seg_path(segs));
                 let Some(p) = pb.finish() else { return };
-                s.set_fill(f.map(|c| fill(c, 1.0)));
+                s.set_fill(f.as_ref().map(paint_fill));
                 s.set_stroke(stroke.map(|c| Stroke {
                     paint: rgb::Color::new(c.0, c.1, c.2).into(),
                     // Width 0 (or none) is a hairline.
@@ -1014,19 +1052,19 @@ impl Exporter<'_> {
                     shape_effects(s, *kind, *corner, rect, &fx, f.is_some() && can_fill, stroke.is_some(), *stroke_width);
                 }
                 // Soft edges: the fill fades out toward the outline (which fades with it).
-                if let (Some(rad), Some(c), true) = (fx.soft_edge, f, can_fill) {
+                if let (Some(rad), Some(c), true) = (fx.soft_edge, f.as_ref(), can_fill) {
                     let rad = rad.min(rect.w.min(rect.h) / 2.0).max(0.0);
                     s.set_stroke(None);
                     for (g, a) in wordcraft_doc::effects::bands(-rad, 0.0, 1.0) {
                         if let Some(p) = shape_path(*kind, &grown(rect, g, 0.0, 0.0), *corner) {
-                            s.set_fill(Some(fill(*c, a)));
+                            s.set_fill(Some(paint_fill(&c.faded(a))));
                             s.draw_path(&p);
                         }
                     }
                     s.set_fill(None);
                     return;
                 }
-                s.set_fill(f.filter(|_| can_fill).map(|c| fill(c, 1.0)));
+                s.set_fill(f.as_ref().filter(|_| can_fill).map(paint_fill));
                 s.set_stroke(stroke.map(|c| Stroke {
                     paint: rgb::Color::new(c.0, c.1, c.2).into(),
                     width: if stroke_width.is_finite() { stroke_width.clamp(0.25, 200.0) } else { 0.75 },
@@ -1044,44 +1082,21 @@ impl Exporter<'_> {
                     let mut pb = PathBuilder::new();
                     append_path(&mut pb, &l.path);
                     let Some(p) = pb.finish() else { continue };
-                    let (paint, opacity): (krilla::paint::Paint, f32) = match &l.paint {
-                        ArtPaint::Solid(c, a) => (rgb::Color::new(c.0, c.1, c.2).into(), *a),
-                        ArtPaint::Linear { p0, p1, stops } => {
-                            let stops = stops
-                                .iter()
-                                .map(|(o, c, a)| krilla::paint::Stop {
-                                    offset: norm(*o),
-                                    color: rgb::Color::new(c.0, c.1, c.2).into(),
-                                    opacity: norm(*a),
-                                })
-                                .collect();
-                            let g = krilla::paint::LinearGradient {
-                                x1: p0.0,
-                                y1: p0.1,
-                                x2: p1.0,
-                                y2: p1.1,
-                                transform: Transform::default(),
-                                spread_method: krilla::paint::SpreadMethod::Pad,
-                                stops,
-                                anti_alias: true,
-                            };
-                            (g.into(), 1.0)
-                        }
-                    };
+                    let Fill { paint, opacity, .. } = paint_fill(&l.paint);
                     match l.stroke {
                         Some(w) => {
                             s.set_fill(None);
                             s.set_stroke(Some(Stroke {
                                 paint,
                                 width: w.clamp(0.1, 400.0),
-                                opacity: norm(opacity),
+                                opacity,
                                 line_join: LineJoin::Round,
                                 ..Default::default()
                             }));
                         }
                         None => {
                             s.set_stroke(None);
-                            s.set_fill(Some(Fill { paint, opacity: norm(opacity), rule: FillRule::NonZero }));
+                            s.set_fill(Some(Fill { paint, opacity, rule: FillRule::NonZero }));
                         }
                     }
                     s.draw_path(&p);

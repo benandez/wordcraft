@@ -1860,3 +1860,40 @@ fn pages_print_scaled_to_other_paper() {
         assert_eq!(size(&bytes), size(&plain));
     }
 }
+
+/// #1500: gradient shape fills are exported as PDF shadings (axial and radial), and a
+/// transparent fill with its opacity.
+#[test]
+fn shape_gradients_export_as_shadings() {
+    use wordcraft_doc::fill::{Fill as ShapeFill, Gradient, GradientFlip, GradientKind, PathShape};
+    use wordcraft_doc::wordart::GradStop;
+    let stops = vec![GradStop { pos: 0.0, color: Rgb::BLACK, transparency: 0.0 }, GradStop { pos: 100.0, color: Rgb::WHITE, transparency: 0.0 }];
+    let grad =
+        |kind| ShapeFill::Gradient(Arc::new(Gradient { stops: stops.clone(), kind, tile: None, rot_with_shape: true, flip: GradientFlip::None }));
+    let mut d = Document::from_text("");
+    let at = wordcraft_doc::Pos { story: wordcraft_doc::StoryRef::Body, path: wordcraft_doc::Path::top(0), off: 0 };
+    for fill in [
+        grad(GradientKind::Linear { angle: 90.0, scaled: false }),
+        grad(GradientKind::Path { shape: PathShape::Circle, focus: [50.0; 4] }),
+        ShapeFill::Solid { color: Rgb::WHITE, transparency: 70.0 },
+    ] {
+        let shape = InlineObject::Shape {
+            kind: ShapeKind::Rectangle,
+            w: 50.0,
+            h: 50.0,
+            fill: Some(fill),
+            stroke: None,
+            stroke_width: 0.0,
+            float: Default::default(),
+            story: None,
+            freeform: None,
+            effects: Default::default(),
+            extra: Default::default(),
+        };
+        d.insert_object(&at, shape, &Default::default()).unwrap();
+    }
+    let raw = String::from_utf8_lossy(&export(&d, &PdfOptions { compress: false, ..Default::default() }).unwrap()).into_owned();
+    assert!(raw.contains("/ShadingType 2"), "axial shading");
+    assert!(raw.contains("/ShadingType 3"), "radial shading");
+    assert!(raw.contains("/ca 0.3"), "30% opaque fill");
+}

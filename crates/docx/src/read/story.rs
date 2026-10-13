@@ -1334,7 +1334,8 @@ impl Reader<'_> {
                 let (kx, ky) = (ew / cw, eh / ch);
                 let nt = (x0 + (ox - cox * kx) * sx, y0 + (oy - coy * ky) * sy, sx * kx, sy * ky);
                 // Its own fill, for its members' `a:grpFill` (#1500).
-                let own = own_fill(sppr, &self.doc.settings.theme_colors, self.group_fill.as_ref()).flatten();
+                // One without a fill of its own passes its group's on.
+                let own = own_fill(sppr, &self.doc.settings.theme_colors, self.group_fill.as_ref()).unwrap_or_else(|| self.group_fill.clone());
                 let outer = std::mem::replace(&mut self.group_fill, own);
                 self.group_members(sc, e, rels, nt, depth + 1, out);
                 self.group_fill = outer;
@@ -1494,7 +1495,10 @@ impl Reader<'_> {
     fn read_textbox(&mut self, sc: &StoryCtx, content: &El, rels: &Rels) -> u32 {
         let mut inner = StoryCtx { story_depth: sc.story_depth + 1, ..Default::default() };
         let mut blocks = Blocks::new();
+        // Shapes in the text aren't members of a group the box may be in.
+        let group = self.group_fill.take();
         self.read_blocks(&mut inner, content, rels, &mut blocks, 0);
+        self.group_fill = group;
         self.flush_pending(&mut inner, &mut blocks);
         self.doc.add_part(PartKind::TextBox, blocks)
     }
