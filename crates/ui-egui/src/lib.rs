@@ -289,6 +289,8 @@ pub struct UiState {
     /// View › Switch Modes: show pages dark (white text on black), kept between runs. Only the
     /// pages: the interface follows [`UiState::theme`] (#312).
     pub dark_page: bool,
+    /// File › Options › Proofing › Check spelling as you type, kept between runs (#1792).
+    pub check_spelling: bool,
     /// File › Options › Advanced › Animation: the caret glides to its new place and its blink
     /// fades, as Word's does on Windows (on, the default), or it jumps and blinks on and off
     /// (off).
@@ -368,6 +370,7 @@ impl Default for UiState {
             alt_pressed: false,
             alt_chord_used: false,
             dark_page: false,
+            check_spelling: true,
             caret_animation: true,
             keyboard: wordcraft_engine::KeyMap::default(),
             ribbon: wordcraft_engine::RibbonLayout::default(),
@@ -685,6 +688,7 @@ impl WordApp {
         ui.read_aloud_skip_citations = self.session.read_aloud.skip_citations;
         ui.dark_page = self.session.view.dark_mode;
         ui.nav_pane = self.session.view.nav_pane;
+        ui.check_spelling = self.session.view.proofing;
         ui.keyboard = self.session.keymap.clone();
         ui.ribbon = self.session.ribbon.clone();
         ui.ink_pens = self.session.view.draw.pens.clone();
@@ -728,6 +732,7 @@ impl WordApp {
         self.session.read_aloud.skip_citations = self.ui.read_aloud_skip_citations;
         self.session.view.dark_mode = self.ui.dark_page;
         self.session.view.nav_pane = self.ui.nav_pane;
+        self.session.view.proofing = self.ui.check_spelling;
         // Keys for commands this version doesn't have are dropped.
         self.session.keymap = std::mem::take(&mut self.ui.keyboard);
         let reg = self.session.registry.clone();
@@ -5843,6 +5848,22 @@ mod tests {
         let mut old = app();
         old.apply_prefs(serde_json::from_str(r#"{"navTab": "headings"}"#).unwrap());
         assert!(!old.session.view.nav_pane, "no saved value: closed");
+    }
+
+    #[test]
+    fn check_spelling_survives_restart() {
+        // #1792: unchecking Check spelling as you type was forgotten on restart.
+        let mut first = app();
+        assert!(first.session.view.proofing);
+        first.run("file.options", json!({"checkSpelling": false})).unwrap();
+        let saved = serde_json::to_vec(&first.prefs()).unwrap();
+
+        let mut second = app();
+        second.apply_prefs(serde_json::from_slice(&saved).unwrap());
+        assert!(!second.session.view.proofing);
+        // Settings saved before #1792 have no key: spelling stays on.
+        second.apply_prefs(serde_json::from_str("{}").unwrap());
+        assert!(second.session.view.proofing);
     }
 
     #[test]
