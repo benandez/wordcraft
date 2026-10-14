@@ -170,16 +170,6 @@ pub const LINEAR_DIRECTIONS: [f32; 8] = [45.0, 90.0, 135.0, 0.0, 180.0, 315.0, 2
 pub const PATH_DIRECTIONS: [[f32; 4]; 5] =
     [[100.0, 100.0, 0.0, 0.0], [0.0, 100.0, 100.0, 0.0], [50.0, 50.0, 50.0, 50.0], [100.0, 0.0, 0.0, 100.0], [0.0, 0.0, 100.0, 100.0]];
 
-/// `c` lighter by `f` (0..1) towards white, or darker towards black when `f` is negative: the
-/// colour grid's tints and shades.
-pub fn tint(c: Rgb, f: f32) -> Rgb {
-    let ch = |x: u8| {
-        let x = f32::from(x);
-        (if f >= 0.0 { x + (255.0 - x) * f } else { x * (1.0 + f) }).round().clamp(0.0, 255.0) as u8
-    };
-    Rgb(ch(c.0), ch(c.1), ch(c.2))
-}
-
 fn grad(stops: &[(f32, Rgb)], kind: GradientKind) -> Fill {
     let stops = stops.iter().map(|&(pos, color)| GradStop { pos, color, transparency: 0.0 }).collect();
     Fill::Gradient(Arc::new(Gradient { stops, kind, tile: None, rot_with_shape: true, flip: GradientFlip::None }))
@@ -190,8 +180,8 @@ fn grad(stops: &[(f32, Rgb)], kind: GradientKind) -> Fill {
 /// at 55% lighter, 100% at 70% lighter, top to bottom, scaled with the shape.
 pub fn default_gradient(accent1: Rgb) -> Fill {
     let lighter = |off: f64| {
-        let c = wordcraft_docx::color_modified(accent1, "lumMod", 1.0 - off);
-        wordcraft_docx::color_modified(c, "lumOff", off)
+        let c = accent1.modified("lumMod", 1.0 - off);
+        c.modified("lumOff", off)
     };
     let stops = [(0.0, 0.95), (74.0, 0.55), (83.0, 0.55), (100.0, 0.7)]
         .into_iter()
@@ -224,7 +214,7 @@ pub fn corner_tile(focus: [f32; 4]) -> Option<[f32; 4]> {
 pub fn variations(c: Rgb) -> [Vec<(Fill, String)>; 2] {
     let tiles = |m: &str, steps: [f64; 3], sat: f64| -> Vec<(Fill, String)> {
         let stop = |i: usize| {
-            let color = wordcraft_docx::color_modified(wordcraft_docx::color_modified(c, m, steps[i]), "satMod", sat);
+            let color = c.modified(m, steps[i]).modified("satMod", sat);
             GradStop { pos: i as f32 * 50.0, color, transparency: 0.0 }
         };
         let fill = |kind, tile| {
@@ -267,22 +257,22 @@ pub fn presets(theme: &[Rgb]) -> Vec<Fill> {
         for i in 0..6 {
             let c = accent(i);
             out.push(match style {
-                0 => grad(&[(0.0, tint(c, 0.8)), (100.0, tint(c, 0.4))], down),
-                1 => grad(&[(0.0, tint(c, 0.6)), (50.0, c), (100.0, tint(c, -0.25))], down),
-                2 => grad(&[(0.0, c), (100.0, tint(c, -0.5))], down),
-                3 => grad(&[(0.0, tint(c, -0.25)), (50.0, c), (100.0, tint(c, 0.6))], down),
-                _ => grad(&[(0.0, tint(c, 0.6)), (100.0, tint(c, -0.25))], GradientKind::Path { shape: PathShape::Circle, focus: [50.0; 4] }),
+                0 => grad(&[(0.0, c.modified("tint", 0.2)), (100.0, c.modified("tint", 0.6))], down),
+                1 => grad(&[(0.0, c.modified("tint", 0.4)), (50.0, c), (100.0, c.modified("shade", 0.75))], down),
+                2 => grad(&[(0.0, c), (100.0, c.modified("shade", 0.5))], down),
+                3 => grad(&[(0.0, c.modified("shade", 0.75)), (50.0, c), (100.0, c.modified("tint", 0.4))], down),
+                _ => grad(
+                    &[(0.0, c.modified("tint", 0.4)), (100.0, c.modified("shade", 0.75))],
+                    GradientKind::Path { shape: PathShape::Circle, focus: [50.0; 4] },
+                ),
             });
         }
     }
     out
 }
 
-/// A preset's name in the gallery.
-pub fn preset_name(i: usize) -> String {
-    const STYLES: [&str; 5] = ["Soft", "Lit from Top", "Deep", "Lit from Bottom", "Centre Glow"];
-    format!("{} - Accent {}", STYLES.get(i / 6).copied().unwrap_or(""), i % 6 + 1)
-}
+/// The preset styles' names, in [`presets`]'s order (each for accents 1 to 6).
+pub const PRESET_STYLES: [&str; 5] = ["Soft", "Lit from Top", "Deep", "Lit from Bottom", "Center Glow"];
 
 /// The name of the linear direction at `angle`.
 pub fn linear_direction_name(angle: f32) -> String {
@@ -396,7 +386,7 @@ mod tests {
         assert_eq!(g.stops[1].color, g.stops[2].color);
         assert!(g.stops.iter().all(|s| s.color.0 > c.0 && s.color.1 > c.1), "lighter than the accent");
         let Fill::Gradient(g) = &dark[1].0 else { panic!() };
-        assert_eq!(g.stops[2].color, wordcraft_docx::color_modified(c, "satMod", 1.15), "the last dark stop is the colour itself");
+        assert_eq!(g.stops[2].color, c.modified("satMod", 1.15), "the last dark stop is the colour itself");
     }
 
     #[test]

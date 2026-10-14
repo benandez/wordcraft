@@ -2716,3 +2716,22 @@
 	Light Variations	Világos változatok
 	Dark Variations	Sötét változatok
 	More Gradients…	További színátmenetek…
+	Select a shape, text box or drawing canvas to format its fill.	Jelöljön ki egy alakzatot, szövegdobozt vagy rajzvásznat a kitöltés formázásához.
+	Linear Right	Lineáris jobbra
+	Linear Diagonal - Top Left to Bottom Right	Lineáris átlós – bal felső sarokból jobb alsó sarokba
+	Linear Down	Lineáris lefelé
+	Linear Diagonal - Top Right to Bottom Left	Lineáris átlós – jobb felső sarokból bal alsó sarokba
+	Linear Left	Lineáris balra
+	Linear Diagonal - Bottom Right to Top Left	Lineáris átlós – jobb alsó sarokból bal felső sarokba
+	Linear Up	Lineáris felfelé
+	Linear Diagonal - Bottom Left to Top Right	Lineáris átlós – bal alsó sarokból jobb felső sarokba
+	From Top Left Corner	A(z) bal felső sarokból
+	From Top Right Corner	A(z) jobb felső sarokból
+	From Bottom Left Corner	A(z) bal alsó sarokból
+	From Bottom Right Corner	A(z) jobb alsó sarokból
+	From Center	Középről
+	Soft	Lágy
+	Lit from Top	Felülről megvilágított
+	Deep	Mély
+	Lit from Bottom	Alulról megvilágított
+	Center Glow	Középső ragyogás

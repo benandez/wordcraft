@@ -69,7 +69,9 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
             .frame(egui::Frame::NONE.fill(t.panel).inner_margin(10).stroke(Stroke::new(1.0, t.border)))
             .show(ui, |ui| crate::a11y_pane::alt_text(app, ui));
     }
-    if app.session.view.format_shape_pane {
+    if !app.session.view.format_shape_pane {
+        crate::format_shape::forget_drag(ui.ctx());
+    } else {
         egui::Panel::right("format_shape_pane")
             .default_size(280.0)
             .resizable(true)

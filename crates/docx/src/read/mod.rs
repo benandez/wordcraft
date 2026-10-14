@@ -3,7 +3,6 @@
 pub(crate) mod chart;
 pub(crate) mod diagram;
 mod drawing_color;
-pub use drawing_color::modified as color_modified;
 mod embed;
 mod freeform;
 mod glossary;

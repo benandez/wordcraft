@@ -2358,7 +2358,12 @@ fn chart_design(app: &mut WordApp, ui: &mut Ui) {
 /// Gradients… (the Format Shape pane).
 pub(crate) fn gradient_menu(ui: &mut Ui, app: &mut WordApp, fill: Option<&wordcraft_doc::fill::Fill>) {
     use wordcraft_engine::cmd::shape_fill;
-    let main = fill.map_or(app.session.doc.settings.theme_colors.get(4).copied().unwrap_or(wordcraft_doc::Rgb(68, 114, 196)), |f| f.main_color());
+    let pos = wordcraft_engine::cmd::objects::selected(&app.session).map(|(p, _)| p);
+    let main = match (fill, &pos) {
+        (Some(f), Some(p)) => crate::format_shape::variation_base(ui.ctx(), p, f),
+        (Some(f), None) => f.main_color(),
+        _ => app.session.doc.settings.theme_colors.get(4).copied().unwrap_or(wordcraft_doc::Rgb(68, 114, 196)),
+    };
     // No Gradient: the shape's colour, solid.
     ui.label(egui::RichText::new(tl!("No Gradient")).small().weak());
     if crate::format_shape::swatch(ui, &wordcraft_doc::fill::Fill::solid(main), "No Gradient") {
@@ -2371,6 +2376,9 @@ pub(crate) fn gradient_menu(ui: &mut Ui, app: &mut WordApp, fill: Option<&wordcr
             for (i, (f, name)) in tiles.iter().enumerate() {
                 if crate::format_shape::swatch(ui, f, name) {
                     let _ = app.run("shape.fill", shape_fill::params(Some(f)));
+                    if let (Some(p), Some(Some(now))) = (pos.clone(), crate::format_shape::current(app)) {
+                        crate::format_shape::remember_variation(ui.ctx(), p, now, main);
+                    }
                     ui.close();
                 }
                 if i % 5 == 4 {

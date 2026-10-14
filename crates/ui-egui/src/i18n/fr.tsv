@@ -2721,3 +2721,22 @@ template	Letter	Lettre
 	Light Variations	Variantes claires
 	Dark Variations	Variantes foncées
 	More Gradients…	Autres dégradés…
+	Select a shape, text box or drawing canvas to format its fill.	Sélectionnez une forme, une zone de texte ou une zone de dessin pour mettre en forme son remplissage.
+	Linear Right	Linéaire vers la droite
+	Linear Diagonal - Top Left to Bottom Right	Linéaire diagonal – en haut à gauche vers en bas à droite
+	Linear Down	Linéaire vers le bas
+	Linear Diagonal - Top Right to Bottom Left	Linéaire diagonal – en haut à droite vers en bas à gauche
+	Linear Left	Linéaire vers la gauche
+	Linear Diagonal - Bottom Right to Top Left	Linéaire diagonal – en bas à droite vers en haut à gauche
+	Linear Up	Linéaire vers le haut
+	Linear Diagonal - Bottom Left to Top Right	Linéaire diagonal – en bas à gauche vers en haut à droite
+	From Top Left Corner	Depuis le coin en haut à gauche
+	From Top Right Corner	Depuis le coin en haut à droite
+	From Bottom Left Corner	Depuis le coin en bas à gauche
+	From Bottom Right Corner	Depuis le coin en bas à droite
+	From Center	Depuis le centre
+	Soft	Doux
+	Lit from Top	Éclairé par le haut
+	Deep	Profond
+	Lit from Bottom	Éclairé par le bas
+	Center Glow	Halo central

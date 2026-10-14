@@ -2343,3 +2343,22 @@
 	Light Variations	Heledad variandid
 	Dark Variations	Tumedad variandid
 	More Gradients…	Veel üleminekuid…
+	Select a shape, text box or drawing canvas to format its fill.	Valige kujund, tekstiväli või joonistuslõuend, et selle täidet vormindada.
+	Linear Right	Lineaarne paremale
+	Linear Diagonal - Top Left to Bottom Right	Lineaarne diagonaal – ülal vasakul → all paremal
+	Linear Down	Lineaarne alla
+	Linear Diagonal - Top Right to Bottom Left	Lineaarne diagonaal – ülal paremal → all vasakul
+	Linear Left	Lineaarne vasakule
+	Linear Diagonal - Bottom Right to Top Left	Lineaarne diagonaal – all paremal → ülal vasakul
+	Linear Up	Lineaarne üles
+	Linear Diagonal - Bottom Left to Top Right	Lineaarne diagonaal – all vasakul → ülal paremal
+	From Top Left Corner	Nurgast (ülal vasakul)
+	From Top Right Corner	Nurgast (ülal paremal)
+	From Bottom Left Corner	Nurgast (all vasakul)
+	From Bottom Right Corner	Nurgast (all paremal)
+	From Center	Keskelt
+	Soft	Pehme
+	Lit from Top	Ülalt valgustatud
+	Deep	Sügav
+	Lit from Bottom	Alt valgustatud
+	Center Glow	Keskne kuma

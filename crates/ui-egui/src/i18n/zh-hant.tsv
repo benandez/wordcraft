@@ -2310,3 +2310,22 @@
 	Light Variations	淺色變化
 	Dark Variations	深色變化
 	More Gradients…	其他漸層…
+	Select a shape, text box or drawing canvas to format its fill.	請選取圖形、文字方塊或繪圖畫布以設定其填滿格式。
+	Linear Right	線性 向右
+	Linear Diagonal - Top Left to Bottom Right	線性對角 - 左上到右下
+	Linear Down	線性 向下
+	Linear Diagonal - Top Right to Bottom Left	線性對角 - 右上到左下
+	Linear Left	線性 向左
+	Linear Diagonal - Bottom Right to Top Left	線性對角 - 右下到左上
+	Linear Up	線性 向上
+	Linear Diagonal - Bottom Left to Top Right	線性對角 - 左下到右上
+	From Top Left Corner	從左上角
+	From Top Right Corner	從右上角
+	From Bottom Left Corner	從左下角
+	From Bottom Right Corner	從右下角
+	From Center	從中央
+	Soft	柔和
+	Lit from Top	頂部照亮
+	Deep	深沉
+	Lit from Bottom	底部照亮
+	Center Glow	中央光暈

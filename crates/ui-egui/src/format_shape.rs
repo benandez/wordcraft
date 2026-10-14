@@ -24,8 +24,40 @@ fn stop_id() -> Id {
     Id::new("format_shape.stop")
 }
 
+/// Forgets a drag's undo mark: called while the pane is closed, so a drag cut short by closing
+/// it never merges later undo steps.
+pub fn forget_drag(ctx: &egui::Context) {
+    ctx.data_mut(|d| d.remove::<u64>(mark_id()));
+}
+
+/// The gradient a variation applied to the object at a position, and the colour it was built
+/// from.
+#[derive(Clone)]
+struct Variation(wordcraft_doc::Pos, Fill, Rgb);
+
+fn variation_id() -> Id {
+    Id::new("format_shape.variation")
+}
+
+/// The colour Shape Fill › Gradient builds from for the object at `pos` filled with `fill`:
+/// the colour the variation it shows was made from (so picking variations in turn, or No
+/// Gradient, doesn't drift), else the fill's main colour.
+// ponytail: remembered for the last variation only, in this session; a gradient from a file
+// uses its middle stop (Word keeps the scheme colour it was built from).
+pub fn variation_base(ctx: &egui::Context, pos: &wordcraft_doc::Pos, fill: &Fill) -> Rgb {
+    match ctx.data(|d| d.get_temp::<Variation>(variation_id())) {
+        Some(Variation(p, f, base)) if p == *pos && f == *fill => base,
+        _ => fill.main_color(),
+    }
+}
+
+/// Notes that `fill`, made from `base`, was applied to the object at `pos`.
+pub fn remember_variation(ctx: &egui::Context, pos: wordcraft_doc::Pos, fill: Fill, base: Rgb) {
+    ctx.data_mut(|d| d.insert_temp(variation_id(), Variation(pos, fill, base)));
+}
+
 /// The first selected shape's or canvas's fill: `None` with no shape selected.
-fn current(app: &WordApp) -> Option<Option<Fill>> {
+pub(crate) fn current(app: &WordApp) -> Option<Option<Fill>> {
     let (_, o) = wordcraft_engine::cmd::objects::selected(&app.session)?;
     match o {
         InlineObject::Shape { fill, .. } => Some(fill),
@@ -161,12 +193,21 @@ fn type_of(k: &GradientKind) -> usize {
     }
 }
 
-fn kind_of(t: usize, focus: [f32; 4], angle: f32) -> GradientKind {
+/// Whether a linear gradient made from `k` scales with the shape: as `k` does, and as Word's
+/// new linear gradients do otherwise.
+fn scaled_of(k: &GradientKind) -> bool {
+    match k {
+        GradientKind::Linear { scaled, .. } => *scaled,
+        GradientKind::Path { .. } => true,
+    }
+}
+
+fn kind_of(t: usize, focus: [f32; 4], angle: f32, scaled: bool) -> GradientKind {
     match t {
         1 => GradientKind::Path { shape: PathShape::Circle, focus },
         2 => GradientKind::Path { shape: PathShape::Rect, focus },
         3 => GradientKind::Path { shape: PathShape::Shape, focus: [50.0; 4] },
-        _ => GradientKind::Linear { angle, scaled: false },
+        _ => GradientKind::Linear { angle, scaled },
     }
 }
 
@@ -194,7 +235,9 @@ fn gradient(app: &mut WordApp, ui: &mut Ui, theme: &[Rgb], g: &Gradient) {
                 GradientKind::Linear { angle, .. } => (angle, [50.0; 4]),
                 GradientKind::Path { focus, .. } => (90.0, focus),
             };
-            apply(app, ui, Some(&with(g, |g| set_kind(g, kind_of(pick, focus, angle)))), None);
+            // The tile rectangle stays: only a Direction pick sets a corner's.
+            let kind = kind_of(pick, focus, angle, scaled_of(&g.kind));
+            apply(app, ui, Some(&with(g, |g| g.kind = kind)), None);
         }
         ui.end_row();
 
@@ -292,7 +335,11 @@ fn stops_bar(app: &mut WordApp, ui: &mut Ui, g: &Gradient, sel: usize) {
     }
     if resp.has_focus() {
         ui.painter().rect_stroke(r, 2.0, Stroke::new(1.0, t.accent), egui::StrokeKind::Inside);
-        let (left, right) = ui.input(|i| (i.key_pressed(egui::Key::ArrowLeft), i.key_pressed(egui::Key::ArrowRight)));
+        // The arrows pick stops here: not focus moves, nor nudges of the shape.
+        let arrows = egui::EventFilter { horizontal_arrows: true, ..Default::default() };
+        ui.memory_mut(|m| m.set_focus_lock_filter(resp.id, arrows));
+        let (left, right) = ui
+            .input_mut(|i| (i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowLeft), i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowRight)));
         let next = if left {
             sel.saturating_sub(1)
         } else if right {
@@ -312,9 +359,13 @@ fn stops_bar(app: &mut WordApp, ui: &mut Ui, g: &Gradient, sel: usize) {
             .map(|(i, _)| i)
     };
     let Some(p) = resp.interact_pointer_pos() else { return };
+    // Whether the drag in progress began on a handle: only then does it move a stop.
+    let grab_id = Id::new("format_shape.grabbed");
     if resp.drag_started() || resp.clicked() {
         resp.request_focus();
-        match near(p) {
+        let hit = near(p);
+        ui.data_mut(|d| d.insert_temp(grab_id, hit.is_some()));
+        match hit {
             Some(i) => {
                 ui.data_mut(|d| d.insert_temp(stop_id(), i));
             }
@@ -327,7 +378,7 @@ fn stops_bar(app: &mut WordApp, ui: &mut Ui, g: &Gradient, sel: usize) {
             }
             None => {}
         }
-    } else if resp.dragged() && resp.drag_delta().x != 0.0 {
+    } else if resp.dragged() && resp.drag_delta().x != 0.0 && ui.data(|d| d.get_temp::<bool>(grab_id)).unwrap_or(false) {
         let mut st = g.stops.clone();
         let i = stops::move_to(&mut st, sel, pos_of(p.x));
         ui.data_mut(|d| d.insert_temp(stop_id(), i));
@@ -341,7 +392,9 @@ fn presets_gallery(ui: &mut Ui, theme: &[Rgb]) -> Option<Fill> {
     let mut out = None;
     egui::Grid::new("format_shape.presets").spacing(vec2(4.0, 4.0)).show(ui, |ui| {
         for (i, f) in presets.iter().enumerate() {
-            if swatch(ui, f, &shape_fill::preset_name(i)) {
+            let style = shape_fill::PRESET_STYLES.get(i / 6).copied().unwrap_or("");
+            let name = format!("{}, {} {}", tl!(style), tl!("Accent"), i % 6 + 1);
+            if swatch(ui, f, &name) {
                 out = Some(f.clone());
             }
             if i % 6 == 5 {
@@ -355,9 +408,10 @@ fn presets_gallery(ui: &mut Ui, theme: &[Rgb]) -> Option<Fill> {
 /// The direction tiles for gradient type `t` (linear, radial or rectangular); the kind picked.
 fn directions(ui: &mut Ui, g: &Gradient, t: usize) -> Option<GradientKind> {
     let kinds: Vec<(GradientKind, String)> = if t == 0 {
-        LINEAR_DIRECTIONS.iter().map(|&a| (GradientKind::Linear { angle: a, scaled: false }, shape_fill::linear_direction_name(a))).collect()
+        let scaled = scaled_of(&g.kind);
+        LINEAR_DIRECTIONS.iter().map(|&a| (GradientKind::Linear { angle: a, scaled }, shape_fill::linear_direction_name(a))).collect()
     } else {
-        PATH_DIRECTIONS.iter().map(|&f| (kind_of(t, f, 90.0), shape_fill::path_direction_name(f))).collect()
+        PATH_DIRECTIONS.iter().map(|&f| (kind_of(t, f, 90.0, true), shape_fill::path_direction_name(f))).collect()
     };
     let mut out = None;
     egui::Grid::new("format_shape.directions").spacing(vec2(4.0, 4.0)).show(ui, |ui| {
@@ -391,17 +445,22 @@ pub fn paint_fill(p: &egui::Painter, r: Rect, fill: &Fill) {
     const N: u32 = 16;
     let frame = wordcraft_geom::Rect { x: r.min.x, y: r.min.y, w: r.width(), h: r.height() };
     let Some(paint) = paint_for(fill, frame) else { return };
+    let gs: Vec<GradStop> = match &paint {
+        Paint::Solid(..) => Vec::new(),
+        Paint::Linear { stops, .. } | Paint::Radial { stops, .. } => {
+            stops.iter().map(|&(o, c, a)| GradStop { pos: o * 100.0, color: c, transparency: (1.0 - a) * 100.0 }).collect()
+        }
+    };
     let at = |q: Pos2| -> Color32 {
-        let (stops, t) = match &paint {
+        let t = match &paint {
             Paint::Solid(c, a) => return rgba(*c, *a),
-            Paint::Linear { p0, p1, stops } => {
+            Paint::Linear { p0, p1, .. } => {
                 let d = (p1.0 - p0.0, p1.1 - p0.1);
                 let len2 = (d.0 * d.0 + d.1 * d.1).max(1e-6);
-                (stops, ((q.x - p0.0) * d.0 + (q.y - p0.1) * d.1) / len2)
+                ((q.x - p0.0) * d.0 + (q.y - p0.1) * d.1) / len2
             }
-            Paint::Radial { c, r, stops } => (stops, ((q.x - c.0).hypot(q.y - c.1) / r.max(1e-6))),
+            Paint::Radial { c, r, .. } => (q.x - c.0).hypot(q.y - c.1) / r.max(1e-6),
         };
-        let gs: Vec<GradStop> = stops.iter().map(|&(o, c, a)| GradStop { pos: o * 100.0, color: c, transparency: (1.0 - a) * 100.0 }).collect();
         let (c, tr) = stops::at(&gs, t * 100.0);
         rgba(c, 1.0 - tr / 100.0)
     };
@@ -479,5 +538,43 @@ mod tests {
         h.run_steps(3);
         assert_eq!(fill(h.state()), None);
         assert_eq!(h.state().session.undo_depth(), depth + 2);
+    }
+}
+
+#[cfg(test)]
+mod drift_tests {
+    use crate::WordApp;
+    use egui_kittest::kittest::Queryable;
+    use serde_json::json;
+    use wordcraft_doc::fill::Fill;
+
+    /// Picking variations in turn builds each from the shape's colour, not from the last
+    /// variation's, and No Gradient brings that colour back.
+    #[test]
+    fn variations_dont_drift_and_no_gradient_restores_the_colour() {
+        let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
+        a.run("insert.shape", json!({"kind": "rectangle"})).unwrap();
+        a.run("shape.fill", json!({"color": "156082"})).unwrap();
+        let mut m = egui_kittest::Harness::builder().build_ui_state(
+            |ui, app: &mut WordApp| {
+                let f = super::current(app).flatten();
+                crate::ribbon::gradient_menu(ui, app, f.as_ref());
+            },
+            a,
+        );
+        m.run_steps(2);
+        let pick = |m: &mut egui_kittest::Harness<WordApp>, name: &str| {
+            // The first tile of that name (No Gradient: its swatch, after the heading).
+            let n = if name == "No Gradient" { 1 } else { 0 };
+            m.get_all_by_label(name).nth(n).unwrap_or_else(|| panic!("{name}")).click();
+            m.run_steps(2);
+            super::current(m.state()).flatten()
+        };
+        let first = pick(&mut m, "Linear Down");
+        let again = pick(&mut m, "Linear Down");
+        assert!(matches!(first, Some(Fill::Gradient(_))));
+        assert_eq!(first, again, "the same variation twice gives the same gradient");
+        let back = pick(&mut m, "No Gradient");
+        assert_eq!(back, Some(Fill::solid(wordcraft_doc::Rgb(0x15, 0x60, 0x82))));
     }
 }
