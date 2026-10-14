@@ -100,6 +100,11 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("view.altTextPane", "Alt Text Pane", "Review › Accessibility", |s, v| toggle(s, v, |x| &mut x.alt_text_pane))
             .params(r#"{"value"?: bool}"#)
             .pure(),
+        CommandSpec::new("view.formatShapePane", "Format Shape Pane", "Shape Format › Shape Styles", |s, v| {
+            toggle(s, v, |x| &mut x.format_shape_pane)
+        })
+        .params(r#"{"value"?: bool}"#)
+        .pure(),
         CommandSpec::new("view.newWindow", "New Window", "View › Window", |s, _| {
             s.ui_requests.push(json!({"open": "newWindow"}));
             sel_result(s)

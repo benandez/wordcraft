@@ -147,6 +147,10 @@ pub struct ViewState {
     /// The Alt Text pane (Picture/Shape Format › Alt Text): the selected object's or table's alt text.
     #[serde(default)]
     pub alt_text_pane: bool,
+    /// The Format Shape pane (Shape Fill › More Gradients…, a shape's Format Shape…): the
+    /// selected shapes' fill.
+    #[serde(default)]
+    pub format_shape_pane: bool,
     pub multi_page: bool,
     /// One Page or Page Width was chosen last: keep one page per row when a typed or wheel zoom replaces the fit mode.
     #[serde(default)]
@@ -246,6 +250,7 @@ impl Default for ViewState {
             smart_art_pane: false,
             accessibility_pane: false,
             alt_text_pane: false,
+            format_shape_pane: false,
             multi_page: false,
             single_column: false,
             fit: String::new(),
@@ -1011,6 +1016,16 @@ impl Session {
     pub fn undo_depth(&self) -> usize {
         self.history.len()
     }
+    /// Where the undo history stands, for [`Session::merge_undo_since`].
+    pub fn undo_mark(&self) -> u64 {
+        (self.history.len() as u64).saturating_add(self.undo_evicted)
+    }
+    /// Makes the steps recorded since `mark` one undo step, the first: a drag that applied its
+    /// value as it went (a slider in a pane) undoes in one go.
+    pub fn merge_undo_since(&mut self, mark: u64) {
+        let keep = mark.saturating_sub(self.undo_evicted).saturating_add(1);
+        self.history.truncate(usize::try_from(keep).unwrap_or(usize::MAX));
+    }
     pub fn undo_labels(&self) -> Vec<String> {
         self.history.iter().rev().map(|u| u.label.clone()).collect()
     }
@@ -1397,8 +1412,10 @@ impl Session {
                 }
                 // Outline view: collapsed headings follow edits; the caret stays where it shows.
                 crate::cmd::outline::after_command(self, &sel_before);
-                // Extra selected objects last until something else is edited or selected.
-                if !matches!(id, "select.addObject" | "arrange.ungroup") && (spec.mutates || self.sel != sel_before) {
+                // Extra selected objects last until something else is edited or selected; formatting
+                // them keeps them selected, as in Word.
+                if !matches!(id, "select.addObject" | "arrange.ungroup" | "shape.fill" | "shape.effects") && (spec.mutates || self.sel != sel_before)
+                {
                     self.also_selected.clear();
                 }
                 self.note_typing(id, before_doc.as_ref().map(|b| &b.0), &sel_before);
