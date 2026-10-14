@@ -2359,8 +2359,9 @@ fn chart_design(app: &mut WordApp, ui: &mut Ui) {
 pub(crate) fn gradient_menu(ui: &mut Ui, app: &mut WordApp, fill: Option<&wordcraft_doc::fill::Fill>) {
     use wordcraft_engine::cmd::shape_fill;
     let main = fill.map_or(app.session.doc.settings.theme_colors.get(4).copied().unwrap_or(wordcraft_doc::Rgb(68, 114, 196)), |f| f.main_color());
-    let gradient = matches!(fill, Some(wordcraft_doc::fill::Fill::Gradient(_)));
-    if ui.add_enabled(gradient, egui::Button::new(tl!("No Gradient"))).clicked() {
+    // No Gradient: the shape's colour, solid.
+    ui.label(egui::RichText::new(tl!("No Gradient")).small().weak());
+    if crate::format_shape::swatch(ui, &wordcraft_doc::fill::Fill::solid(main), "No Gradient") {
         let _ = app.run("shape.fill", json!({"color": main.hex()}));
         ui.close();
     }
@@ -2372,7 +2373,7 @@ pub(crate) fn gradient_menu(ui: &mut Ui, app: &mut WordApp, fill: Option<&wordcr
                     let _ = app.run("shape.fill", shape_fill::params(Some(f)));
                     ui.close();
                 }
-                if i % 3 == 2 {
+                if i % 5 == 4 {
                     ui.end_row();
                 }
             }

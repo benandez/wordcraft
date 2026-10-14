@@ -83,14 +83,7 @@ pub(crate) fn color_alpha(e: &El, theme: &[Rgb], ph: Option<(Rgb, f32)>) -> Opti
     let mut rgb = base;
     for m in c.els() {
         rgb = match m.name.as_str() {
-            "a:lumMod" => adjust_lum(rgb, |l| l * val(m)),
-            "a:lumOff" => adjust_lum(rgb, |l| l + val(m)),
-            "a:tint" => mix(rgb, 255.0, val(m)),
-            "a:shade" => mix(rgb, 0.0, val(m)),
-            "a:satMod" => {
-                let (h, sat, l) = to_hsl(rgb);
-                from_hsl(h, (sat * val(m)).clamp(0.0, 1.0), l)
-            }
+            n @ ("a:lumMod" | "a:lumOff" | "a:tint" | "a:shade" | "a:satMod") => modified(rgb, n.trim_start_matches("a:"), val(m)),
             "a:alpha" => {
                 opacity = val(m) as f32 * 100.0;
                 rgb
@@ -235,6 +228,22 @@ pub(crate) fn scheme(name: &str, theme: &[Rgb]) -> Option<Rgb> {
 /// `c` with its luminance changed by `f`.
 pub(crate) fn lum(c: Rgb, f: impl Fn(f64) -> f64) -> Rgb {
     adjust_lum(c, f)
+}
+
+/// `c` with the DrawingML colour modifier `name` (`lumMod`, `lumOff`, `tint`, `shade`,
+/// `satMod`) at `v` (1.0 = 100%); other names leave it unchanged.
+pub fn modified(c: Rgb, name: &str, v: f64) -> Rgb {
+    match name {
+        "lumMod" => adjust_lum(c, |l| l * v),
+        "lumOff" => adjust_lum(c, |l| l + v),
+        "tint" => mix(c, 255.0, v),
+        "shade" => mix(c, 0.0, v),
+        "satMod" => {
+            let (h, sat, l) = to_hsl(c);
+            from_hsl(h, (sat * v).clamp(0.0, 1.0), l)
+        }
+        _ => c,
+    }
 }
 
 /// `tint` (towards `to` = 255) and `shade` (towards 0): `v` is the share of the original colour kept.

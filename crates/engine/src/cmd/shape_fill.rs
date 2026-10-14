@@ -21,7 +21,7 @@ pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("shape.fill", "Shape Fill", "Shape Format › Shape Styles", shape_fill)
             .params(
-                r#"{"color": "RRGGBB" | null, "transparency"?: %} | {"gradient": {"stops": [{"pos": %, "color": "RRGGBB", "transparency"?: %}], "type"?: "linear|radial|rectangular|path", "angle"?: deg, "focus"?: [l, t, r, b], "rotateWithShape"?: bool}}  (a colour alone keeps the shape's transparency; angle: linear only, 0 = left to right, 90 = top to bottom; focus: percent insets of where a radial, rectangular or path gradient starts; applies to every selected shape, text box and canvas background)"#,
+                r#"{"color": "RRGGBB" | null, "transparency"?: %} | {"gradient": {"stops": [{"pos": %, "color": "RRGGBB", "transparency"?: %}], "type"?: "linear|radial|rectangular|path", "angle"?: deg, "focus"?: [l, t, r, b], "tile"?: [l, t, r, b], "scaled"?: bool, "rotateWithShape"?: bool}}  (tile: percent insets of the gradient's area; scaled: a linear angle scaled with the shape; a colour alone keeps the shape's transparency; angle: linear only, 0 = left to right, 90 = top to bottom; focus: percent insets of where a radial, rectangular or path gradient starts; applies to every selected shape, text box and canvas background)"#,
             )
             .when(super::objects::has_shape_or_canvas),
     ]
@@ -106,25 +106,26 @@ fn parse(v: &Value) -> Result<Change, CmdError> {
     if stops.len() < 2 {
         return Err(bad("two or more stops"));
     }
-    let focus = || -> [f32; 4] {
-        let mut r = [50.0; 4];
-        if let Some(a) = g.get("focus").and_then(Value::as_array) {
-            for (slot, x) in r.iter_mut().zip(a) {
-                *slot = x.as_f64().map_or(50.0, |x| x as f32);
-            }
+    let rect = |key: &str, default: f32| -> Option<[f32; 4]> {
+        let a = g.get(key)?.as_array()?;
+        let mut r = [default; 4];
+        for (slot, x) in r.iter_mut().zip(a) {
+            *slot = x.as_f64().map_or(default, |x| x as f32);
         }
-        r
+        Some(r)
     };
-    let path = |shape| GradientKind::Path { shape, focus: focus() };
+    let path = |shape| GradientKind::Path { shape, focus: rect("focus", 50.0).unwrap_or([50.0; 4]) };
     let kind = match p::str(g, "type").unwrap_or("linear") {
-        "linear" => GradientKind::Linear { angle: p::f32(g, "angle").unwrap_or(90.0), scaled: false },
+        "linear" => {
+            GradientKind::Linear { angle: p::f32(g, "angle").unwrap_or(90.0), scaled: g.get("scaled").and_then(Value::as_bool).unwrap_or(false) }
+        }
         "radial" => path(PathShape::Circle),
         "rectangular" => path(PathShape::Rect),
         "path" => path(PathShape::Shape),
         t => return Err(bad(&format!("unknown type `{t}`"))),
     };
     let rot_with_shape = g.get("rotateWithShape").and_then(Value::as_bool).unwrap_or(true);
-    let fill = Fill::Gradient(Arc::new(Gradient { stops, kind, tile: None, rot_with_shape, flip: GradientFlip::None }));
+    let fill = Fill::Gradient(Arc::new(Gradient { stops, kind, tile: rect("tile", 0.0), rot_with_shape, flip: GradientFlip::None }));
     fill.sanitized().map(Change::Fill).ok_or_else(|| bad("no stops"))
 }
 
@@ -137,10 +138,14 @@ pub fn params(fill: Option<&Fill>) -> Value {
         Some(Fill::Gradient(g)) => {
             let stops: Vec<Value> = g.stops.iter().map(|s| json!({"pos": s.pos, "color": s.color.hex(), "transparency": s.transparency})).collect();
             let mut out = json!({"stops": stops, "rotateWithShape": g.rot_with_shape});
+            if let Some(t) = g.tile {
+                out["tile"] = json!(t);
+            }
             match g.kind {
-                GradientKind::Linear { angle, .. } => {
+                GradientKind::Linear { angle, scaled } => {
                     out["type"] = json!("linear");
                     out["angle"] = json!(angle);
+                    out["scaled"] = json!(scaled);
                 }
                 GradientKind::Path { shape, focus } => {
                     out["type"] = json!(match shape {
@@ -180,28 +185,75 @@ fn grad(stops: &[(f32, Rgb)], kind: GradientKind) -> Fill {
     Fill::Gradient(Arc::new(Gradient { stops, kind, tile: None, rot_with_shape: true, flip: GradientFlip::None }))
 }
 
-/// The gradient Format Shape's Gradient fill starts from for a shape filled with `c`.
-// ponytail: provisional until Word's own default is observed; light to `c`, top to bottom.
-pub fn default_gradient(c: Rgb) -> Fill {
-    grad(&[(0.0, tint(c, 0.6)), (100.0, c)], GradientKind::Linear { angle: 90.0, scaled: false })
+/// The gradient Format Shape's Gradient fill starts from, from the theme's first accent
+/// whatever the shape's colour (as Word 365 does): four stops, 0% at 95% lighter, 74% and 83%
+/// at 55% lighter, 100% at 70% lighter, top to bottom, scaled with the shape.
+pub fn default_gradient(accent1: Rgb) -> Fill {
+    let lighter = |off: f64| {
+        let c = wordcraft_docx::color_modified(accent1, "lumMod", 1.0 - off);
+        wordcraft_docx::color_modified(c, "lumOff", off)
+    };
+    let stops = [(0.0, 0.95), (74.0, 0.55), (83.0, 0.55), (100.0, 0.7)]
+        .into_iter()
+        .map(|(pos, off)| GradStop { pos, color: lighter(off), transparency: 0.0 })
+        .collect();
+    let g = Gradient { stops, kind: GradientKind::Linear { angle: 90.0, scaled: true }, tile: None, rot_with_shape: true, flip: GradientFlip::None };
+    Fill::Gradient(Arc::new(g))
 }
 
-/// Shape Fill › Gradient's Light and Dark Variations of `c`, each with its name: a gradient per
-/// direction, lighter or darker than `c`.
-// ponytail: provisional colours and grid until Word's are observed (plan step 0).
+/// Where each corner tile's gradient starts (percent insets) and the tile rectangle Word gives
+/// it: from the bottom-right, bottom-left, top-right and top-left corners. Observed for the
+/// bottom-right corner (`fillToRect l=t=100%`, `tileRect r=b=-100%`); the others mirror it.
+const CORNERS: [([f32; 4], [f32; 4]); 4] = [
+    ([100.0, 100.0, 0.0, 0.0], [0.0, 0.0, -100.0, -100.0]),
+    ([0.0, 100.0, 100.0, 0.0], [-100.0, 0.0, 0.0, -100.0]),
+    ([100.0, 0.0, 0.0, 100.0], [0.0, -100.0, -100.0, 0.0]),
+    ([0.0, 0.0, 100.0, 100.0], [-100.0, -100.0, 0.0, 0.0]),
+];
+
+/// The tile rectangle Word gives a radial or rectangular gradient starting at `focus`: a corner's,
+/// or none from the centre.
+pub fn corner_tile(focus: [f32; 4]) -> Option<[f32; 4]> {
+    CORNERS.iter().find(|(f, _)| *f == focus).map(|(_, t)| *t)
+}
+
+/// Shape Fill › Gradient's Light and Dark Variations of `c`, each with its name, in Word's
+/// order (a grid five wide): three stops at 0, 50 and 100%, light ones `c` tinted to 66, 44.5
+/// and 23.5% with saturation ×1.6, dark ones shaded to 30, 67.5 and 100% with saturation
+/// ×1.15 (as Word writes them); linear ones scaled with the shape, the rest circular.
 pub fn variations(c: Rgb) -> [Vec<(Fill, String)>; 2] {
-    let tiles = |a: Rgb, b: Rgb| -> Vec<(Fill, String)> {
-        let mut v: Vec<(Fill, String)> = LINEAR_DIRECTIONS
-            .iter()
-            .map(|&angle| (grad(&[(0.0, a), (100.0, b)], GradientKind::Linear { angle, scaled: false }), linear_direction_name(angle)))
-            .collect();
-        v.insert(
-            4,
-            (grad(&[(0.0, a), (100.0, b)], GradientKind::Path { shape: PathShape::Circle, focus: [50.0; 4] }), path_direction_name([50.0; 4])),
-        );
-        v
+    let tiles = |m: &str, steps: [f64; 3], sat: f64| -> Vec<(Fill, String)> {
+        let stop = |i: usize| {
+            let color = wordcraft_docx::color_modified(wordcraft_docx::color_modified(c, m, steps[i]), "satMod", sat);
+            GradStop { pos: i as f32 * 50.0, color, transparency: 0.0 }
+        };
+        let fill = |kind, tile| {
+            let g = Gradient { stops: (0..3).map(stop).collect(), kind, tile, rot_with_shape: true, flip: GradientFlip::None };
+            Fill::Gradient(Arc::new(g))
+        };
+        let lin = |angle: f32| (fill(GradientKind::Linear { angle, scaled: true }, None), linear_direction_name(angle));
+        let corner = |i: usize| {
+            let (focus, tile) = CORNERS[i];
+            (fill(GradientKind::Path { shape: PathShape::Circle, focus }, Some(tile)), path_direction_name(focus))
+        };
+        let centre = (fill(GradientKind::Path { shape: PathShape::Circle, focus: [50.0; 4] }, None), path_direction_name([50.0; 4]));
+        vec![
+            lin(45.0),
+            lin(90.0),
+            lin(135.0),
+            corner(0),
+            corner(1),
+            lin(0.0),
+            centre,
+            lin(180.0),
+            corner(2),
+            corner(3),
+            lin(315.0),
+            lin(270.0),
+            lin(225.0),
+        ]
     };
-    [tiles(tint(c, 0.8), tint(c, 0.2)), tiles(tint(c, -0.5), c)]
+    [tiles("tint", [0.66, 0.445, 0.235], 1.6), tiles("shade", [0.3, 0.675, 1.0], 1.15)]
 }
 
 /// The 30 preset gradients from the theme's six accents: per accent, soft, lit from the top,
@@ -321,6 +373,32 @@ mod tests {
     use std::sync::Arc;
     use wordcraft_doc::fill::{Fill, Gradient, GradientFlip, GradientKind, PathShape};
 
+    /// The variations Word writes for accent 1 (`tint`/`shade` with `satMod`, observed in Word 365).
+    #[test]
+    fn variations_follow_words() {
+        use super::variations;
+        let c = Rgb(0x15, 0x60, 0x82);
+        let [light, dark] = variations(c);
+        assert_eq!((light.len(), dark.len()), (13, 13));
+        assert_eq!(light[1].1, "Linear Down");
+        assert_eq!(light[6].1, "From Center");
+        let Fill::Gradient(g) = &light[0].0 else { panic!() };
+        assert_eq!(g.kind, GradientKind::Linear { angle: 45.0, scaled: true });
+        assert_eq!(g.stops.iter().map(|s| s.pos).collect::<Vec<_>>(), [0.0, 50.0, 100.0]);
+        assert!(g.stops[0].color.0 > g.stops[2].color.0 || g.stops[0].color.2 < g.stops[2].color.2, "lighter towards the end: {:?}", g.stops);
+        let Fill::Gradient(g) = &light[3].0 else { panic!() };
+        assert_eq!(
+            (g.kind, g.tile),
+            (GradientKind::Path { shape: PathShape::Circle, focus: [100.0, 100.0, 0.0, 0.0] }, Some([0.0, 0.0, -100.0, -100.0]))
+        );
+        let Fill::Gradient(g) = super::default_gradient(c) else { panic!() };
+        assert_eq!(g.stops.iter().map(|s| s.pos).collect::<Vec<_>>(), [0.0, 74.0, 83.0, 100.0], "Word's starting gradient");
+        assert_eq!(g.stops[1].color, g.stops[2].color);
+        assert!(g.stops.iter().all(|s| s.color.0 > c.0 && s.color.1 > c.1), "lighter than the accent");
+        let Fill::Gradient(g) = &dark[1].0 else { panic!() };
+        assert_eq!(g.stops[2].color, wordcraft_docx::color_modified(c, "satMod", 1.15), "the last dark stop is the colour itself");
+    }
+
     #[test]
     fn params_set_the_fill_they_were_made_from() {
         let g = |kind| {
@@ -335,11 +413,13 @@ mod tests {
         let fills = [
             Fill::Solid { color: Rgb(1, 2, 3), transparency: 35.0 },
             g(GradientKind::Linear { angle: 135.0, scaled: false }),
+            g(GradientKind::Linear { angle: 45.0, scaled: true }),
             g(GradientKind::Path { shape: PathShape::Circle, focus: [100.0, 0.0, 0.0, 100.0] }),
             g(GradientKind::Path { shape: PathShape::Rect, focus: [50.0; 4] }),
             g(GradientKind::Path { shape: PathShape::Shape, focus: [50.0; 4] }),
         ];
-        for f in fills {
+        let tiled = super::variations(Rgb(9, 9, 9))[0][3].0.clone();
+        for f in fills.into_iter().chain([tiled]) {
             let v = params(Some(&f));
             let back = match parse(&v) {
                 Ok(Change::Fill(f)) => f,

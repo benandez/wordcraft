@@ -76,10 +76,11 @@ pub fn pane(app: &mut WordApp, ui: &mut Ui) {
     ui.radio_value(&mut pick, 1, tl!("Solid fill"));
     ui.radio_value(&mut pick, 2, tl!("Gradient fill"));
     if pick != kind {
-        let main = fill.as_ref().map_or(theme.get(4).copied().unwrap_or(Rgb(68, 114, 196)), Fill::main_color);
+        let accent1 = theme.get(4).copied().unwrap_or(Rgb(68, 114, 196));
+        let main = fill.as_ref().map_or(accent1, Fill::main_color);
         let new = match pick {
             1 => Some(Fill::solid(main)),
-            2 => Some(shape_fill::default_gradient(main)),
+            2 => Some(shape_fill::default_gradient(accent1)),
             _ => None,
         };
         apply(app, ui, new.as_ref(), None);
@@ -134,6 +135,15 @@ fn color_field(ui: &mut Ui, theme: &[Rgb], id: Id, c: &mut Rgb) -> bool {
     }
 }
 
+/// Sets the gradient's kind, with the tile rectangle Word gives a gradient from a corner.
+fn set_kind(g: &mut Gradient, kind: GradientKind) {
+    g.tile = match kind {
+        GradientKind::Path { focus, .. } => shape_fill::corner_tile(focus),
+        GradientKind::Linear { .. } => None,
+    };
+    g.kind = kind;
+}
+
 fn with(g: &Gradient, f: impl FnOnce(&mut Gradient)) -> Fill {
     let mut g = g.clone();
     f(&mut g);
@@ -184,7 +194,7 @@ fn gradient(app: &mut WordApp, ui: &mut Ui, theme: &[Rgb], g: &Gradient) {
                 GradientKind::Linear { angle, .. } => (angle, [50.0; 4]),
                 GradientKind::Path { focus, .. } => (90.0, focus),
             };
-            apply(app, ui, Some(&with(g, |g| g.kind = kind_of(pick, focus, angle))), None);
+            apply(app, ui, Some(&with(g, |g| set_kind(g, kind_of(pick, focus, angle)))), None);
         }
         ui.end_row();
 
@@ -192,7 +202,7 @@ fn gradient(app: &mut WordApp, ui: &mut Ui, theme: &[Rgb], g: &Gradient) {
             ui.label(tl!("Direction"));
             ui.menu_button("▾", |ui| {
                 if let Some(kind) = directions(ui, g, t) {
-                    apply(app, ui, Some(&with(g, |g| g.kind = kind)), None);
+                    apply(app, ui, Some(&with(g, |g| set_kind(g, kind))), None);
                     ui.close();
                 }
             });
@@ -212,9 +222,9 @@ fn gradient(app: &mut WordApp, ui: &mut Ui, theme: &[Rgb], g: &Gradient) {
     ui.add_space(6.0);
     ui.label(tl!("Gradient stops"));
     let sel = ui.data(|d| d.get_temp::<usize>(stop_id())).unwrap_or(0).min(g.stops.len().saturating_sub(1));
-    stops_bar(app, ui, g, sel);
-    let sel = ui.data(|d| d.get_temp::<usize>(stop_id())).unwrap_or(0).min(g.stops.len().saturating_sub(1));
     ui.horizontal(|ui| {
+        stops_bar(app, ui, g, sel);
+        let sel = ui.data(|d| d.get_temp::<usize>(stop_id())).unwrap_or(0).min(g.stops.len().saturating_sub(1));
         if crate::widgets::icon_button(ui, "plus", tl!("Add gradient stop")).clicked() {
             let next = g.stops.get(sel + 1).map_or(100.0, |s| s.pos);
             let here = g.stops.get(sel).map_or(0.0, |s| s.pos);
@@ -232,6 +242,7 @@ fn gradient(app: &mut WordApp, ui: &mut Ui, theme: &[Rgb], g: &Gradient) {
             }
         }
     });
+    let sel = ui.data(|d| d.get_temp::<usize>(stop_id())).unwrap_or(0).min(g.stops.len().saturating_sub(1));
     let Some(stop) = g.stops.get(sel).copied() else { return };
     let set = |s: GradStop| with(g, |g| g.stops[sel] = s);
     let mut c = stop.color;
@@ -264,7 +275,7 @@ fn gradient(app: &mut WordApp, ui: &mut Ui, theme: &[Rgb], g: &Gradient) {
 /// the previous or next stop.
 fn stops_bar(app: &mut WordApp, ui: &mut Ui, g: &Gradient, sel: usize) {
     let t = Tokens::get(ui.ctx());
-    let w = ui.available_width().clamp(120.0, 400.0);
+    let w = (ui.available_width() - 56.0).clamp(120.0, 400.0);
     let (r, resp) = ui.allocate_exact_size(vec2(w, 30.0), Sense::click_and_drag());
     let bar = Rect::from_min_size(r.min + vec2(6.0, 0.0), vec2(w - 12.0, 16.0));
     let linear = Fill::Gradient(Arc::new(Gradient { kind: GradientKind::Linear { angle: 0.0, scaled: false }, ..g.clone() }));
@@ -351,11 +362,11 @@ fn directions(ui: &mut Ui, g: &Gradient, t: usize) -> Option<GradientKind> {
     let mut out = None;
     egui::Grid::new("format_shape.directions").spacing(vec2(4.0, 4.0)).show(ui, |ui| {
         for (i, (k, name)) in kinds.into_iter().enumerate() {
-            let f = with(g, |g| g.kind = k);
+            let f = with(g, |g| set_kind(g, k));
             if swatch(ui, &f, &name) {
                 out = Some(k);
             }
-            if i % 4 == 3 {
+            if i % 5 == 4 {
                 ui.end_row();
             }
         }
