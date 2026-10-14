@@ -8089,6 +8089,7 @@ fn exported_page_images_draw_headers_at_full_strength() {
     let darkest = (0..top).flat_map(|y| (0..img.width()).map(move |x| (x, y))).map(|(x, y)| img.get_pixel(x, y)[0]).min().unwrap();
     assert!(darkest < 60, "header drawn dimmed: darkest pixel {darkest}");
     let _ = std::fs::remove_dir_all(&dir);
+}
 
 /// Shape Format › Shape Fill with transparency and gradients (#1500): each form sets the fill of
 /// every selected shape in one undo step; a colour alone keeps the transparency; hostile values

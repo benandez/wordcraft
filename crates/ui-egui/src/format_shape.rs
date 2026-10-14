@@ -11,7 +11,7 @@ use wordcraft_doc::fill::{Fill, Gradient, GradientKind, PathShape};
 use wordcraft_doc::para::InlineObject;
 use wordcraft_doc::wordart::GradStop;
 use wordcraft_engine::cmd::shape_fill::{self, LINEAR_DIRECTIONS, PATH_DIRECTIONS, stops};
-use wordcraft_layout::display::{Paint, paint_for};
+use wordcraft_layout::display::paint_for;
 
 use crate::WordApp;
 use crate::theme::Tokens;
@@ -445,24 +445,9 @@ pub fn paint_fill(p: &egui::Painter, r: Rect, fill: &Fill) {
     const N: u32 = 16;
     let frame = wordcraft_geom::Rect { x: r.min.x, y: r.min.y, w: r.width(), h: r.height() };
     let Some(paint) = paint_for(fill, frame) else { return };
-    let gs: Vec<GradStop> = match &paint {
-        Paint::Solid(..) => Vec::new(),
-        Paint::Linear { stops, .. } | Paint::Radial { stops, .. } => {
-            stops.iter().map(|&(o, c, a)| GradStop { pos: o * 100.0, color: c, transparency: (1.0 - a) * 100.0 }).collect()
-        }
-    };
-    let at = |q: Pos2| -> Color32 {
-        let t = match &paint {
-            Paint::Solid(c, a) => return rgba(*c, *a),
-            Paint::Linear { p0, p1, .. } => {
-                let d = (p1.0 - p0.0, p1.1 - p0.1);
-                let len2 = (d.0 * d.0 + d.1 * d.1).max(1e-6);
-                ((q.x - p0.0) * d.0 + (q.y - p0.1) * d.1) / len2
-            }
-            Paint::Radial { c, r, .. } => (q.x - c.0).hypot(q.y - c.1) / r.max(1e-6),
-        };
-        let (c, tr) = stops::at(&gs, t * 100.0);
-        rgba(c, 1.0 - tr / 100.0)
+    let at = |q: Pos2| {
+        let (c, a) = paint.at(q.x, q.y);
+        rgba(c, a)
     };
     let mut mesh = Mesh::default();
     for j in 0..=N {

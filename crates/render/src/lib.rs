@@ -585,15 +585,15 @@ fn blend_backgrounds(items: &[Draw], p: wordcraft_geom::Point, opts: &RenderOpti
     for it in items {
         let (color, alpha) = match it {
             Draw::Fill { rect, color, alpha, .. } if rect.contains(p) => (*color, *alpha),
-            // The shape's own outline (an ellipse's corners are not inside it). Shape fills are
-            // drawn opaque (the model has no fill transparency), so they cover what's beneath.
+            // The shape's own outline (an ellipse's corners are not inside it), in its fill's
+            // colour and opacity there (#1500: gradients and transparency).
             Draw::Shape { rect, kind, fill: Some(fill), corner, .. }
                 if *kind != ShapeKind::Line && rect.contains(p) && {
                     let r = kurbo::Rect::new(rect.x as f64, rect.y as f64, rect.right() as f64, rect.bottom() as f64);
                     kurbo::Shape::contains(&shape_path(*kind, r, *corner), kurbo::Point::new(p.x as f64, p.y as f64))
                 } =>
             {
-                (*fill, 1.0)
+                fill.at(p.x, p.y)
             }
             Draw::Clip { rect, items } if rect.contains(p) => {
                 blend_backgrounds(items, p, opts, bg, depth + 1);
@@ -1291,7 +1291,7 @@ mod tests {
         let ellipse = Draw::Shape {
             rect: wordcraft_geom::Rect::new(100.0, 100.0, 200.0, 100.0),
             kind: ShapeKind::Ellipse,
-            fill: Some(Rgb::BLACK),
+            fill: Some(wordcraft_layout::display::Paint::solid(Rgb::BLACK)),
             stroke: None,
             stroke_width: 0.0,
             effects: Default::default(),

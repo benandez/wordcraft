@@ -2470,7 +2470,7 @@ fn drawingml_shapes_survive_saving() {
             .iter()
             .map(|o| match o {
                 InlineObject::Shape { kind, w, h, fill, stroke, stroke_width, float, extra, .. } => {
-                    (*kind, *w, *h, *fill, *stroke, *stroke_width, float.x, float.y, float.wrap, extra.arrow_end)
+                    (*kind, *w, *h, fill.clone(), *stroke, *stroke_width, float.x, float.y, float.wrap, extra.arrow_end)
                 }
                 o => panic!("{o:?}"),
             })
@@ -2493,7 +2493,7 @@ fn drawingml_shapes_survive_saving() {
         ]
     );
     for s in &read[..5] {
-        assert_eq!(s.3, Some(accent), "{:?} is filled from the theme", s.0);
+        assert_eq!(s.3, Some(wordcraft_doc::fill::Fill::solid(accent)), "{:?} is filled from the theme", s.0);
         assert!(s.4.is_some() && s.5 > 0.0, "{:?} has its outline", s.0);
         assert_eq!((s.6, s.7, s.8), (1.0, 2.0, Wrap::InFrontOfText), "{:?} keeps its place", s.0);
     }

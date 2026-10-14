@@ -44,6 +44,26 @@ impl Paint {
             Paint::Radial { c, r, stops } => Paint::Radial { c: *c, r: *r, stops: fade(stops) },
         }
     }
+    /// The colour and opacity this paint gives the point (`x`, `y`): stops blended, padded past
+    /// the ends.
+    pub fn at(&self, x: f32, y: f32) -> (Rgb, f32) {
+        let (stops, t) = match self {
+            Paint::Solid(c, a) => return (*c, *a),
+            Paint::Linear { p0, p1, stops } => {
+                let d = (p1.0 - p0.0, p1.1 - p0.1);
+                (stops, ((x - p0.0) * d.0 + (y - p0.1) * d.1) / (d.0 * d.0 + d.1 * d.1).max(1e-6))
+            }
+            Paint::Radial { c, r, stops } => (stops, (x - c.0).hypot(y - c.1) / r.max(1e-6)),
+        };
+        let (Some(first), Some(last)) = (stops.first(), stops.last()) else { return (Rgb::BLACK, 0.0) };
+        let t = if t.is_finite() { t } else { 0.0 };
+        let Some(i) = stops.iter().position(|s| s.0 >= t) else { return (last.1, last.2) };
+        let Some(a) = i.checked_sub(1).and_then(|j| stops.get(j)) else { return (first.1, first.2) };
+        let b = &stops[i];
+        let f = if b.0 > a.0 { (t - a.0) / (b.0 - a.0) } else { 0.0 };
+        let mix = |x: u8, y: u8| (f32::from(x) + (f32::from(y) - f32::from(x)) * f).round().clamp(0.0, 255.0) as u8;
+        (Rgb(mix(a.1.0, b.1.0), mix(a.1.1, b.1.1), mix(a.1.2, b.1.2)), a.2 + (b.2 - a.2) * f)
+    }
 }
 
 /// How shape fill `fill` paints the shape's frame `frame` (#1500). A linear gradient runs across

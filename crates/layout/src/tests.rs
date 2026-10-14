@@ -7832,6 +7832,7 @@ fn space_after_stays_clear_before_a_numbered_paragraph_without_a_label() {
         },
         wordcraft_doc::resolve::AUTO_SPACING,
     );
+}
 
 /// #1500: how shape fills paint a frame: linear gradients across it at their angle, path
 /// gradients out from their focus to the farthest corner, transparency as opacity.
@@ -7868,6 +7869,12 @@ fn shape_fills_paint_their_frame() {
         o => panic!("{o:?}"),
     }
     assert_eq!(paint_for(&Fill::Solid { color: Rgb::WHITE, transparency: 70.0 }, frame), Some(Paint::Solid(Rgb::WHITE, 1.0 - 0.7)));
+    // The colour at a point (what the caret contrasts with): ends padded, the middle blended.
+    let down = paint_for(&grad(GradientKind::Linear { angle: 90.0, scaled: false }), frame).unwrap();
+    assert_eq!(down.at(60.0, 0.0), (Rgb::BLACK, 1.0));
+    assert_eq!(down.at(60.0, 999.0), (Rgb::WHITE, 0.6));
+    let (c, a) = down.at(60.0, 45.0);
+    assert!((c.0 as i32 - 128).abs() <= 1 && (a - 0.8).abs() < 1e-3, "{c:?} {a}");
 }
 
 #[test]
