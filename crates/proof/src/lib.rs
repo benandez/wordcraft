@@ -309,7 +309,7 @@ fn known_core(w: &str) -> bool {
         return true;
     }
     // Inflections.
-    let stems: [(&str, &[&str]); 12] = [
+    let stems: [(&str, &[&str]); 13] = [
         ("'s", &[""]),
         ("s", &[""]),
         ("es", &["", "e"]),
@@ -319,6 +319,8 @@ fn known_core(w: &str) -> bool {
         ("ing", &["", "e"]),
         ("ly", &["", "le"]),
         ("ily", &["y"]),
+        // specifically → specific (#1694).
+        ("ally", &[""]),
         ("er", &["", "e"]),
         ("est", &["", "e"]),
         ("ness", &[""]),
@@ -910,6 +912,17 @@ mod tests {
         let s = suggest("recieve", 5);
         assert!(s.contains(&"receive".to_string()), "{s:?}");
         assert!(suggest("Wrold", 3).contains(&"World".to_string()));
+    }
+
+    /// #1694: `-ically` adverbs come from their `-ic` adjective (specific → specifically).
+    #[test]
+    fn ically_adverbs_are_known() {
+        for w in ["specifically", "scientifically", "automatically", "dramatically", "Specifically"] {
+            assert!(is_correct(w), "{w}");
+        }
+        for w in ["specificaly", "specifcally", "zzzically"] {
+            assert!(!is_correct(w), "{w}");
+        }
     }
 
     /// #520: common modern words (and their inflections) are known; misspellings still flagged.
