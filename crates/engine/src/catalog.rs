@@ -515,6 +515,7 @@ Tools|Customize|Customize Ribbon|tools.customizeRibbon
 Tools|Customize|Customize Keyboard|tools.customizeKeyboard
 Tools|Protection|Encrypt with Password|file.encrypt
 Tools|Templates|Templates and Add-ins|tools.templates
+Tools|Views|Full Screen View|view.fullScreenView
 ";
 
 /// Catalog entries: (tab, group, feature, id).

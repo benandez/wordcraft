@@ -4535,6 +4535,40 @@ fn page_and_table_gridlines_toggle_independently() {
     assert_eq!(state["tableGridlines"], false);
 }
 
+#[test]
+fn focus_and_full_screen_replace_each_other() {
+    // #1678: Focus and Full Screen View are separate screen states; one on turns the other off.
+    // Both are registry commands, so Customize Keyboard can bind them.
+    let mut s = s();
+    run(&mut s, "text.insert", json!({"text": "Hello"}));
+    let undo = s.undo_labels();
+    assert!(s.registry.get("view.fullScreenView").is_some() && s.registry.get("view.focus").is_some());
+
+    assert_eq!(run(&mut s, "view.focus", json!({}))["value"], true);
+    assert!(s.view.focus_mode && !s.view.full_screen_view);
+    assert_eq!(run(&mut s, "view.fullScreenView", json!({}))["value"], true);
+    assert!(s.view.full_screen_view && !s.view.focus_mode);
+    assert_eq!(run(&mut s, "view.focus", json!({"value": true}))["value"], true);
+    assert!(s.view.focus_mode && !s.view.full_screen_view);
+    assert_eq!(run(&mut s, "view.focus", json!({}))["value"], false);
+    assert!(!s.view.focus_mode && !s.view.full_screen_view);
+    assert_eq!(run(&mut s, "view.fullScreenView", json!({"value": false}))["value"], false);
+    assert!(!s.view.full_screen_view);
+    // Full Screen (#980) is the window alone: it leaves Focus be.
+    run(&mut s, "view.focus", json!({"value": true}));
+    run(&mut s, "view.fullScreen", json!({"value": true}));
+    assert!(s.view.focus_mode && s.view.full_screen);
+    run(&mut s, "view.focus", json!({"value": false}));
+    run(&mut s, "view.fullScreen", json!({"value": false}));
+
+    // Immersive Reader is a reading view, not Focus.
+    run(&mut s, "view.immersive", json!({}));
+    assert!(s.view.read_mode && !s.view.focus_mode);
+
+    assert_eq!(text(&s), "Hello");
+    assert_eq!(s.undo_labels(), undo);
+}
+
 /// Issue #768: zooming by percent after One Page or Page Width keeps one page per row.
 #[test]
 fn zoom_after_one_page_keeps_single_column() {

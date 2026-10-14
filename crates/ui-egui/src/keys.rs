@@ -113,6 +113,9 @@ fn ui_shortcut(key: Key, m: Modifiers) -> Option<(&'static str, Value)> {
     match key {
         Key::Q if alt_only && !cfg!(target_os = "macos") => Some(("ui.dialog", json!({"name": "commands"}))),
         Key::R if mac_cmd_alt => Some(("ui.collapseRibbon", json!({}))),
+        // Ctrl+F1 collapses or expands the ribbon, as in Word for Windows (#1678). Not on macOS,
+        // where Ctrl+F1 is the system's keyboard-access switch.
+        Key::F1 if m.ctrl && !m.alt && !m.shift && !m.mac_cmd && !cfg!(target_os = "macos") => Some(("ui.collapseRibbon", json!({}))),
         _ => None,
     }
 }
@@ -232,7 +235,9 @@ pub fn canvas_events(app: &mut WordApp, ctx: &egui::Context) {
         for e in &events {
             match e {
                 egui::Event::Key { key: Key::Escape, pressed: true, .. } => {
-                    let _ = app.run("view.printLayout", json!({}));
+                    // Focus or Full Screen first (#1678), then Read Mode.
+                    let id = crate::chrome::Screen::of(&app.session.view).exit_command().unwrap_or("view.printLayout");
+                    let _ = app.run(id, json!({"value": false}));
                     break;
                 }
                 egui::Event::Key { key: Key::PageDown | Key::ArrowRight, pressed: true, modifiers, .. } if modifiers.is_none() => {
@@ -453,11 +458,14 @@ pub fn canvas_events(app: &mut WordApp, ctx: &egui::Context) {
     }
 }
 
-/// Escape leaves full screen (#980) once nothing nearer took it: a pen, a text box, a header, a
-/// dialog, a menu or a popup, a drag on the page, and in the document (`canvas`) a selection,
-/// which Escape collapses first (`select.collapse`), as in a normal window.
+/// Escape leaves Focus or Full Screen View (#1678), then Full Screen (#980), once nothing nearer
+/// took it: a pen, a text box, a header, a dialog, a menu or a popup, a drag on the page, and in
+/// the document (`canvas`) a selection, which Escape collapses first (`select.collapse`), as in a
+/// normal window.
 fn leave_full_screen(app: &mut WordApp, key: Key, m: Modifiers, canvas: bool) -> bool {
-    if key != Key::Escape || !m.is_none() || !app.session.view.full_screen || !app.escape_free {
+    let screen = crate::chrome::Screen::of(&app.session.view).exit_command();
+    let Some(id) = screen.or(app.session.view.full_screen.then_some("view.fullScreen")) else { return false };
+    if key != Key::Escape || !m.is_none() || !app.escape_free {
         return false;
     }
     let c = &app.canvas;
@@ -467,7 +475,7 @@ fn leave_full_screen(app: &mut WordApp, key: Key, m: Modifiers, canvas: bool) ->
     if canvas && !app.session.sel.is_collapsed() {
         return false;
     }
-    let _ = app.run("view.fullScreen", json!({"value": false}));
+    let _ = app.run(id, json!({"value": false}));
     true
 }
 
@@ -702,6 +710,16 @@ pub fn global_shortcuts(app: &mut WordApp, ctx: &egui::Context) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #1678: Ctrl+F1 collapses or expands the ribbon (not on macOS); plain F1 stays Help's.
+    #[test]
+    fn ctrl_f1_collapses_the_ribbon() {
+        let ctrl = Modifiers { ctrl: true, command: true, ..Default::default() };
+        let expect = if cfg!(target_os = "macos") { None } else { Some(("ui.collapseRibbon", json!({}))) };
+        assert_eq!(ui_shortcut(Key::F1, ctrl), expect);
+        assert_eq!(ui_shortcut(Key::F1, Modifiers::NONE), None);
+        assert_eq!(ui_shortcut(Key::F1, Modifiers { shift: true, ..ctrl }), None);
+    }
 
     #[test]
     fn shift_backspace_still_erases() {

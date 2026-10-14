@@ -526,6 +526,8 @@ pub struct WordApp {
     pub integrated_titlebar: bool,
     /// macOS: the title bar's height and where its content starts, around the traffic lights.
     pub mac_titlebar: chrome::MacTitleBar,
+    /// Focus (#1678): the ribbon is dropped down from the Focus bar, over the page.
+    pub(crate) focus_ribbon: bool,
     control_rx: Option<std::sync::mpsc::Receiver<ControlRequest>>,
     shot_token: u64,
     queued_shots: Vec<(u64, f64, u32)>,
@@ -665,6 +667,7 @@ impl WordApp {
             previews: previews::Previews::default(),
             integrated_titlebar: false,
             mac_titlebar: chrome::MacTitleBar::default(),
+            focus_ribbon: false,
             control_rx: None,
             shot_token: 0,
             queued_shots: Vec::new(),
@@ -2203,11 +2206,6 @@ impl WordApp {
         // Keytips are read before layout so the frame paints the new state; badges paint after
         // the ribbon so they sit on top of it.
         crate::keytips::logic(self, &ctx);
-        // Focus (View › Immersive, the status bar) keeps only the title bar and the page; Escape
-        // brings the rest back, as in Word.
-        if self.session.view.focus_mode && self.dialog.is_none() && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
-            let _ = self.run("view.focus", json!({"value": false}));
-        }
         // A failed Recent open is news only until File closes (#2938).
         if !self.ui.backstage {
             backstage::forget_open_error(&ctx);
@@ -2221,15 +2219,24 @@ impl WordApp {
             chrome::status_bar(self, ui);
             egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.canvas)).show(ui, |_| {});
         } else {
-            chrome::title_bar(self, ui);
-            if !self.session.view.focus_mode {
+            let screen = chrome::Screen::of(&self.session.view);
+            // Focus and Full Screen (#1678) take the whole screen, with only their slim bar.
+            self.focus_ribbon &= screen == chrome::Screen::Focus;
+            if screen != chrome::Screen::Normal {
+                chrome::screen_bar(self, ui, screen);
+            } else {
+                chrome::title_bar(self, ui);
                 ribbon::show(self, ui);
                 chrome::status_bar(self, ui);
                 panes::show(self, ui);
             }
-            egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.canvas)).show(ui, |ui| {
+            let fill = if screen == chrome::Screen::Focus { chrome::FOCUS_CANVAS } else { t.canvas };
+            egui::CentralPanel::default().frame(egui::Frame::NONE.fill(fill)).show(ui, |ui| {
                 canvas::show(self, ui);
             });
+            if self.focus_ribbon {
+                chrome::focus_ribbon(self, &ctx);
+            }
         }
         content_controls::popup(self, &ctx);
         dialogs::show(self, &ctx);
@@ -2259,22 +2266,31 @@ impl WordApp {
         self.report_dirty();
     }
 
-    /// Carry View › Full Screen (`view.fullScreen`, F11) to the window, and follow the window
-    /// when the system takes it in or out of full screen (the macOS title bar button, the window
-    /// manager). Leaving full screen gives the window back its earlier size and place: the system
-    /// keeps them, and [`window_geometry`] never saves a full-screen size (#980).
+    /// Carry View › Full Screen (`view.fullScreen`, F11), Focus and Full Screen View (#1678) to
+    /// the window, and follow the window when the system takes it in or out of full screen (the
+    /// macOS title bar button, the window manager): in is Full Screen, out ends all three. Leaving
+    /// full screen gives the window back its earlier size and place: the system keeps them, and
+    /// [`window_geometry`] never saves a full-screen size (#980).
     fn sync_full_screen(&mut self, ctx: &egui::Context) {
+        let v = &self.session.view;
+        let want = v.full_screen || v.focus_mode || v.full_screen_view;
         let seen = ctx.input(|i| i.viewport().fullscreen);
         if seen != self.seen_full_screen {
             self.seen_full_screen = seen;
             if let Some(on) = seen
-                && on != self.session.view.full_screen
+                && on != want
             {
-                self.session.view.full_screen = on;
+                let v = &mut self.session.view;
+                v.full_screen = on;
+                if !on {
+                    v.focus_mode = false;
+                    v.full_screen_view = false;
+                }
                 self.sent_full_screen = on;
             }
         }
-        let want = self.session.view.full_screen;
+        let v = &self.session.view;
+        let want = v.full_screen || v.focus_mode || v.full_screen_view;
         if want != self.sent_full_screen {
             ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(want));
             self.sent_full_screen = want;
@@ -2740,6 +2756,73 @@ mod tests {
         assert_eq!(titles(&mut app), 0);
         app.session.dirty = true;
         assert_eq!(titles(&mut app), 1);
+    }
+
+    /// #1678: Focus and Full Screen View put the window in full screen, asked of the system once
+    /// per change (switching between the two keeps it), and the usual window comes back after.
+    #[test]
+    fn focus_and_full_screen_view_ask_for_full_screen_once_per_change() {
+        let ctx = egui::Context::default();
+        let mut app = app();
+        let sent = |app: &mut WordApp| {
+            let out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                app.logic(ui.ctx());
+                app.ui(ui);
+            });
+            let v: Vec<bool> = out
+                .viewport_output
+                .values()
+                .flat_map(|v| v.commands.iter())
+                .filter_map(|c| if let egui::ViewportCommand::Fullscreen(b) = c { Some(*b) } else { None })
+                .collect();
+            out.drop_without_applying_deltas();
+            v
+        };
+        let start: Vec<bool> = (0..4).flat_map(|_| sent(&mut app)).collect();
+        assert!(start.is_empty(), "the window starts as it was: {start:?}");
+        app.run("view.focus", json!({})).unwrap();
+        assert_eq!(sent(&mut app), [true]);
+        assert!(sent(&mut app).is_empty());
+        app.run("view.fullScreenView", json!({})).unwrap();
+        assert!(sent(&mut app).is_empty(), "Focus to Full Screen View stays full screen");
+        app.run("view.fullScreenView", json!({})).unwrap();
+        assert_eq!(sent(&mut app), [false]);
+    }
+
+    /// #1678: Focus hides the title bar, ribbon and status bar; "⋯" drops the ribbon over the
+    /// page without leaving Focus, and Escape leaves Focus (and Full Screen View).
+    #[test]
+    fn focus_hides_the_chrome_drops_the_ribbon_and_esc_leaves() {
+        use egui_kittest::kittest::Queryable;
+        let mut a = app();
+        a.run("text.insert", json!({"text": "Hello"})).unwrap();
+        let mut h = harness(a);
+        h.run_steps(4);
+        assert!(h.query_by_label("Insert").is_some(), "the ribbon's tabs show in the usual window");
+        h.state_mut().run("view.focus", json!({})).unwrap();
+        h.run_steps(3);
+        assert!(h.query_by_label("Insert").is_none(), "Focus hides the ribbon");
+        assert!(h.query_by_label("Search commands and help").is_none(), "and the title bar");
+        // "⋯" in the Focus bar, at the top centre.
+        h.state_mut().focus_ribbon = true;
+        h.run_steps(3);
+        assert!(h.query_by_label("Insert").is_some(), "the ribbon drops down");
+        assert!(h.state().session.view.focus_mode, "still in Focus");
+        h.key_press(egui::Key::Escape);
+        h.run_steps(3);
+        let a = h.state_mut();
+        assert!(!a.session.view.focus_mode && !a.focus_ribbon, "Escape leaves Focus");
+        a.run("view.fullScreenView", json!({})).unwrap();
+        h.run_steps(3);
+        assert!(h.query_by_label("Insert").is_none(), "Full Screen View shows the pages alone");
+        assert!(h.query_by_label("Search commands and help").is_some(), "with Search at the top");
+        h.key_press(egui::Key::Escape);
+        h.run_steps(3);
+        assert!(!h.state().session.view.full_screen_view, "Escape leaves Full Screen View");
+        // Full Screen (#980, F11) is the whole window, ribbon and all.
+        h.state_mut().run("view.fullScreen", json!({})).unwrap();
+        h.run_steps(3);
+        assert!(h.query_by_label("Insert").is_some(), "Full Screen keeps the ribbon");
     }
 
     /// The caption is Inter semibold, which has no Hebrew (or Arabic, Thai, …), so egui would
@@ -6960,6 +7043,12 @@ mod tests {
         assert!(a.session.view.full_screen);
         assert!(frame(&mut a, Some(false)).is_empty());
         assert!(!a.session.view.full_screen, "and came back");
+        // Focus, then the system takes the window out of full screen: Focus ends with it.
+        a.run("view.focus", json!({})).unwrap();
+        assert_eq!(frame(&mut a, Some(false)), vec![egui::ViewportCommand::Fullscreen(true)]);
+        assert!(frame(&mut a, Some(true)).is_empty());
+        assert!(frame(&mut a, Some(false)).is_empty());
+        assert!(!a.session.view.focus_mode, "Focus ended with the window's full screen");
         // Asked for: sent once; the window is slow to report it, which doesn't undo the request.
         a.run("view.fullScreen", json!({})).unwrap();
         assert_eq!(frame(&mut a, Some(false)), vec![egui::ViewportCommand::Fullscreen(true)]);

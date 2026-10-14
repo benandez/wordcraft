@@ -121,7 +121,11 @@ pub struct ViewState {
     pub zoom: f32,
     pub mode: ViewMode,
     pub read_mode: bool,
+    /// View › Focus (#1678): the document alone on screen, with a slim bar to drop the ribbon down.
     pub focus_mode: bool,
+    /// Full Screen View (#1678): the pages alone on screen. Never on together with `focus_mode`.
+    #[serde(default)]
+    pub full_screen_view: bool,
     pub marks: bool,
     pub ruler: bool,
     /// View › Show › Gridlines: the drawing grid over the page's text area (on screen only).
@@ -234,6 +238,7 @@ impl Default for ViewState {
             mode: ViewMode::Print,
             read_mode: false,
             focus_mode: false,
+            full_screen_view: false,
             marks: false,
             ruler: true,
             gridlines: false,
