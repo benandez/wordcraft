@@ -204,9 +204,9 @@ pub fn variations(c: Rgb) -> [Vec<(Fill, String)>; 2] {
     [tiles(tint(c, 0.8), tint(c, 0.2)), tiles(tint(c, -0.5), c)]
 }
 
-/// The 30 preset gradients from the theme's six accents: per accent, light, top spotlight,
-/// medium, bottom spotlight and radial.
-// ponytail: provisional styles until Word's presets are observed (plan step 0).
+/// The 30 preset gradients from the theme's six accents: per accent, soft, lit from the top,
+/// deep, lit from the bottom and centre glow. Our own design (the repo's clean-room rule: no
+/// copying Word's presets), on the same accents-by-styles grid as Word's.
 pub fn presets(theme: &[Rgb]) -> Vec<Fill> {
     let accent = |i: usize| theme.get(4 + i).copied().unwrap_or(Rgb(68, 114, 196));
     let down = GradientKind::Linear { angle: 90.0, scaled: false };
@@ -228,7 +228,7 @@ pub fn presets(theme: &[Rgb]) -> Vec<Fill> {
 
 /// A preset's name in the gallery.
 pub fn preset_name(i: usize) -> String {
-    const STYLES: [&str; 5] = ["Light Gradient", "Top Spotlight", "Medium Gradient", "Bottom Spotlight", "Radial Gradient"];
+    const STYLES: [&str; 5] = ["Soft", "Lit from Top", "Deep", "Lit from Bottom", "Centre Glow"];
     format!("{} - Accent {}", STYLES.get(i / 6).copied().unwrap_or(""), i % 6 + 1)
 }
 
