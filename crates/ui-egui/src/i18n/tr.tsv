@@ -2696,3 +2696,24 @@ preview	Title	Örnek
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Herhangi bir birimde bir boyut yazın, örneğin 5 cm veya 300 px. Diğer kenar da buna uyar, böylece resim oranlarını korur.
 
 	Import…	İçe aktar…
+	Format Shape Pane	Şekli Biçimlendir bölmesi
+	Format Shape	Şekli Biçimlendir
+	Format Shape…	Şekli Biçimlendir…
+	No fill	Dolgu yok
+	Solid fill	Düz dolgu
+	Gradient fill	Degrade dolgu
+	Preset gradients	Hazır degradeler
+	Radial	Dairesel
+	Rectangular	Dikdörtgen
+	Path	Yol
+	Direction	Yön
+	Angle	Açı
+	Gradient stops	Degrade durakları
+	Add gradient stop	Degrade durağı ekle
+	Remove gradient stop	Degrade durağını kaldır
+	Rotate with shape	Şekille birlikte döndür
+	Gradient	Degrade
+	No Gradient	Degrade yok
+	Light Variations	Açık çeşitler
+	Dark Variations	Koyu çeşitler
+	More Gradients…	Diğer degradeler…

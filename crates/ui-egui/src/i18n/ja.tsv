@@ -2288,3 +2288,24 @@
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	5 cm や 300 px など、任意の単位でサイズを入力します。もう一方の辺も合わせて変わるため、図の縦横比は保たれます。
 
 	Import…	インポート…
+	Format Shape Pane	図形の書式設定ウィンドウ
+	Format Shape	図形の書式設定
+	Format Shape…	図形の書式設定…
+	No fill	塗りつぶしなし
+	Solid fill	単色の塗りつぶし
+	Gradient fill	グラデーションの塗りつぶし
+	Preset gradients	グラデーションのプリセット
+	Radial	放射
+	Rectangular	四角
+	Path	パス
+	Direction	方向
+	Angle	角度
+	Gradient stops	グラデーションの分岐点
+	Add gradient stop	分岐点を追加
+	Remove gradient stop	分岐点を削除
+	Rotate with shape	図形と一緒に回転する
+	Gradient	グラデーション
+	No Gradient	グラデーションなし
+	Light Variations	明るいバリエーション
+	Dark Variations	暗いバリエーション
+	More Gradients…	その他のグラデーション…

@@ -2289,3 +2289,24 @@
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	可用任何單位輸入大小，例如 5 cm 或 300 px。另一邊隨之調整，圖片保持原有比例。
 
 	Import…	匯入…
+	Format Shape Pane	設定圖形格式窗格
+	Format Shape	設定圖形格式
+	Format Shape…	設定圖形格式…
+	No fill	無填滿
+	Solid fill	實心填滿
+	Gradient fill	漸層填滿
+	Preset gradients	預設漸層
+	Radial	放射狀
+	Rectangular	矩形
+	Path	路徑
+	Direction	方向
+	Angle	角度
+	Gradient stops	漸層停駐點
+	Add gradient stop	新增漸層停駐點
+	Remove gradient stop	移除漸層停駐點
+	Rotate with shape	隨圖形旋轉
+	Gradient	漸層
+	No Gradient	無漸層
+	Light Variations	淺色變化
+	Dark Variations	深色變化
+	More Gradients…	其他漸層…

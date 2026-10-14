@@ -2688,3 +2688,24 @@
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Въведете размер в произволна единица, например 5 cm или 300 px. Другата страна се променя съответно, така че картината запазва пропорциите си.
 
 	Import…	Импортиране…
+	Format Shape Pane	Екран „Форматиране на фигура“
+	Format Shape	Форматиране на фигура
+	Format Shape…	Форматиране на фигура…
+	No fill	Без запълване
+	Solid fill	Плътно запълване
+	Gradient fill	Преливащо запълване
+	Preset gradients	Готови преливания
+	Radial	Радиално
+	Rectangular	Правоъгълно
+	Path	Контур
+	Direction	Посока
+	Angle	Ъгъл
+	Gradient stops	Точки на преливането
+	Add gradient stop	Добавяне на точка на преливане
+	Remove gradient stop	Премахване на точка на преливане
+	Rotate with shape	Завъртане с фигурата
+	Gradient	Преливане
+	No Gradient	Без преливане
+	Light Variations	Светли варианти
+	Dark Variations	Тъмни варианти
+	More Gradients…	Още преливания…

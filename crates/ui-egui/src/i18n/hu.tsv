@@ -2695,3 +2695,24 @@
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Írj be egy méretet bármilyen mértékegységben, például 5 cm vagy 300 px. A másik oldal követi, így a kép megtartja az arányait.
 
 	Import…	Importálás…
+	Format Shape Pane	Alakzat formázása munkaablak
+	Format Shape	Alakzat formázása
+	Format Shape…	Alakzat formázása…
+	No fill	Nincs kitöltés
+	Solid fill	Egyszínű kitöltés
+	Gradient fill	Színátmenetes kitöltés
+	Preset gradients	Előre beállított színátmenetek
+	Radial	Sugaras
+	Rectangular	Téglalap alakú
+	Path	Útvonal
+	Direction	Irány
+	Angle	Szög
+	Gradient stops	Színátmenet-pontok
+	Add gradient stop	Színátmenet-pont hozzáadása
+	Remove gradient stop	Színátmenet-pont eltávolítása
+	Rotate with shape	Forgatás az alakzattal
+	Gradient	Színátmenet
+	No Gradient	Nincs színátmenet
+	Light Variations	Világos változatok
+	Dark Variations	Sötét változatok
+	More Gradients…	További színátmenetek…

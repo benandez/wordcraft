@@ -3187,6 +3187,9 @@ fn context_menu(app: &mut WordApp, ui: &mut Ui) {
     if object {
         ui.menu_button(tl!("Wrap Text"), |ui| crate::ribbon::wrap_text_items(ui, app));
     }
+    if crate::widgets::enabled(app, "shape.fill") {
+        item(ui, app, "Format Shape…", "view.formatShapePane", json!({"value": true}));
+    }
     if app.session.sel.focus.path.cell().is_some() {
         // The table's items follow what is selected, as in Word (2019, Windows).
         let pick = table_pick(&app.session);

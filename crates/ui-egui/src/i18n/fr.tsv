@@ -2700,3 +2700,24 @@ template	Letter	Lettre
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Tapez une taille dans n'importe quelle unité, par exemple 5 cm ou 300 px. L'autre côté suit, et l'image garde ses proportions.
 
 	Import…	Importer…
+	Format Shape Pane	Volet Mise en forme de la forme
+	Format Shape	Mise en forme de la forme
+	Format Shape…	Mise en forme de la forme…
+	No fill	Aucun remplissage
+	Solid fill	Remplissage uni
+	Gradient fill	Remplissage dégradé
+	Preset gradients	Dégradés prédéfinis
+	Radial	Radial
+	Rectangular	Rectangulaire
+	Path	Tracé
+	Direction	Direction
+	Angle	Angle
+	Gradient stops	Points de dégradé
+	Add gradient stop	Ajouter un point de dégradé
+	Remove gradient stop	Supprimer le point de dégradé
+	Rotate with shape	Pivoter avec la forme
+	Gradient	Dégradé
+	No Gradient	Aucun dégradé
+	Light Variations	Variantes claires
+	Dark Variations	Variantes foncées
+	More Gradients…	Autres dégradés…
