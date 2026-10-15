@@ -184,6 +184,8 @@ pub struct CanvasState {
     pub tab_kind: wordcraft_doc::props::TabAlign,
     /// A tab stop being placed or dragged on the ruler (`ruler_tabs`).
     pub(crate) tab_drag: Option<crate::ruler_tabs::TabDrag>,
+    /// Whether the I-beam over the page is drawn rather than the system's (`ibeam`).
+    pub(crate) drawn_ibeam: bool,
 }
 
 impl CanvasState {
@@ -290,6 +292,7 @@ impl Default for CanvasState {
             table_drag: None,
             tab_kind: Default::default(),
             tab_drag: None,
+            drawn_ibeam: crate::ibeam::DRAWN,
         }
     }
 }
@@ -1740,6 +1743,21 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
     crate::table_resize::cursor(app, ui, &resp, &layout, &rects, geo.scale);
     crate::table_mouse::cursor(app, ui, &resp, &layout, &rects, geo.scale);
     crate::table_pen::cursor(app, ui, &resp);
+    // Windows' I-beam is lost on white paper there: draw one that shows (#1746).
+    if app.canvas.drawn_ibeam
+        && (resp.hovered() || resp.dragged())
+        && let Some(p) = ui.input(|i| i.pointer.latest_pos())
+    {
+        let opts = page_render_options(app, dim_body);
+        let bg = match page_at(&rects, &layout, geo.scale, p) {
+            Some(_) => opts.ink(app.session.doc.settings.page_color.unwrap_or(opts.paper)),
+            None => {
+                let c = Tokens::get(ui.ctx()).canvas;
+                wordcraft_doc::props::Rgb(c.r(), c.g(), c.b())
+            }
+        };
+        crate::ibeam::replace(ui.ctx(), p, bg);
+    }
     app.canvas.auto_scroll.paint(ui, area);
     let _ = origin;
     if let (Some(h), Some(v)) = (hruler, vruler) {
