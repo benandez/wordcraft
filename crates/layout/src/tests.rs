@@ -6471,7 +6471,7 @@ fn footer_page_total_needs_one_body_pass() {
     d.last_section.footers.default = Some(id);
     let first = |d: &Document| {
         let totals = Totals::first_guess(d.sections().len());
-        layout_pass(d, &mut LayoutCache::new(), &LayoutOptions::default(), &HashMap::new(), &totals, true)
+        layout_pass(d, &mut LayoutCache::new(), &LayoutOptions::default(), &HashMap::new(), &totals, true, (&EarlyFloats::new(), true))
     };
     assert!(matches!(first(&d), Pass::Done(l) if l.pages.len() == 3), "the footer's total asked for another pass");
     // The same field in the body is only known once every page is laid out.
@@ -9421,5 +9421,34 @@ fn caret_height_ignores_line_spacing() {
     for spacing in [LineSpacing::Multiple(2.0), LineSpacing::AtLeast(40.0), LineSpacing::Exactly(40.0)] {
         let wide = caret_height(Some(spacing));
         assert!((single - wide).abs() < 0.01, "{spacing:?}: single {single}, wide {wide}");
+    }
+}
+
+/// #2048: a picture anchored in a later paragraph but placed higher up the page (fixed on the
+/// page, or moved up from its paragraph) keeps the text of the paragraphs above its anchor clear
+/// too, as in Word, not just its own paragraph's.
+#[test]
+fn a_float_placed_above_its_anchor_wraps_the_paragraphs_before_it() {
+    use wordcraft_doc::para::{Anchor, Float, Wrap};
+    let text = "Earlier text flows beside the picture placed above its anchor. ".repeat(3);
+    for (v_rel, y) in [(Anchor::Page, 72.0), (Anchor::Paragraph, -200.0)] {
+        let mut d = Document::from_text(&format!("{text}\n{text}\n{text}\n\nThe anchor paragraph."));
+        let f = Float { wrap: Wrap::Square, h_rel: Anchor::Column, v_rel, x: 0.0, y, dist: 9.0, ..Default::default() };
+        d.insert_object(&Pos::body(4, 0), rect_shape(150.0, 260.0, f), &Default::default()).unwrap();
+        let l = lay(&d);
+        let r = shapes(&l.pages[0].items)[0];
+        assert!(r.y < 150.0, "{v_rel:?}: the picture is above its anchor: {r:?}");
+        let mut checked = 0;
+        for it in &l.pages[0].items {
+            let Placed::Lines { story: StoryRef::Body, path, para, l0, l1, x, y: top, .. } = it else { continue };
+            for ln in &para.lines[*l0..*l1] {
+                let (lt, lb) = (top + ln.top, top + ln.top + ln.height);
+                if lb > r.y + 0.5 && lt < r.bottom() - 0.5 && ln.c1 > ln.c0 {
+                    checked += 1;
+                    assert!(x + ln.left >= r.right() - 0.5, "{v_rel:?}: paragraph {path:?}, line at {lt}, runs under the picture {r:?}");
+                }
+            }
+        }
+        assert!(checked >= 6, "{v_rel:?}: {checked} lines beside the picture");
     }
 }
