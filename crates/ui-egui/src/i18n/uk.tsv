@@ -2269,3 +2269,10 @@
 	All Fonts	Усі шрифти
 	Spike	Накопичувач
 	Insert Spike	Вставити з накопичувача
+# Styles pane position (#1756)
+	Styles Pane Position	Положення панелі стилів
+	Dock Left	Закріпити ліворуч
+	Dock Right	Закріпити праворуч
+	Float	Відкріпити
+	Pane position	Положення панелі
+	Drag out to float the pane	Перетягніть, щоб відкріпити панель

@@ -2696,3 +2696,10 @@ template	Letter	Thư
 	All Fonts	Tất cả phông chữ
 	Spike	Bộ gom
 	Insert Spike	Chèn bộ gom
+# Styles pane position (#1756)
+	Styles Pane Position	Vị trí khung kiểu
+	Dock Left	Neo bên trái
+	Dock Right	Neo bên phải
+	Float	Nổi
+	Pane position	Vị trí khung
+	Drag out to float the pane	Kéo ra ngoài để khung nổi

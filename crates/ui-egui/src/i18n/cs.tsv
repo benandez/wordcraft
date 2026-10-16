@@ -2648,3 +2648,10 @@ preview	Title	Ukázka
 	All Fonts	Všechna písma
 	Spike	Sběrač
 	Insert Spike	Vložit ze sběrače
+# Styles pane position (#1756)
+	Styles Pane Position	Umístění podokna stylů
+	Dock Left	Ukotvit vlevo
+	Dock Right	Ukotvit vpravo
+	Float	Plovoucí
+	Pane position	Umístění podokna
+	Drag out to float the pane	Přetažením ven podokno uvolníte

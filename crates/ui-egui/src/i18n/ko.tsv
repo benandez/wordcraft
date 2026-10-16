@@ -2510,3 +2510,10 @@ preview	Title	제목
 	All Fonts	모든 글꼴
 	Spike	스파이크
 	Insert Spike	스파이크 삽입
+# Styles pane position (#1756)
+	Styles Pane Position	스타일 창 위치
+	Dock Left	왼쪽에 고정
+	Dock Right	오른쪽에 고정
+	Float	떠 있음
+	Pane position	창 위치
+	Drag out to float the pane	밖으로 끌어 창을 띄웁니다

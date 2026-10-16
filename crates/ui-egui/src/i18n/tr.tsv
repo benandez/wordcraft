@@ -2653,3 +2653,10 @@ preview	Title	Örnek
 	All Fonts	Tüm Yazı Tipleri
 	Spike	Biriktirici
 	Insert Spike	Biriktiriciyi Ekle
+# Styles pane position (#1756)
+	Styles Pane Position	Stiller Bölmesi Konumu
+	Dock Left	Sola Yerleştir
+	Dock Right	Sağa Yerleştir
+	Float	Serbest Bırak
+	Pane position	Bölme konumu
+	Drag out to float the pane	Bölmeyi serbest bırakmak için dışarı sürükleyin

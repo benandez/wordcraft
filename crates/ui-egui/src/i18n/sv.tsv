@@ -2671,3 +2671,10 @@ preview	Title	Titel
 	Moved to:	Flyttat till:
 	Spike	Samlare
 	Insert Spike	Infoga samlare
+# Styles pane position (#1756)
+	Styles Pane Position	Stilpanelens placering
+	Dock Left	Docka till vänster
+	Dock Right	Docka till höger
+	Float	Flytande
+	Pane position	Panelens placering
+	Drag out to float the pane	Dra ut för att göra panelen flytande

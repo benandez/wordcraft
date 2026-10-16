@@ -2654,3 +2654,10 @@ preview	Title	Пример
 	All Fonts	Все шрифты
 	Spike	Копилка
 	Insert Spike	Вставить из копилки
+# Styles pane position (#1756)
+	Styles Pane Position	Положение области стилей
+	Dock Left	Закрепить слева
+	Dock Right	Закрепить справа
+	Float	Открепить
+	Pane position	Положение области
+	Drag out to float the pane	Перетащите, чтобы открепить область

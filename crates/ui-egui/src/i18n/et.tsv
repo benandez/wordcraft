@@ -2291,3 +2291,10 @@
 	All Fonts	Kõik fondid
 	Spike	Koguja
 	Insert Spike	Lisa kogujast
+# Styles pane position (#1756)
+	Styles Pane Position	Stiilipaani asukoht
+	Dock Left	Dokki vasakule
+	Dock Right	Dokki paremale
+	Float	Ujuv
+	Pane position	Paani asukoht
+	Drag out to float the pane	Lohista välja, et paan ujuks

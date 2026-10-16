@@ -2269,3 +2269,10 @@
 	All Fonts	Todas as fontes
 	Spike	Coletor
 	Insert Spike	Inserir coletor
+# Styles pane position (#1756)
+	Styles Pane Position	Posição do painel de estilos
+	Dock Left	Encaixar à esquerda
+	Dock Right	Encaixar à direita
+	Float	Flutuante
+	Pane position	Posição do painel
+	Drag out to float the pane	Arraste para fora para deixar o painel flutuante

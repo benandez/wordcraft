@@ -2256,3 +2256,10 @@
 	All Fonts	Alle Schriftarten
 	Spike	Sammlung
 	Insert Spike	Sammlung einfügen
+# Styles pane position (#1756)
+	Styles Pane Position	Position des Formatvorlagenbereichs
+	Dock Left	Links andocken
+	Dock Right	Rechts andocken
+	Float	Unverankert
+	Pane position	Position des Bereichs
+	Drag out to float the pane	Herausziehen, um den Bereich zu lösen
