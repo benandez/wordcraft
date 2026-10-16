@@ -95,8 +95,6 @@ const REPLIES: usize = 32;
 const SAYING_S: f64 = 8.0;
 const AGENT_S: f64 = 12.0;
 const TIP_TYPING_S: f64 = 20.0;
-/// Seconds between Tips, so a busy minute doesn't become a lecture.
-const TIP_GAP: f64 = 60.0;
 /// Nib's size on screen, in points.
 const NIB: Vec2 = vec2(64.0, 76.0);
 const BALLOON_W: f32 = 260.0;
@@ -146,7 +144,6 @@ pub struct Assistant {
     last_activity: f64,
     last_saying: Option<f64>,
     last_agent: Option<f64>,
-    last_tip: Option<f64>,
     last_idle_check: f64,
     unsaved_since: Option<f64>,
     words_before: Option<usize>,
@@ -394,7 +391,10 @@ fn next_balloon(app: &mut WordApp) {
         app.assistant.open(Content::Agent { id: q.id, from: q.from, text: q.text, choices: q.choices }, Pose::Write);
         return;
     }
-    if app.assistant.balloon.is_some() || !app.assistant.automatic {
+    // A Tip or Saying showing may give way to a newer Tip (below); the Introduction and agent
+    // messages wait to be answered.
+    let offer_open = matches!(app.assistant.balloon, Some(Balloon { content: Content::Offer(_), .. }));
+    if (app.assistant.balloon.is_some() && !offer_open) || !app.assistant.automatic {
         return;
     }
     if !app.ui.assistant.introduced {
@@ -404,7 +404,7 @@ fn next_balloon(app: &mut WordApp) {
     if !app.ui.assistant.visible {
         return;
     }
-    if !app.assistant.welcomed {
+    if !app.assistant.welcomed && !offer_open {
         app.assistant.welcomed = true;
         let daily = engine::tip_of_the_day(wordcraft_engine::cmd::now_unix() / 86_400);
         if !app.ui.assistant.dismissed_tips.iter().any(|d| d == daily.id) {
@@ -444,12 +444,15 @@ fn next_balloon(app: &mut WordApp) {
         seed: a.recorded,
     };
     let dismissed = &app.ui.assistant.dismissed_tips;
-    let tip_ok = a.last_tip.is_none_or(|t| now - t >= TIP_GAP);
-    if tip_ok && let Some(tip) = engine::tips(&app.session, &o).into_iter().find(|t| !a.shown.contains(&t.id) && !dismissed.iter().any(|d| d == t.id))
-    {
+    // The newest Tip is the one that fits what the user is doing: it replaces one still open.
+    // Each Tip shows once a session, which is all the pacing Tips need.
+    if let Some(tip) = engine::tips(&app.session, &o).into_iter().find(|t| !a.shown.contains(&t.id) && !dismissed.iter().any(|d| d == t.id)) {
         a.shown.push(tip.id);
-        a.last_tip = Some(now);
+        a.close(&mut app.ui.assistant);
         a.open(Content::Offer(tip), Pose::Write);
+        return;
+    }
+    if offer_open {
         return;
     }
     let Some(gap) = app.ui.assistant.sayings.gap() else { return };

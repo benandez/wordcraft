@@ -275,3 +275,42 @@ fn turning_nib_on_answers_the_introduction() {
     assert!(showing(&a).is_none());
     assert!(a.ui.assistant.introduced && a.ui.assistant.visible);
 }
+
+/// Field report: with the letter Tip still open (or just closed), a list started or the ribbon
+/// used three times brought no Tip. A new Tip replaces an open one, and there's no gap between
+/// Tips (each shows once a session anyway).
+#[test]
+fn a_new_tip_replaces_an_open_one_and_follows_a_closed_one() {
+    let mut a = chatty();
+    a.run("text.insert", json!({"text": "Dear Kim,"})).unwrap();
+    next_balloon(&mut a);
+    assert_eq!(offer_id(&a), Some("letter"));
+    a.run("text.newParagraph", json!({})).unwrap();
+    a.run("text.insert", json!({"text": "1."})).unwrap();
+    a.run("text.insert", json!({"text": " "})).unwrap();
+    next_balloon(&mut a);
+    assert_eq!(offer_id(&a), Some("listStarted"), "the list Tip replaced the open letter Tip");
+    a.assistant.close(&mut a.ui.assistant);
+    a.assistant.now += 5.0;
+    for _ in 0..3 {
+        crate::widgets::run_from_ribbon(&mut a, "format.bold", json!({}));
+    }
+    next_balloon(&mut a);
+    assert_eq!(offer_id(&a), Some("shortcut"), "seconds after another Tip");
+}
+
+/// Field report: the list Tip's "Restart at 1" did nothing once the list was deleted with the
+/// Balloon still open. The command is disabled outside a numbered list, so the Balloon (which
+/// only shows enabled buttons) drops it.
+#[test]
+fn restart_at_1_goes_when_the_list_does() {
+    let mut a = chatty();
+    a.run("text.insert", json!({"text": "1."})).unwrap();
+    a.run("text.insert", json!({"text": " "})).unwrap();
+    next_balloon(&mut a);
+    assert_eq!(offer_id(&a), Some("listStarted"));
+    assert!(crate::widgets::enabled(&a, "para.restartNumbering"), "in the list: offered");
+    // Backspace at the start of the item turns it back into text.
+    a.run("text.backspace", json!({})).unwrap();
+    assert!(!crate::widgets::enabled(&a, "para.restartNumbering"), "the list is gone: not offered");
+}
