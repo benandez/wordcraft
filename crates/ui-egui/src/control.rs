@@ -105,7 +105,7 @@ fn click_events(app: &mut WordApp, pos: egui::Pos2, button: egui::PointerButton,
     }
 }
 
-/// Programmatic calls never open the Save prompt, so closing unsaved work must be explicit:
+/// Programmatic calls never open the Save prompt, so discarding unsaved work must be explicit:
 /// save first, or pass `"force": true` (only a real boolean true counts) to discard it (#1268).
 pub(crate) fn close_refused(app: &WordApp, id: &str, params: &Value) -> Option<&'static str> {
     let force = params.get("force").and_then(Value::as_bool) == Some(true);
@@ -115,9 +115,19 @@ pub(crate) fn close_refused(app: &WordApp, id: &str, params: &Value) -> Option<&
     if id == "file.close" && app.session.dirty {
         return Some("the document has unsaved changes: save it first, or pass {\"force\": true} to discard them and close");
     }
+    if !crate::discards_document(id, params) {
+        return None;
+    }
     // Comment text still being typed is unsaved work too (#1348): replacing the document would drop it.
-    (crate::discards_document(id, params) && crate::panes::has_comment_drafts(app))
-        .then_some("a comment is still being edited: finish it first, or pass {\"force\": true} to discard it")
+    if crate::panes::has_comment_drafts(app) {
+        return Some("a comment is still being edited: finish it first, or pass {\"force\": true} to discard it");
+    }
+    // A dirty document is unsaved work too (#1268): New, Open, Restore and the mailings merges
+    // would drop it, and its undo history, without a word.
+    if crate::document_unsaved(app) {
+        return Some("the document has unsaved changes: save it first, or pass {\"force\": true} to discard them");
+    }
+    None
 }
 
 /// The reply to a request that needs a document while none is open (#1129).
@@ -280,6 +290,11 @@ pub fn handle(app: &mut WordApp, ctx: &egui::Context, req: &ControlRequest) -> O
             ok(json!({}))
         }
         "app.quit" => {
+            // Quitting is closing the document, so unsaved work needs the same explicit
+            // `force` as `file.close` rather than going silently (#1268).
+            if let Some(e) = close_refused(app, "file.close", p) {
+                return err(e);
+            }
             app.quit_requested = true;
             ok(json!({}))
         }

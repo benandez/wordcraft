@@ -860,7 +860,7 @@ impl WordApp {
             self.dialog = dialogs::Dialog::open(name, self);
             return Ok(json!({"pending": name}));
         }
-        if (self.session.dirty || self.save_unconfirmed() || refused.is_some()) && discards_document(id, &params) {
+        if (document_unsaved(self) || refused.is_some()) && discards_document(id, &params) {
             let name = self.prompt_name();
             self.dialog = Some(dialogs::Dialog::SaveChanges {
                 name,
@@ -2653,6 +2653,14 @@ pub(crate) fn discards_document(id: &str, params: &Value) -> bool {
         "mailings.finish" => params.get("path").and_then(Value::as_str).is_none(),
         _ => false,
     }
+}
+
+/// Whether the open document has work that isn't saved yet: changes that aren't written to a
+/// file, or a save that hasn't come back. The Save Changes prompt appears for a command that
+/// would replace the document; a programmatic call (control channel, MCP bridge), which never
+/// prompts, refuses the command instead — so both paths guard the same commands (#1268).
+pub(crate) fn document_unsaved(app: &WordApp) -> bool {
+    app.session.dirty || app.save_unconfirmed()
 }
 
 /// Wall-clock milliseconds since the Unix epoch: the system clock, or the browser's on the web.
@@ -5365,7 +5373,7 @@ mod tests {
         assert_eq!(prompt(&a), Some("saveChanges"));
         let asked = a.dialog.clone();
         for command in [
-            json!({"command": "file.open", "params": {"path": path.to_string_lossy()}}),
+            json!({"command": "file.open", "params": {"path": path.to_string_lossy(), "force": true}}),
             json!({"command": "text.insert", "params": {"text": "Edited "}}),
         ] {
             let (req, _reply) = ControlRequest::new("engine.execute", command);
@@ -6205,6 +6213,12 @@ mod tests {
         let (req, _reply) = ControlRequest::new("engine.execute", json!({"command": "file.new"}));
         control::handle(&mut a, &ctx, &req);
         assert_eq!(prompt(&a), None);
+        // Nothing was asked, and nothing was lost either: New is refused, not silently carried
+        // out (#1268). `force` runs it.
+        assert!(body_text(&a).contains(UNSAVED));
+        let (req, _reply) = ControlRequest::new("engine.execute", json!({"command": "file.new", "params": {"force": true}}));
+        control::handle(&mut a, &ctx, &req);
+        assert_eq!(prompt(&a), None);
         assert!(!body_text(&a).contains(UNSAVED));
     }
 
@@ -6266,6 +6280,108 @@ mod tests {
         let r = send(&mut a, "file.close", json!({"force": true}));
         assert_eq!(r["ok"], json!(true), "{r}");
         assert!(!a.has_document() && !a.quit_requested);
+    }
+
+    /// Send a control-protocol method by name and return its reply.
+    fn control_send(ctx: &egui::Context, a: &mut WordApp, method: &str, params: Value) -> Value {
+        match control::handle(a, ctx, &ControlRequest::new(method, params).0) {
+            control::Outcome::Done(v) => v,
+            _ => json!({"ok": false, "error": "not a reply"}),
+        }
+    }
+
+    /// Every command that replaces the document, not just `file.close`, is guarded over the
+    /// control channel: an agent that saved nothing must not lose the work through New, Open,
+    /// Restore or the mailings merges (#1268).
+    #[test]
+    fn programmatic_discard_guard_covers_every_replacing_command() {
+        let dir = scratch("control-discard-guard");
+        let other = docx_on_disk(&dir, "Another document");
+        let replacing = [
+            ("file.new", json!({})),
+            ("file.close", json!({})),
+            ("file.open", json!({"path": other.to_string_lossy()})),
+            ("file.recover", json!({"restore": "no-such-id"})),
+            ("mailings.labels", json!({"text": "Ada"})),
+            ("mailings.envelopes", json!({"delivery": "Ada"})),
+            ("mailings.finish", json!({})),
+        ];
+        for (command, params) in replacing {
+            let mut a = typed();
+            let document = a.session.document_id();
+            let r = control_execute(&mut a, json!({"command": command, "params": params.clone()}));
+            assert_eq!(r["ok"], json!(false), "{command} {params}: {r}");
+            let e = r["error"].as_str().unwrap_or("");
+            assert!(e.contains("unsaved") && e.contains("force"), "{command} {params}: {e}");
+            assert_eq!(a.session.document_id(), document, "{command} {params}: the document survives");
+            assert!(body_text(&a).contains(UNSAVED), "{command} {params}");
+            assert!(a.session.dirty, "{command} {params}");
+            assert_eq!(prompt(&a), None, "{command} {params}: a refusal never prompts");
+        }
+        // Named as a bare method rather than through engine.execute, it's guarded the same way.
+        let ctx = egui::Context::default();
+        let mut a = typed();
+        assert_eq!(control_send(&ctx, &mut a, "file.new", json!({}))["ok"], json!(false));
+        assert!(body_text(&a).contains(UNSAVED));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `force: true` discards the work for any of them, and still only a real boolean true does.
+    #[test]
+    fn programmatic_discard_guard_yields_to_force() {
+        let mut a = typed();
+        for force in [json!("yes"), json!(1)] {
+            let r = control_execute(&mut a, json!({"command": "file.new", "params": {"force": force}}));
+            assert_eq!(r["ok"], json!(false), "{r}");
+            assert!(body_text(&a).contains(UNSAVED), "{force}");
+        }
+        let r = control_execute(&mut a, json!({"command": "file.new", "params": {"force": true}}));
+        assert_eq!(r["ok"], json!(true), "{r}");
+        assert!(!body_text(&a).contains(UNSAVED));
+    }
+
+    /// Quitting over the control channel closes the document, so unsaved work needs the same
+    /// explicit `force` there too (#1268).
+    #[test]
+    fn programmatic_quit_refuses_unsaved_work() {
+        let ctx = egui::Context::default();
+        let mut a = typed();
+        let r = control_send(&ctx, &mut a, "app.quit", json!({}));
+        assert_eq!(r["ok"], json!(false), "{r}");
+        assert!(!a.quit_requested);
+        assert!(body_text(&a).contains(UNSAVED));
+
+        let r = control_send(&ctx, &mut a, "app.quit", json!({"force": true}));
+        assert_eq!(r["ok"], json!(true), "{r}");
+        assert!(a.quit_requested);
+
+        // A clean document quits straight away, without a `force`.
+        let mut clean = app();
+        let r = control_send(&ctx, &mut clean, "app.quit", json!({}));
+        assert_eq!(r["ok"], json!(true), "{r}");
+        assert!(clean.quit_requested);
+    }
+
+    /// Forms that leave the open document alone are never refused: a merge written to a file,
+    /// and an envelope added to this document (#1268).
+    #[test]
+    fn programmatic_discard_guard_leaves_the_document_alone_otherwise() {
+        let dir = scratch("control-discard-guard-kept");
+        let out = dir.join("merged.docx");
+        let mut a = typed();
+        a.run("mailings.recipients", json!({"csv": "Name\nAda"})).unwrap();
+        let document = a.session.document_id();
+        let r = control_execute(&mut a, json!({"command": "mailings.finish", "params": {"path": out.to_string_lossy()}}));
+        assert_eq!(r["ok"], json!(true), "{r}");
+        assert!(out.exists());
+        assert_eq!(a.session.document_id(), document);
+        assert!(body_text(&a).contains(UNSAVED));
+
+        let r = control_execute(&mut a, json!({"command": "mailings.envelopes", "params": {"delivery": "Ada", "add": true}}));
+        assert_eq!(r["ok"], json!(true), "{r}");
+        assert_eq!(a.session.document_id(), document);
+        assert!(body_text(&a).contains(UNSAVED));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     const MAILINGS: [&str; 3] = ["mailings.envelopes", "mailings.labels", "mailings.finish"];
@@ -6373,7 +6489,8 @@ mod tests {
         }
     }
 
-    /// Scripts and agents (control channel, MCP bridge) replace the document without a question.
+    /// Scripts and agents (control channel, MCP bridge) never prompt, so a command that would
+    /// replace unsaved work is refused instead of carried out silently (#1268).
     #[test]
     fn programmatic_mailings_never_prompt() {
         let ctx = egui::Context::default();
@@ -6382,9 +6499,19 @@ mod tests {
             a.execute("mailings.recipients", json!({"csv": "Name\nAda"})).unwrap();
             let document = a.session.document_id();
             let (req, _reply) = ControlRequest::new("engine.execute", json!({"command": id}));
+            let refused = match control::handle(&mut a, &ctx, &req) {
+                control::Outcome::Done(v) => v,
+                _ => json!({"ok": false, "error": "not a reply"}),
+            };
+            assert_eq!(prompt(&a), None, "{id}");
+            assert_eq!(refused["ok"], json!(false), "{id}: {refused}");
+            assert_eq!(a.session.document_id(), document, "{id}: the unsaved document survives");
+            assert!(body_text(&a).contains(UNSAVED), "{id}");
+
+            let (req, _reply) = ControlRequest::new("engine.execute", json!({"command": id, "params": {"force": true}}));
             control::handle(&mut a, &ctx, &req);
             assert_eq!(prompt(&a), None, "{id}");
-            assert_ne!(a.session.document_id(), document, "{id}");
+            assert_ne!(a.session.document_id(), document, "{id}: force runs it");
             assert_eq!(a.session.path, None, "{id}");
         }
     }

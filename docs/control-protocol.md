@@ -87,11 +87,25 @@ The `{"queued": true}` reply acknowledges the input queue, not a completed edit.
 on subsequent UI frames. Inspect the resulting document or widget state before continuing with
 an operation that depends on it; do not replay an edit simply because its effect is not immediate.
 
-### Closing the document
+### Replacing the document
 
-`engine.execute` with `file.close` never shows the Save / Don't Save / Cancel prompt. On a
-document with unsaved changes it replies with an error (the app keeps running and the edits
-stay); save first (`file.save`), or pass `{"force": true}` to discard the changes and close.
+`engine.execute` never shows the Save / Don't Save / Cancel prompt, so a command that would
+replace the open document while it still has unsaved work is **refused with an error** (the app
+keeps running and the edits stay); save first (`file.save`), or pass `{"force": true}` to
+discard the changes and go ahead.
+
+This covers every command that replaces the document, not only `file.close`: `file.new`,
+`file.close`, `file.open` (with a `path`), `file.recover` (with `restore`), `mailings.labels`,
+`mailings.envelopes` (without `add: true`) and `mailings.finish` (without a `path`) — the same
+list the Save Changes prompt uses, so the two paths guard exactly the same commands. Forms that
+leave the document alone are never refused: a merge written to a file, and an envelope added to
+the current document.
+
+A comment still being edited is unsaved work too (#1348): replacing the document is refused with
+"a comment is still being edited" until the draft is committed, or `{"force": true}` is passed.
+
+`app.quit` is guarded the same way, since quitting closes the document.
+
 The bare form `{"method": "file.close", "force": true}` (a method name that is a command id) is
 guarded the same way, and only a boolean `true` counts as `force`. A document without unsaved
 changes closes at once (#1268). Closing closes the document, not the app: the window stays and
