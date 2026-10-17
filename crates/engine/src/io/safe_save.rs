@@ -1,7 +1,12 @@
 //! Sibling temporary files owned by one save. The destination changes only after preparation
 //! succeeds; concurrent saves have separate files and the last successful replacement wins.
+//!
+//! When the folder refuses the temporary file but the chosen file is writable (macOS privacy
+//! protection, #2138, or a read-only folder), the file is written in place instead. Its previous
+//! bytes are kept in memory first and written back if the save fails, so a failed save still
+//! leaves the original; the error says so if even that write-back fails.
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -32,16 +37,62 @@ fn replace_with(path: &Path, private: bool, prepare: impl FnOnce(&mut File) -> i
         Ok(temp) => temp,
         // macOS only lets an app write the file picked in the Save panel inside a protected
         // folder (Desktop, Documents, Downloads, iCloud Drive), not a sibling temporary file
-        // (#2138); a read-only folder with a writable file refuses it too. Write the file itself:
-        // without a temporary file there is nothing else to protect the original with.
-        Err(e) if e.kind() == io::ErrorKind::PermissionDenied => {
-            let mut file = OpenOptions::new().write(true).create(true).truncate(true).open(path)?;
-            return prepare(&mut file);
-        }
+        // (#2138); a read-only folder with a writable file refuses it too.
+        Err(e) if e.kind() == io::ErrorKind::PermissionDenied => return write_in_place(path, e, IN_PLACE_BACKUP_LIMIT, prepare),
         Err(e) => return Err(e),
     };
     prepare(temp.file()?)?;
     temp.commit(path)
+}
+
+/// The largest existing file the in-place fallback keeps in memory to restore on failure; a
+/// larger one isn't written in place at all.
+const IN_PLACE_BACKUP_LIMIT: u64 = 512 * 1024 * 1024;
+
+/// Writes `path` itself when no temporary file may be created beside it (`refused` says why).
+/// A failed save writes the previous bytes back (or removes a file it created), so it never
+/// silently leaves a truncated document; only a crash or power loss mid-write can.
+fn write_in_place(path: &Path, refused: io::Error, limit: u64, prepare: impl FnOnce(&mut File) -> io::Result<()>) -> io::Result<()> {
+    let original = match fs::metadata(path) {
+        Ok(meta) if meta.is_file() => {
+            let mut bytes = Vec::new();
+            File::open(path)?.take(limit.saturating_add(1)).read_to_end(&mut bytes)?;
+            if bytes.len() as u64 > limit {
+                return Err(io::Error::new(
+                    refused.kind(),
+                    format!(
+                        "{refused}: this folder doesn't allow a temporary file, and the file is too large to protect while writing it directly. Use Save As to save it somewhere else"
+                    ),
+                ));
+            }
+            Some(bytes)
+        }
+        Ok(_) => return Err(refused),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => None,
+        Err(e) => return Err(e),
+    };
+    let mut file = OpenOptions::new().write(true).create(true).truncate(true).open(path)?;
+    let Err(failed) = prepare(&mut file) else {
+        return Ok(());
+    };
+    let (undo, what) = match &original {
+        Some(bytes) => (restore(&mut file, bytes), "writing the previous version back also failed, so the file may be incomplete"),
+        None => {
+            drop(file);
+            (fs::remove_file(path), "removing the incomplete new file also failed")
+        }
+    };
+    match undo {
+        Ok(()) => Err(failed),
+        Err(e) => Err(io::Error::new(failed.kind(), format!("{failed}; {what} ({e})"))),
+    }
+}
+
+fn restore(file: &mut File, bytes: &[u8]) -> io::Result<()> {
+    file.set_len(0)?;
+    file.seek(SeekFrom::Start(0))?;
+    file.write_all(bytes)?;
+    file.sync_all()
 }
 
 /// A permission error on macOS usually means its privacy protection keeps WordCraft out of the
@@ -212,6 +263,58 @@ mod tests {
         saved.unwrap();
         assert_eq!(fs::read(&path).unwrap(), b"Saved bytes.");
         assert_eq!(fs::read_dir(&d.0).unwrap().count(), 1);
+    }
+
+    /// #2138 review: when the folder refuses the temporary file, a save failing partway through
+    /// the in-place write still leaves the previous document.
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_save_in_a_folder_refusing_the_temporary_file_keeps_the_original() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = Scratch::new();
+        let path = d.target();
+        fs::write(&path, b"Original bytes.").unwrap();
+        fs::set_permissions(&d.0, fs::Permissions::from_mode(0o555)).unwrap();
+        let probe = fs::write(d.0.join("probe"), b"");
+        let result = replace_with(&path, true, |file| {
+            file.write_all(b"Partial")?;
+            Err(io::Error::other("injected partial write failure"))
+        });
+        fs::set_permissions(&d.0, fs::Permissions::from_mode(0o755)).unwrap();
+        if probe.is_ok() {
+            return; // Running as root: the folder isn't read-only to us.
+        }
+        assert!(result.unwrap_err().to_string().contains("injected"));
+        assert_eq!(fs::read(&path).unwrap(), b"Original bytes.");
+        assert_eq!(fs::read_dir(&d.0).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn a_failed_in_place_save_of_a_new_file_leaves_nothing() {
+        let d = Scratch::new();
+        let path = d.target();
+        let refused = io::Error::from(io::ErrorKind::PermissionDenied);
+        let err = write_in_place(&path, refused, IN_PLACE_BACKUP_LIMIT, |file| {
+            file.write_all(b"Partial")?;
+            Err(io::Error::other("injected"))
+        })
+        .unwrap_err();
+        assert!(err.to_string().contains("injected"));
+        assert!(!path.exists());
+    }
+
+    /// A file too large to keep in memory isn't written in place: it stays as it was and the
+    /// error suggests Save As.
+    #[test]
+    fn a_file_too_large_to_protect_is_not_written_in_place() {
+        let d = Scratch::new();
+        let path = d.target();
+        fs::write(&path, b"Original bytes.").unwrap();
+        let refused = io::Error::from(io::ErrorKind::PermissionDenied);
+        let err = write_in_place(&path, refused, 4, |file| file.write_all(b"New")).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+        assert!(err.to_string().contains("Save As"));
+        assert_eq!(fs::read(&path).unwrap(), b"Original bytes.");
     }
 
     #[cfg(unix)]
