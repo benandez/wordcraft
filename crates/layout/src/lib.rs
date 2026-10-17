@@ -1458,6 +1458,9 @@ struct PageBuilder<'a> {
     early: &'a EarlyFloats,
     /// ... and how many of the current page's `excl` they are (its first ones).
     seeded: usize,
+    /// No layout pass follows for floats found above their anchors: each is kept clear of the
+    /// text laid out before it ([`settle_early`]).
+    settle: bool,
 }
 
 /// Gap above the footnote separator and its length.
@@ -1968,7 +1971,7 @@ pub fn layout(doc: &Document, cache: &mut LayoutCache, opts: &LayoutOptions) -> 
                 passes += 1;
             }
             Pass::Rewrap(found) => {
-                early = found;
+                merge_early(&mut early, found);
                 rewraps += 1;
             }
             Pass::Done(l) => {
@@ -2128,6 +2131,7 @@ fn layout_pass(
         foot_top: f32::MAX,
         early,
         seeded: 0,
+        settle: !may_rewrap && !reflow,
     };
     // Endnotes in document order, with the section of their reference; placed at the end of a
     // section that keeps them there, else at the end of the document.
@@ -2325,7 +2329,7 @@ fn layout_pass(
         for ((block, oi), page, area) in above {
             found.entry(page).or_default().push((block, oi, area));
         }
-        if !same_early(&found, early) {
+        if !early_covered(&found, early) {
             return Pass::Rewrap(found);
         }
     }
@@ -2779,19 +2783,75 @@ type WrapArea = (Rect, bool, Option<Arc<contour::Contour>>, WrapText);
 type EarlyFloats = HashMap<usize, Vec<(usize, usize, WrapArea)>>;
 
 /// Layout passes made again at most for [`EarlyFloats`] (a float moving with the text it pushes
-/// down may move again).
+/// down may move again). The pass after the last one keeps each float clear of the text laid
+/// out before it ([`settle_early`]).
 const MAX_REWRAP_PASSES: usize = 3;
 
-/// Whether two sets of early floats are the same objects with (nearly) the same areas.
-fn same_early(a: &EarlyFloats, b: &EarlyFloats) -> bool {
-    let same = |x: &WrapArea, y: &WrapArea| {
-        let (r, s) = (x.0, y.0);
-        x.1 == y.1 && x.3 == y.3 && (r.x - s.x).abs() < 0.5 && (r.y - s.y).abs() < 0.5 && (r.w - s.w).abs() < 0.5 && (r.h - s.h).abs() < 0.5
-    };
-    a.len() == b.len()
-        && a.iter().all(|(page, v)| {
-            b.get(page).is_some_and(|w| v.len() == w.len() && v.iter().zip(w).all(|(p, q)| p.0 == q.0 && p.1 == q.1 && same(&p.2, &q.2)))
-        })
+/// Whether the text kept clear of `seed` is kept clear of `area` too: the same wrap side, `area`
+/// inside `seed`, and no outline on `seed` other than `area`'s own in the same place.
+fn covers(seed: &WrapArea, area: &WrapArea) -> bool {
+    let (s, r) = (seed.0, area.0);
+    let inside = r.x >= s.x - 0.5 && r.y >= s.y - 0.5 && r.right() <= s.right() + 0.5 && r.bottom() <= s.bottom() + 0.5;
+    let same_place = (r.x - s.x).abs() < 0.5 && (r.y - s.y).abs() < 0.5 && (r.w - s.w).abs() < 0.5 && (r.h - s.h).abs() < 0.5;
+    let outline = seed.2.is_none() || (same_place && seed.2 == area.2);
+    (seed.3 == area.3 || seed.1) && (seed.1 || !area.1) && inside && outline
+}
+
+/// In a pass no other follows ([`MAX_REWRAP_PASSES`]), a float at `r` with wrap area `area`
+/// placed above the top of its paragraph (`top`), beside text laid out before it, that the page
+/// did not start with room for: it moves into the room the page started with for it (`seed`), or
+/// else down to its paragraph's top, so no text laid out before it runs under it. `wrap` gives
+/// the wrap area of a rectangle.
+fn settle_early(
+    r: Rect,
+    area: Option<WrapArea>,
+    seed: Option<&WrapArea>,
+    top: f32,
+    wrap: impl Fn(Rect) -> Option<WrapArea>,
+) -> (Rect, Option<WrapArea>) {
+    let Some(a) = area.as_ref().filter(|a| a.0.y < top - 0.5) else { return (r, area) };
+    if seed.is_some_and(|s| covers(s, a)) {
+        return (r, area);
+    }
+    if let Some(s) = seed {
+        let moved = Rect { x: r.x + (s.0.x - a.0.x), y: r.y + (s.0.y - a.0.y), ..r };
+        let moved_area = wrap(moved);
+        if moved_area.as_ref().is_some_and(|m| covers(s, m)) {
+            return (moved, moved_area);
+        }
+    }
+    let down = Rect { y: r.y + (top - a.0.y), ..r };
+    (down, wrap(down))
+}
+
+/// The early floats a pass found, `found`, are all among those the pass started with, `early`,
+/// each inside the area the page started with for it.
+fn early_covered(found: &EarlyFloats, early: &EarlyFloats) -> bool {
+    found.iter().all(|(page, v)| {
+        v.iter().all(|(b, k, area)| early.get(page).is_some_and(|w| w.iter().any(|(eb, ek, seed)| (eb, ek) == (b, k) && covers(seed, area))))
+    })
+}
+
+/// Adds the early floats a pass found to those pages start with (#2048). Nothing is taken away:
+/// a float whose wrap area pushes its own anchor onto the next page has no settled place (back
+/// on the first page, its anchor fits there again), so the first page keeps the room it was
+/// given and the float goes on the next, rather than the passes swapping between the two. A
+/// float found somewhere else on the same page keeps text clear of both places (one plain
+/// rectangle around them), so the areas only grow.
+fn merge_early(early: &mut EarlyFloats, found: EarlyFloats) {
+    for (page, v) in found {
+        let have = early.entry(page).or_default();
+        for (b, k, area) in v {
+            match have.iter_mut().find(|(eb, ek, _)| (*eb, *ek) == (b, k)) {
+                Some((_, _, seed)) if !covers(seed, &area) => {
+                    let beside = seed.3 == area.3 && !seed.1 && !area.1;
+                    *seed = (seed.0.union(&area.0), !beside, None, area.3);
+                }
+                Some(_) => {}
+                None => have.push((b, k, area)),
+            }
+        }
+    }
 }
 
 /// The area text keeps clear of around a floating object at `r` (its rectangle grown by the
@@ -2945,10 +3005,15 @@ fn anchor_floats(
                 continue;
             }
             // Positions relative to the paragraph start above its space before (Word for Windows).
-            let r = float_rect(Some(frame), (col_x, width), y0 - before, w, h, float);
-            rects.insert(oi, r);
+            let mut r = float_rect(Some(frame), (col_x, width), y0 - before, w, h, float);
             let outline = ctx.wrap_outline(o);
-            let area = wrap_area(r, float, outline.as_deref().map(|v| v.as_slice()));
+            let outline = outline.as_deref().map(|v| v.as_slice());
+            let mut area = wrap_area(r, float, outline);
+            if pb.settle && text_before {
+                let seed = early.and_then(|v| v.iter().find(|(b, k, _)| (*b, *k) == (block, oi))).map(|(_, _, a)| a);
+                (r, area) = settle_early(r, area, seed, top, |r| wrap_area(r, float, outline));
+            }
+            rects.insert(oi, r);
             // Above the paragraph, beside text laid out before it: the page is laid out again
             // with it known from the start (#2048).
             let above = area.as_ref().filter(|a| text_before && a.0.y < top - 0.5).map(|a| (page, a.clone()));
