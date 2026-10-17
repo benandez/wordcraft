@@ -222,7 +222,7 @@ WordCraft keeps 2,54 cm).
 | 2026-10-13 | minor | Croatian interface catalog (2,507 entries, built-in style names shown translated), `hr-*` system locales, saved preference and font coverage checks; the template name "Letter" has its own `template` context so the paper size keeps its name; no Croatian proofing |
 | 2026-10-11 | minor | Hungarian interface catalog (2,419 entries, built-in style names shown translated; covers everything the interface audit finds), locale selection, saved preference and font coverage checks |
 | 2026-10-11 | minor | Turkish interface catalog (1,307 entries), locale selection, saved preference, Turkish casing in command search and font coverage checks; catalog sizes re-counted |
-| 2026-10-14 | trivial | English spelling (#1694): `-ically` adverbs come from their `-ic` adjective ("specifically", "scientifically"), so they're no longer flagged |
+| 2026-10-17 | trivial | English spelling (#1694): `-ically` adverbs come from their `-ic` adjective ("specifically", "scientifically"), so they're no longer flagged; other words don't take `-ally` ("desktopally" is still flagged) |
 | 2026-10-11 | trivial | English spelling (#520): our supplement `assets/spelling/en-extra.txt` adds ~220 common modern words the Moby list lacks ("desktop", "download", "email"…) |
 | 2026-10-10 | minor | Estonian interface catalog, locale selection, saved preference and font coverage checks; count labels put the noun first so they read right at 1 |
 | 2026-10-10 | minor | Serbian (Cyrillic and Latin) interface merged (#250) |

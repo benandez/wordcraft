@@ -319,8 +319,8 @@ fn known_core(w: &str) -> bool {
         ("ing", &["", "e"]),
         ("ly", &["", "le"]),
         ("ily", &["y"]),
-        // specifically → specific (#1694).
-        ("ally", &[""]),
+        // specifically → specific (#1694): only -ic adjectives, so "desktopally" stays wrong.
+        ("ically", &["ic"]),
         ("er", &["", "e"]),
         ("est", &["", "e"]),
         ("ness", &[""]),
@@ -922,6 +922,16 @@ mod tests {
         }
         for w in ["specificaly", "specifcally", "zzzically"] {
             assert!(!is_correct(w), "{w}");
+        }
+    }
+
+    /// #1694 review: only `-ic` adjectives take `-ally`; other known words (dictionary or
+    /// supplement) don't.
+    #[test]
+    fn non_ic_words_do_not_take_ally() {
+        for (base, wrong) in [("desktop", "desktopally"), ("house", "houseally"), ("final", "finalally"), ("green", "greenally")] {
+            assert!(is_correct(base), "{base}");
+            assert!(!is_correct(wrong), "{wrong}");
         }
     }
 
