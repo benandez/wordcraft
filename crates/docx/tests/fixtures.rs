@@ -2139,7 +2139,7 @@ fn theme_styled_connectors_and_callout_boxes_keep_their_paint() {
     assert_eq!(objs.len(), 5);
     let shape = |i: usize| match &objs[i] {
         InlineObject::Shape { kind, fill, stroke, stroke_width, extra, story, .. } => {
-            (*kind, *fill, *stroke, *stroke_width, extra.arrow_end, story.is_some())
+            (*kind, fill.as_ref().map(Fill::main_color), *stroke, *stroke_width, extra.arrow_end, story.is_some())
         }
         o => panic!("{o:?}"),
     };
@@ -2212,7 +2212,10 @@ fn vml_lines_and_rectangles() {
         }
         o => panic!("{o:?}"),
     }
-    assert!(matches!(&objs[1], InlineObject::Shape { kind: ShapeKind::Rectangle, fill: Some(Rgb(255, 0, 0)), stroke: None, w: 30.0, h: 20.0, .. }));
+    assert!(matches!(
+        &objs[1],
+        InlineObject::Shape { kind: ShapeKind::Rectangle, fill: Some(Fill::Solid { color: Rgb(255, 0, 0), .. }), stroke: None, w: 30.0, h: 20.0, .. }
+    ));
 }
 
 /// The right arrow's shapetype as Word writes it (ECMA-376 Part 4 `v:shapetype`, `o:spt` 13).
@@ -2264,7 +2267,7 @@ fn vml_preset_shapes_are_drawn() {
     let ps = paras(&d);
     let shape = |i: usize| match ps[i].objects.first() {
         Some(InlineObject::Shape { kind, w, h, fill, stroke, stroke_width, float, story, .. }) => {
-            Some((*kind, *w, *h, *fill, *stroke, *stroke_width, float.wrap == Wrap::Inline, story.is_some()))
+            Some((*kind, *w, *h, fill.as_ref().map(Fill::main_color), *stroke, *stroke_width, float.wrap == Wrap::Inline, story.is_some()))
         }
         _ => None,
     };
@@ -2340,7 +2343,14 @@ fn vml_preset_shape_survives_saving() {
     assert!(
         matches!(
             &paras(&again)[0].objects[..],
-            [InlineObject::Shape { kind: ShapeKind::Arrow, w: 120.0, h: 40.0, fill: Some(Rgb(0xFF, 0xA5, 0x00)), stroke: Some(Rgb::BLACK), .. }]
+            [InlineObject::Shape {
+                kind: ShapeKind::Arrow,
+                w: 120.0,
+                h: 40.0,
+                fill: Some(Fill::Solid { color: Rgb(0xFF, 0xA5, 0x00), .. }),
+                stroke: Some(Rgb::BLACK),
+                ..
+            }]
         ),
         "{:?}",
         paras(&again)[0].objects
@@ -2361,7 +2371,7 @@ fn vml_nearest_preset_shape_survives_saving() {
     assert!(
         matches!(
             &paras(&again)[0].objects[..],
-            [InlineObject::Shape { kind: ShapeKind::Arrow, w: 60.0, h: 20.0, fill: Some(Rgb(0xFF, 0xA5, 0x00)), .. }]
+            [InlineObject::Shape { kind: ShapeKind::Arrow, w: 60.0, h: 20.0, fill: Some(Fill::Solid { color: Rgb(0xFF, 0xA5, 0x00), .. }), .. }]
         ),
         "{:?}",
         paras(&again)[0].objects
@@ -2418,7 +2428,7 @@ fn cover_page_group_fills_freeforms_and_text_box_margins() {
         let InlineObject::Group { children, .. } = &objs[0] else { panic!("{:?}", objs[0]) };
         assert_eq!(children.len(), 3);
         let shape = |i: usize| match &children[i].obj {
-            InlineObject::Shape { kind, fill, freeform, story, .. } => (*kind, *fill, freeform.is_some(), *story),
+            InlineObject::Shape { kind, fill, freeform, story, .. } => (*kind, fill.as_ref().map(Fill::main_color), freeform.is_some(), *story),
             o => panic!("{o:?}"),
         };
         let (kind, fill, free, _) = shape(0);
@@ -3208,7 +3218,7 @@ fn vml_freeform_rule_in_header() {
         let shapes: Vec<&InlineObject> = d.parts.get(&hid).unwrap().blocks.iter().filter_map(|b| b.as_para()).flat_map(|p| &p.objects).collect();
         let [rule, tri] = shapes.as_slice() else { panic!("{shapes:?}") };
         let InlineObject::Shape { kind, w, h, fill, stroke, stroke_width, float, freeform: Some(f), .. } = rule else { panic!("{rule:?}") };
-        assert_eq!((*kind, *fill, *stroke), (ShapeKind::Freeform, None, Some(Rgb(0x33, 0x66, 0xCC))));
+        assert_eq!((*kind, fill.as_ref().map(Fill::main_color), *stroke), (ShapeKind::Freeform, None, Some(Rgb(0x33, 0x66, 0xCC))));
         assert!(near(*w, 360.0) && near(*h, 12.0) && near(*stroke_width, 1.5), "{w} x {h}, {stroke_width}");
         assert_eq!((float.h_rel, float.v_rel, float.wrap), (Anchor::Margin, Anchor::Margin, Wrap::InFrontOfText));
         assert!(near(float.y, 30.0), "{float:?}");

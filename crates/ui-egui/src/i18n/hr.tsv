@@ -2699,3 +2699,43 @@ preview	Title	Naslov
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Upišite veličinu u bilo kojoj jedinici, npr. 5 cm ili 300 px. Druga se strana prilagođava pa slika zadržava svoje proporcije.
 
 	Import…	Uvezi…
+	Format Shape Pane	Okno Oblikovanje oblika
+	Format Shape	Oblikovanje oblika
+	Format Shape…	Oblikuj oblik…
+	No fill	Bez ispune
+	Solid fill	Puna ispuna
+	Gradient fill	Gradijentna ispuna
+	Preset gradients	Unaprijed postavljeni gradijenti
+	Radial	Radijalno
+	Rectangular	Pravokutno
+	Path	Putanja
+	Direction	Smjer
+	Angle	Kut
+	Gradient stops	Točke gradijenta
+	Add gradient stop	Dodaj točku gradijenta
+	Remove gradient stop	Ukloni točku gradijenta
+	Rotate with shape	Zakreni s oblikom
+	Gradient	Gradijent
+	No Gradient	Bez gradijenta
+	Light Variations	Svijetle varijacije
+	Dark Variations	Tamne varijacije
+	More Gradients…	Više gradijenata…
+	Select a shape, text box or drawing canvas to format its fill.	Odaberite oblik, tekstni okvir ili crtaće platno da biste oblikovali ispunu.
+	Linear Right	Linearno udesno
+	Linear Diagonal - Top Left to Bottom Right	Linearno dijagonalno – od gore lijevo prema dolje desno
+	Linear Down	Linearno prema dolje
+	Linear Diagonal - Top Right to Bottom Left	Linearno dijagonalno – od gore desno prema dolje lijevo
+	Linear Left	Linearno ulijevo
+	Linear Diagonal - Bottom Right to Top Left	Linearno dijagonalno – od dolje desno prema gore lijevo
+	Linear Up	Linearno prema gore
+	Linear Diagonal - Bottom Left to Top Right	Linearno dijagonalno – od dolje lijevo prema gore desno
+	From Top Left Corner	Iz gornjeg lijevog kuta
+	From Top Right Corner	Iz gornjeg desnog kuta
+	From Bottom Left Corner	Iz donjeg lijevog kuta
+	From Bottom Right Corner	Iz donjeg desnog kuta
+	From Center	Iz središta
+	Soft	Meko
+	Lit from Top	Osvijetljeno odozgo
+	Deep	Duboko
+	Lit from Bottom	Osvijetljeno odozdo
+	Center Glow	Sjaj u središtu

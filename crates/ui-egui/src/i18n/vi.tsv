@@ -2739,3 +2739,43 @@ template	Letter	Thư
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Nhập kích thước theo đơn vị bất kỳ, ví dụ 5 cm hoặc 300 px. Cạnh còn lại thay đổi theo, nên ảnh giữ nguyên tỷ lệ.
 
 	Import…	Nhập…
+	Format Shape Pane	Ngăn Định dạng hình
+	Format Shape	Định dạng hình
+	Format Shape…	Định dạng hình…
+	No fill	Không tô
+	Solid fill	Tô đặc
+	Gradient fill	Tô chuyển màu
+	Preset gradients	Chuyển màu đặt sẵn
+	Radial	Hướng tâm
+	Rectangular	Hình chữ nhật
+	Path	Đường dẫn
+	Direction	Hướng
+	Angle	Góc
+	Gradient stops	Điểm dừng chuyển màu
+	Add gradient stop	Thêm điểm dừng chuyển màu
+	Remove gradient stop	Xóa điểm dừng chuyển màu
+	Rotate with shape	Xoay cùng hình
+	Gradient	Chuyển màu
+	No Gradient	Không chuyển màu
+	Light Variations	Biến thể sáng
+	Dark Variations	Biến thể tối
+	More Gradients…	Thêm chuyển màu…
+	Select a shape, text box or drawing canvas to format its fill.	Chọn một hình, hộp văn bản hoặc khung vẽ để định dạng phần tô.
+	Linear Right	Tuyến tính sang phải
+	Linear Diagonal - Top Left to Bottom Right	Tuyến tính chéo - từ trên trái xuống dưới phải
+	Linear Down	Tuyến tính xuống
+	Linear Diagonal - Top Right to Bottom Left	Tuyến tính chéo - từ trên phải xuống dưới trái
+	Linear Left	Tuyến tính sang trái
+	Linear Diagonal - Bottom Right to Top Left	Tuyến tính chéo - từ dưới phải lên trên trái
+	Linear Up	Tuyến tính lên
+	Linear Diagonal - Bottom Left to Top Right	Tuyến tính chéo - từ dưới trái lên trên phải
+	From Top Left Corner	Từ góc trên bên trái
+	From Top Right Corner	Từ góc trên bên phải
+	From Bottom Left Corner	Từ góc dưới bên trái
+	From Bottom Right Corner	Từ góc dưới bên phải
+	From Center	Từ giữa
+	Soft	Mềm
+	Lit from Top	Chiếu sáng từ trên
+	Deep	Sâu
+	Lit from Bottom	Chiếu sáng từ dưới
+	Center Glow	Phát sáng ở giữa

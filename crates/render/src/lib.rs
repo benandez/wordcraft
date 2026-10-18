@@ -2042,7 +2042,7 @@ mod tests {
                 kind: ShapeKind::RoundedRectangle,
                 w: 200.0,
                 h: 200.0,
-                fill: Some(wordcraft_doc::props::Rgb(0, 0, 0)),
+                fill: Some(wordcraft_doc::fill::Fill::solid(wordcraft_doc::props::Rgb(0, 0, 0))),
                 stroke: None,
                 stroke_width: 0.0,
                 float,

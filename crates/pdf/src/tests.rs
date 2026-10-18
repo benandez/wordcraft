@@ -631,7 +631,7 @@ fn rounded_rectangle_corners_follow_their_radius() {
             kind: ShapeKind::RoundedRectangle,
             w: 200.0,
             h: 100.0,
-            fill: Some(wordcraft_doc::props::Rgb(0xD9, 0xD9, 0xD9)),
+            fill: Some(wordcraft_doc::fill::Fill::solid(wordcraft_doc::props::Rgb(0xD9, 0xD9, 0xD9))),
             stroke: None,
             stroke_width: 0.0,
             float,
