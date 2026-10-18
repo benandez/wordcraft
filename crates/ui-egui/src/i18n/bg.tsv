@@ -2701,3 +2701,47 @@
 	Show the Assistant	Показване на асистента
 	Show the tips you asked not to see again.	Отново показва съветите, които сте скрили.
 	Sometimes	Понякога
+# The Assistant, Nib: Tips, Sayings and the Balloon (#959)
+	It looks like you're writing a letter. Want an envelope for it, or a letter template to start from?	Изглежда, че пишете писмо. Да подготвя ли плик за него, или да започнем от шаблон за писмо?
+	You started a list. Press Enter twice to end it, or Backspace at the start of an item to turn it back into text.	Започнахте списък. Натиснете Enter два пъти, за да го завършите, или Backspace в началото на елемент, за да го превърнете отново в текст.
+	Faster: {command} is {key} on the keyboard.	По-бързо: {command} е {key} от клавиатурата.
+	You haven't saved in a while, and AutoSave is off. Save now?	Отдавна не сте запазвали, а автоматичното запазване е изключено. Да запазя ли сега?
+	Letter template	Шаблон за писмо
+	Can't find a command? Press Alt+Q and type what you want to do.	Не намирате команда? Натиснете Alt+Q и напишете какво искате да направите.
+	Ctrl+Enter starts a new page. Much tidier than pressing Enter until it happens.	Ctrl+Enter започва нова страница. Много по-спретнато, отколкото да натискате Enter, докато не стане.
+	Show/Hide ¶ (Ctrl+Shift+8) shows the spaces, tabs and breaks hiding in your text.	Показване/скриване на ¶ (Ctrl+Shift+8) показва интервалите, табулациите и прекъсванията, скрити в текста ви.
+	F4 repeats your last action. Formatting ten headings is suddenly one click and nine taps.	F4 повтаря последното ви действие. Форматирането на десет заглавия изведнъж става едно щракване и девет натискания.
+	Shift+Enter starts a new line without starting a new paragraph.	Shift+Enter започва нов ред, без да започва нов абзац.
+	Ctrl+Shift+G counts your words, characters and paragraphs.	Ctrl+Shift+G брои думите, знаците и абзаците ви.
+	F7 checks the spelling and grammar of the whole document.	F7 проверява правописа и граматиката в целия документ.
+	Ctrl+K turns the selected text into a link.	Ctrl+K превръща маркирания текст във връзка.
+	Ctrl+H finds and replaces text, formatting and special characters.	Ctrl+H търси и заменя текст, форматиране и специални знаци.
+	View › Focus hides everything but your words. I'll wait outside.	Изглед › Фокус скрива всичко освен думите ви. Ще чакам отвън.
+	Writer's block? I find staring at the cursor helps. It's been blinking at me for years.	Творческа криза? На мен ми помага да се взирам в курсора. Той ми мига от години.
+	Still there? I can hear you thinking.	Още ли сте тук? Чувам как мислите.
+	Take your time. The page isn't going anywhere. Neither am I. Ever.	Не бързайте. Страницата няма да избяга. Аз също. Никога.
+	Fun fact: a blank page is just a draft that hasn't been told yet.	Интересен факт: празната страница е просто чернова, която още не знае историята си.
+	I'd write something myself, but I'm all nib and no ink.	Бих написал нещо и аз, но съм перо без мастило. Много натиск, нула резултат.
+	Bold choice. Ctrl+Z is right there if you need it.	Смел избор. Ctrl+Z е точно тук, ако потрябва.
+	Gone! Like it was never written. Mostly because it now wasn't.	Изчезна! Сякаш никога не е било написано. Най-вече защото вече наистина не е.
+	Ah, the editing phase. My favourite. Very decisive.	А, етапът на редактиране. Любимият ми. Много решителен.
+	Saved. Saved again. Still saved. It's very saved.	Запазено. Пак запазено. Още е запазено. Много е запазено.
+	I promise it's saved. I checked. Twice.	Обещавам, запазено е. Проверих. Два пъти.
+	Your document is now the most saved document in history.	Документът ви вече е най-запазеният документ в историята.
+	Ah, Latin. The language of deadlines.	А, латински. Мъртъв език — родният език на дедлайните.
+	Lorem ipsum: because the real words are still at the café.	Lorem ipsum: защото истинските думи още са в кафенето.
+	Undo, undo, undo… we're time travelling now.	Отмяна, отмяна, отмяна… вече пътуваме във времето.
+	Careful, any further back and we'll undo the invention of paper.	Внимавайте, още малко назад и ще отменим изобретяването на хартията.
+	Rewinding. Tell me when to stop.	Превъртам назад. Кажете ми кога да спра.
+	{words} words! I'd throw confetti but I'd have to clean it up.	Думи: {words}! Бих хвърлил конфети, но после аз ще чистя.
+	{words} words. That's {words} more than I've written today.	Думи: {words}. Това са с {words} повече, отколкото съм написал аз днес.
+	{words} words and counting. Literally. I'm counting.	Думи: {words} и броят расте. Буквално. Аз броя.
+	Hi! I'm Nib, your writing assistant. I offer tips, shortcuts and the occasional unsolicited opinion. Shall I stick around?	Здравейте! Аз съм Nib, вашият асистент за писане. Давам съвети, клавишни комбинации и от време на време непоискано мнение. Да остана ли?
+	Keep me around	Остани
+	Not now	Не сега
+	Tip	Съвет
+	From {name}	От: {name}
+	an agent	агент
+	Don't show me this tip again	Не показвай повече този съвет
+	Hide	Скриване
+	Sayings	Реплики

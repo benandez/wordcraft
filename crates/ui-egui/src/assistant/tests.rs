@@ -341,11 +341,118 @@ fn agents_cant_unmute_themselves_or_speak_as_nib() {
     let crate::control::Outcome::Done(r) = crate::control::handle(&mut a, &ctx, &req) else { panic!("replies at once") };
     assert_eq!(r["ok"], false, "{r}");
     a.run("ui.assistantMute", json!({"value": false})).unwrap();
-    for from in ["WordCraft", " nib ", "WORDCRAFT", "Nib\u{200B}", "Word\u{2060}Craft", "N.i.b"] {
+    for from in [
+        "WordCraft",
+        " nib ",
+        "WORDCRAFT",
+        "Nib\u{200B}",
+        "Word\u{2060}Craft",
+        "N.i.b",
+        // Lookalike letters: Cyrillic і, Greek ο and α, Cyrillic Ь, fullwidth, a zero, Turkish İ.
+        "N\u{456}b",
+        "W\u{3BF}rdcr\u{3B1}ft",
+        "Ni\u{42C}",
+        "\u{FF2E}\u{FF49}\u{FF42}",
+        "W0rdCraft",
+        "N\u{130}B",
+    ] {
         a.assistant.now += 5.0;
         let r = execute(&mut a, "ui.assistantSay", json!({"text": "Hi", "from": from}));
         assert_eq!(r["ok"], false, "{from}: {r}");
     }
     a.assistant.now += 5.0;
     assert_eq!(execute(&mut a, "ui.assistantSay", json!({"text": "Hi", "from": "Claude Code"}))["ok"], true);
+    // Names that only share letters with the reserved ones still pass.
+    a.assistant.now += 5.0;
+    assert_eq!(execute(&mut a, "ui.assistantSay", json!({"text": "Hi", "from": "Nibbler"}))["ok"], true);
+}
+
+/// Every word Nib can show (the Balloon, its menu and options, every Tip, Saying and button) has
+/// an entry in every interface catalog, `{placeholders}` intact, so Nib never falls back to
+/// English mid-sentence (#959 review).
+#[test]
+fn nib_speaks_every_interface_language() {
+    let mut missing = Vec::new();
+    for lang in crate::i18n::Lang::all().filter(|l| *l != crate::i18n::Lang::EN) {
+        for s in engine::texts().chain(UI_TEXTS) {
+            if !crate::i18n::has(lang, s) {
+                missing.push(format!("{}: {s:?}", lang.code()));
+            }
+        }
+    }
+    assert!(missing.is_empty(), "{} Nib strings have no translation:\n{}", missing.len(), missing.join("\n"));
+}
+
+/// Nib's own drawing, in the pseudo-language: every word it shows (the Introduction, Tips with
+/// their buttons, Sayings, agent messages, its tooltip and right-click menu) went through
+/// translation. Only its name, and what an agent wrote, may be drawn as is.
+#[test]
+fn nib_draws_nothing_untranslated() {
+    fn texts(shape: &egui::Shape, out: &mut Vec<String>) {
+        match shape {
+            egui::Shape::Text(t) => out.push(t.galley.text().to_string()),
+            egui::Shape::Vec(v) => v.iter().for_each(|s| texts(s, out)),
+            _ => {}
+        }
+    }
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, vec2(1440.0, 900.0));
+    let mut time = 0.0;
+    let mut frames = |ctx: &egui::Context, a: &mut WordApp, steps: Vec<Vec<egui::Event>>| {
+        let mut drawn = Vec::new();
+        let n = steps.len() + 2;
+        let mut steps = steps.into_iter();
+        for _ in 0..n {
+            time += 0.05;
+            let input =
+                egui::RawInput { screen_rect: Some(screen), time: Some(time), events: steps.next().unwrap_or_default(), ..Default::default() };
+            let mut out = ctx.run_ui(input, |ui| show(a, ui.ctx()));
+            drawn.clear();
+            for s in &out.shapes {
+                texts(&s.shape, &mut drawn);
+            }
+            out.textures_delta.clear();
+        }
+        drawn
+    };
+    crate::i18n::pseudo::set(true);
+    let ctx = egui::Context::default();
+    ctx.all_styles_mut(|s| s.interaction.tooltip_delay = 0.0);
+    let mut a = app();
+    a.ui.assistant.visible = true;
+    let mut offers = vec![];
+    let mut s = wordcraft_engine::Session::new(wordcraft_doc::Document::new());
+    s.run("text.insert", &json!({"text": "Dear Sam,"})).unwrap();
+    let typed = Observation { recent: vec![Used { id: "text.insert".into(), source: Source::Keyboard, at: 0.0 }], ..Default::default() };
+    offers.extend(engine::tips(&s, &typed));
+    let used = |source| Used { id: "format.bold".into(), source, at: 0.0 };
+    offers.extend(engine::tips(&s, &Observation { recent: vec![used(Source::Ribbon); 3], ..Default::default() }));
+    offers.push(engine::tip_of_the_day(0));
+    offers.extend(engine::sayings(&s, &Observation { deleted: 500, ..Default::default() }));
+    let mut contents: Vec<Content> = offers.into_iter().map(Content::Offer).collect();
+    contents.push(Content::Intro);
+    contents.push(Content::Agent { id: 1, from: String::new(), text: "42?".into(), choices: vec![] });
+    contents.push(Content::Agent { id: 2, from: "Helper".into(), text: "42?".into(), choices: vec!["Yes".into()] });
+    let mut found = Vec::new();
+    let agent_wrote = ["Helper", "42?", "Yes"];
+    for c in contents {
+        a.assistant.open(c.clone(), Pose::Idle);
+        let drawn = frames(&ctx, &mut a, vec![]);
+        found.extend(drawn.into_iter().map(|t| (format!("{c:?}"), t)));
+    }
+    a.assistant.balloon = None;
+    let at = nib_rect(&a, screen).center();
+    let press = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed, modifiers: Default::default() };
+    let hovered = frames(&ctx, &mut a, vec![vec![egui::Event::PointerMoved(at)]; 3]);
+    found.extend(hovered.into_iter().map(|t| ("hover".to_string(), t)));
+    let menu = frames(&ctx, &mut a, vec![vec![press(true)], vec![press(false)]]);
+    assert!(menu.iter().any(|t| t.contains("Mute agent messages")), "the menu opened: {menu:?}");
+    found.extend(menu.into_iter().map(|t| ("menu".to_string(), t)));
+    crate::i18n::pseudo::set(false);
+    let english = |t: &str| {
+        let plain = crate::i18n::pseudo::unmarked(t);
+        let plain = plain.trim();
+        !plain.is_empty() && plain != "Nib" && !agent_wrote.contains(&plain) && plain.chars().any(|c| c.is_ascii_alphabetic())
+    };
+    let bad: Vec<_> = found.into_iter().filter(|(_, t)| english(t)).collect();
+    assert!(bad.is_empty(), "drawn without translation: {bad:#?}");
 }

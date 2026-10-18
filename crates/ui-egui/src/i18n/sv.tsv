@@ -2727,3 +2727,47 @@ preview	Title	Titel
 	Show the Assistant	Visa assistenten
 	Show the tips you asked not to see again.	Visa tipsen du bett att inte se igen.
 	Sometimes	Ibland
+# The Assistant, Nib: Tips, Sayings and the Balloon (#959)
+	It looks like you're writing a letter. Want an envelope for it, or a letter template to start from?	Det ser ut som att du skriver ett brev. Vill du ha ett kuvert till det, eller en brevmall att utgå från?
+	You started a list. Press Enter twice to end it, or Backspace at the start of an item to turn it back into text.	Du har påbörjat en lista. Tryck på Enter två gånger för att avsluta den, eller på Backspace i början av en punkt för att göra den till vanlig text igen.
+	Faster: {command} is {key} on the keyboard.	Snabbare: {command} är {key} på tangentbordet.
+	You haven't saved in a while, and AutoSave is off. Save now?	Du har inte sparat på ett tag, och Autospara är av. Spara nu?
+	Letter template	Brevmall
+	Can't find a command? Press Alt+Q and type what you want to do.	Hittar du inte ett kommando? Tryck på Alt+Q och skriv vad du vill göra.
+	Ctrl+Enter starts a new page. Much tidier than pressing Enter until it happens.	Ctrl+Enter börjar en ny sida. Mycket snyggare än att trycka på Enter tills det händer.
+	Show/Hide ¶ (Ctrl+Shift+8) shows the spaces, tabs and breaks hiding in your text.	Visa/dölj ¶ (Ctrl+Shift+8) visar mellanslag, tabbar och brytningar som gömmer sig i texten.
+	F4 repeats your last action. Formatting ten headings is suddenly one click and nine taps.	F4 upprepar din senaste åtgärd. Att formatera tio rubriker blir plötsligt ett klick och nio tryck.
+	Shift+Enter starts a new line without starting a new paragraph.	Shift+Enter börjar en ny rad utan att börja ett nytt stycke.
+	Ctrl+Shift+G counts your words, characters and paragraphs.	Ctrl+Shift+G räknar dina ord, tecken och stycken.
+	F7 checks the spelling and grammar of the whole document.	F7 kontrollerar stavning och grammatik i hela dokumentet.
+	Ctrl+K turns the selected text into a link.	Ctrl+K gör den markerade texten till en länk.
+	Ctrl+H finds and replaces text, formatting and special characters.	Ctrl+H söker och ersätter text, formatering och specialtecken.
+	View › Focus hides everything but your words. I'll wait outside.	Visa › Fokus döljer allt utom dina ord. Jag väntar utanför.
+	Writer's block? I find staring at the cursor helps. It's been blinking at me for years.	Skrivkramp? Jag brukar stirra på markören. Den har blinkat åt mig i åratal.
+	Still there? I can hear you thinking.	Är du kvar? Jag hör dig tänka.
+	Take your time. The page isn't going anywhere. Neither am I. Ever.	Ta den tid du behöver. Sidan går ingenstans. Inte jag heller. Någonsin.
+	Fun fact: a blank page is just a draft that hasn't been told yet.	Kul fakta: en tom sida är bara ett utkast som ingen har berättat det för än.
+	I'd write something myself, but I'm all nib and no ink.	Jag skulle skriva något själv, men jag är mycket spets och lite bläck.
+	Bold choice. Ctrl+Z is right there if you need it.	Modigt val. Ctrl+Z finns precis här om du behöver det.
+	Gone! Like it was never written. Mostly because it now wasn't.	Borta! Som om det aldrig skrivits. Mest för att det nu faktiskt aldrig har det.
+	Ah, the editing phase. My favourite. Very decisive.	Ah, redigeringsfasen. Min favorit. Mycket beslutsamt.
+	Saved. Saved again. Still saved. It's very saved.	Sparat. Sparat igen. Fortfarande sparat. Det är väldigt sparat.
+	I promise it's saved. I checked. Twice.	Jag lovar att det är sparat. Jag kollade. Två gånger.
+	Your document is now the most saved document in history.	Ditt dokument är nu historiens mest sparade dokument.
+	Ah, Latin. The language of deadlines.	Ah, latin. Deadlinernas officiella språk.
+	Lorem ipsum: because the real words are still at the café.	Lorem ipsum: för att de riktiga orden fortfarande sitter och fikar.
+	Undo, undo, undo… we're time travelling now.	Ångra, ångra, ångra… nu tidsreser vi.
+	Careful, any further back and we'll undo the invention of paper.	Försiktigt, lite längre bak så ångrar vi uppfinningen av papperet.
+	Rewinding. Tell me when to stop.	Spolar tillbaka. Säg till när jag ska stanna.
+	{words} words! I'd throw confetti but I'd have to clean it up.	{words} ord! Jag skulle kasta konfetti, men då måste jag städa upp efteråt.
+	{words} words. That's {words} more than I've written today.	{words} ord. Det är {words} fler än jag har skrivit i dag.
+	{words} words and counting. Literally. I'm counting.	{words} ord och fler blir det. Bokstavligen. Jag räknar.
+	Hi! I'm Nib, your writing assistant. I offer tips, shortcuts and the occasional unsolicited opinion. Shall I stick around?	Hej! Jag är Nib, din skrivassistent. Jag bjuder på tips, kortkommandon och en och annan oombedd åsikt. Ska jag hänga kvar?
+	Keep me around	Häng kvar
+	Not now	Inte nu
+	Tip	Tips
+	From {name}	Från {name}
+	an agent	en agent
+	Don't show me this tip again	Visa inte det här tipset igen
+	Hide	Dölj
+	Sayings	Kvickheter

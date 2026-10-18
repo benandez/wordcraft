@@ -2302,3 +2302,47 @@
 	Show the Assistant	顯示助理
 	Show the tips you asked not to see again.	重新顯示你要求不再顯示的提示。
 	Sometimes	有時
+# The Assistant, Nib: Tips, Sayings and the Balloon (#959)
+	It looks like you're writing a letter. Want an envelope for it, or a letter template to start from?	看起來你在寫信。要為它加個信封，還是從信函範本開始？
+	You started a list. Press Enter twice to end it, or Backspace at the start of an item to turn it back into text.	你開始了一個清單。按兩次 Enter 結束清單，或在項目開頭按 Backspace 將它變回一般文字。
+	Faster: {command} is {key} on the keyboard.	更快的方法：{command} 的鍵盤快速鍵是 {key}。
+	You haven't saved in a while, and AutoSave is off. Save now?	你已經有一陣子沒儲存了，而且自動儲存已關閉。現在儲存嗎？
+	Letter template	信函範本
+	Can't find a command? Press Alt+Q and type what you want to do.	找不到指令？按 Alt+Q，然後輸入你想做的事。
+	Ctrl+Enter starts a new page. Much tidier than pressing Enter until it happens.	Ctrl+Enter 可以開始新的一頁。比一直按 Enter 直到換頁整齊多了。
+	Show/Hide ¶ (Ctrl+Shift+8) shows the spaces, tabs and breaks hiding in your text.	顯示/隱藏 ¶ (Ctrl+Shift+8) 會顯示藏在文字中的空格、定位字元和分隔符號。
+	F4 repeats your last action. Formatting ten headings is suddenly one click and nine taps.	F4 可以重複上一個動作。設定十個標題的格式，一下子就變成點一下再按九下。
+	Shift+Enter starts a new line without starting a new paragraph.	Shift+Enter 可以換行，但不開始新段落。
+	Ctrl+Shift+G counts your words, characters and paragraphs.	Ctrl+Shift+G 可以計算字數、字元數和段落數。
+	F7 checks the spelling and grammar of the whole document.	F7 可以檢查整份文件的拼字及文法。
+	Ctrl+K turns the selected text into a link.	Ctrl+K 可以將選取的文字變成連結。
+	Ctrl+H finds and replaces text, formatting and special characters.	Ctrl+H 可以尋找及取代文字、格式和特殊字元。
+	View › Focus hides everything but your words. I'll wait outside.	檢視 › 專注 會隱藏文字以外的一切。我在外面等你。
+	Writer's block? I find staring at the cursor helps. It's been blinking at me for years.	寫不出來？我發現一直看著游標滿有用的。它已經對我閃了好多年了。
+	Still there? I can hear you thinking.	還在嗎？我都聽得到你在想。
+	Take your time. The page isn't going anywhere. Neither am I. Ever.	慢慢來。頁面不會消失的。我也不會。一直都在。
+	Fun fact: a blank page is just a draft that hasn't been told yet.	冷知識：空白頁只是一份還沒被告知內容的草稿。
+	I'd write something myself, but I'm all nib and no ink.	我也想自己寫點文字，可惜我是支沒墨水的筆。
+	Bold choice. Ctrl+Z is right there if you need it.	大膽的選擇。需要的話，Ctrl+Z 就在旁邊。
+	Gone! Like it was never written. Mostly because it now wasn't.	不見了！就像從沒寫過一樣。主要是因為現在真的沒寫過了。
+	Ah, the editing phase. My favourite. Very decisive.	啊，修改階段。我的最愛。真果斷。
+	Saved. Saved again. Still saved. It's very saved.	已儲存。又儲存了。仍然已儲存。存到不能再存了。
+	I promise it's saved. I checked. Twice.	我保證已經儲存了。我檢查過了。兩次。
+	Your document is now the most saved document in history.	你的文件現在是史上儲存次數最多的文件。
+	Ah, Latin. The language of deadlines.	啊，拉丁文。交稿前最流行的語言。
+	Lorem ipsum: because the real words are still at the café.	Lorem ipsum：因為真正的文字還在路上。
+	Undo, undo, undo… we're time travelling now.	復原、復原、復原……我們這是在時光倒流了。
+	Careful, any further back and we'll undo the invention of paper.	小心，再退下去，連造紙術都要被復原掉了。
+	Rewinding. Tell me when to stop.	倒帶中。要停的時候告訴我。
+	{words} words! I'd throw confetti but I'd have to clean it up.	{words} 個字！我想放彩帶，但之後還得自己清理。
+	{words} words. That's {words} more than I've written today.	{words} 個字。比我今天寫的多了 {words} 個。
+	{words} words and counting. Literally. I'm counting.	{words} 個字，還在增加。真的，我在數。
+	Hi! I'm Nib, your writing assistant. I offer tips, shortcuts and the occasional unsolicited opinion. Shall I stick around?	你好！我是 Nib，你的寫作助理。我會提供提示、快速鍵，偶爾還有你沒問過的意見。要我留下來嗎？
+	Keep me around	留下來吧
+	Not now	以後再說
+	Tip	提示
+	From {name}	來自 {name}
+	an agent	代理程式
+	Don't show me this tip again	不要再顯示此提示
+	Hide	隱藏
+	Sayings	俏皮話

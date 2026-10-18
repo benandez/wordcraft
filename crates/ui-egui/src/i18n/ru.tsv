@@ -2710,3 +2710,47 @@ preview	Title	Пример
 	Show the Assistant	Показывать помощника
 	Show the tips you asked not to see again.	Снова показывать советы, которые вы скрыли.
 	Sometimes	Иногда
+# The Assistant, Nib: Tips, Sayings and the Balloon (#959)
+	It looks like you're writing a letter. Want an envelope for it, or a letter template to start from?	Похоже, вы пишете письмо. Подготовить для него конверт или начать с шаблона письма?
+	You started a list. Press Enter twice to end it, or Backspace at the start of an item to turn it back into text.	Вы начали список. Нажмите Enter дважды, чтобы его завершить, или Backspace в начале пункта, чтобы снова сделать его обычным текстом.
+	Faster: {command} is {key} on the keyboard.	Быстрее: {command} — это {key} на клавиатуре.
+	You haven't saved in a while, and AutoSave is off. Save now?	Вы давно не сохранялись, а автосохранение выключено. Сохранить сейчас?
+	Letter template	Шаблон письма
+	Can't find a command? Press Alt+Q and type what you want to do.	Не можете найти команду? Нажмите Alt+Q и напишите, что хотите сделать.
+	Ctrl+Enter starts a new page. Much tidier than pressing Enter until it happens.	Ctrl+Enter начинает новую страницу. Гораздо аккуратнее, чем жать Enter, пока она не появится.
+	Show/Hide ¶ (Ctrl+Shift+8) shows the spaces, tabs and breaks hiding in your text.	Показать/скрыть ¶ (Ctrl+Shift+8) показывает пробелы, табуляции и разрывы, которые прячутся в тексте.
+	F4 repeats your last action. Formatting ten headings is suddenly one click and nine taps.	F4 повторяет последнее действие. Оформить десять заголовков — теперь один щелчок и девять нажатий.
+	Shift+Enter starts a new line without starting a new paragraph.	Shift+Enter начинает новую строку, не начиная новый абзац.
+	Ctrl+Shift+G counts your words, characters and paragraphs.	Ctrl+Shift+G считает слова, знаки и абзацы.
+	F7 checks the spelling and grammar of the whole document.	F7 проверяет орфографию и грамматику во всём документе.
+	Ctrl+K turns the selected text into a link.	Ctrl+K превращает выделенный текст в ссылку.
+	Ctrl+H finds and replaces text, formatting and special characters.	Ctrl+H находит и заменяет текст, форматирование и специальные знаки.
+	View › Focus hides everything but your words. I'll wait outside.	Вид › Фокус скрывает всё, кроме ваших слов. Я подожду снаружи.
+	Writer's block? I find staring at the cursor helps. It's been blinking at me for years.	Творческий кризис? Мне помогает смотреть на курсор. Он мигает мне уже много лет.
+	Still there? I can hear you thinking.	Вы ещё здесь? Я слышу, как вы думаете.
+	Take your time. The page isn't going anywhere. Neither am I. Ever.	Не торопитесь. Страница никуда не денется. Как и я. Никогда.
+	Fun fact: a blank page is just a draft that hasn't been told yet.	Забавный факт: чистая страница — это просто черновик, которому ещё не рассказали, о чём он.
+	I'd write something myself, but I'm all nib and no ink.	Я бы и сам что-нибудь написал, но я перо без чернил. Сплошной нажим, ноль результата.
+	Bold choice. Ctrl+Z is right there if you need it.	Смелый выбор. Ctrl+Z рядом, если что.
+	Gone! Like it was never written. Mostly because it now wasn't.	Исчезло! Как будто и не писалось. В основном потому, что теперь и правда не писалось.
+	Ah, the editing phase. My favourite. Very decisive.	А, этап правки. Мой любимый. Очень решительный.
+	Saved. Saved again. Still saved. It's very saved.	Сохранено. Снова сохранено. Всё ещё сохранено. Очень сохранено.
+	I promise it's saved. I checked. Twice.	Честное слово, сохранено. Я проверил. Дважды.
+	Your document is now the most saved document in history.	Ваш документ теперь самый сохранённый документ в истории.
+	Ah, Latin. The language of deadlines.	А, латынь. Мёртвый язык — родной язык дедлайнов.
+	Lorem ipsum: because the real words are still at the café.	Lorem ipsum: потому что настоящие слова ещё сидят в кафе.
+	Undo, undo, undo… we're time travelling now.	Отменить, отменить, отменить… мы уже путешествуем во времени.
+	Careful, any further back and we'll undo the invention of paper.	Осторожно, ещё чуть назад — и мы отменим изобретение бумаги.
+	Rewinding. Tell me when to stop.	Перематываю. Скажите, когда остановиться.
+	{words} words! I'd throw confetti but I'd have to clean it up.	Слов: {words}! Я бы осыпал вас конфетти, но потом самому убирать.
+	{words} words. That's {words} more than I've written today.	Слов: {words}. Это на {words} больше, чем я написал сегодня.
+	{words} words and counting. Literally. I'm counting.	Слов: {words}, и счёт идёт. Буквально. Я считаю.
+	Hi! I'm Nib, your writing assistant. I offer tips, shortcuts and the occasional unsolicited opinion. Shall I stick around?	Привет! Я Nib, ваш помощник по письму. Я даю советы, подсказываю сочетания клавиш и иногда высказываю непрошеное мнение. Мне остаться?
+	Keep me around	Оставайся
+	Not now	Не сейчас
+	Tip	Совет
+	From {name}	От: {name}
+	an agent	агент
+	Don't show me this tip again	Больше не показывать этот совет
+	Hide	Скрыть
+	Sayings	Реплики

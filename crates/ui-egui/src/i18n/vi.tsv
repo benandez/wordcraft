@@ -2752,3 +2752,47 @@ template	Letter	Thư
 	Show the Assistant	Hiện trợ lý
 	Show the tips you asked not to see again.	Hiện lại các mẹo bạn đã yêu cầu ẩn.
 	Sometimes	Thỉnh thoảng
+# The Assistant, Nib: Tips, Sayings and the Balloon (#959)
+	It looks like you're writing a letter. Want an envelope for it, or a letter template to start from?	Có vẻ bạn đang viết thư. Bạn muốn một phong bì cho nó, hay một mẫu thư để bắt đầu?
+	You started a list. Press Enter twice to end it, or Backspace at the start of an item to turn it back into text.	Bạn vừa bắt đầu một danh sách. Nhấn Enter hai lần để kết thúc, hoặc nhấn Backspace ở đầu một mục để chuyển nó lại thành văn bản.
+	Faster: {command} is {key} on the keyboard.	Nhanh hơn: {command} là {key} trên bàn phím.
+	You haven't saved in a while, and AutoSave is off. Save now?	Đã lâu bạn chưa lưu, và Tự động lưu đang tắt. Lưu ngay nhé?
+	Letter template	Mẫu thư
+	Can't find a command? Press Alt+Q and type what you want to do.	Không tìm thấy lệnh? Nhấn Alt+Q rồi gõ điều bạn muốn làm.
+	Ctrl+Enter starts a new page. Much tidier than pressing Enter until it happens.	Ctrl+Enter bắt đầu một trang mới. Gọn gàng hơn nhiều so với nhấn Enter mãi cho đến khi sang trang.
+	Show/Hide ¶ (Ctrl+Shift+8) shows the spaces, tabs and breaks hiding in your text.	Hiện/Ẩn ¶ (Ctrl+Shift+8) hiển thị các dấu cách, tab và dấu ngắt đang ẩn trong văn bản của bạn.
+	F4 repeats your last action. Formatting ten headings is suddenly one click and nine taps.	F4 lặp lại thao tác cuối cùng. Định dạng mười tiêu đề bỗng chỉ còn một cú nhấp và chín lần gõ phím.
+	Shift+Enter starts a new line without starting a new paragraph.	Shift+Enter bắt đầu một dòng mới mà không bắt đầu đoạn mới.
+	Ctrl+Shift+G counts your words, characters and paragraphs.	Ctrl+Shift+G đếm số từ, ký tự và đoạn của bạn.
+	F7 checks the spelling and grammar of the whole document.	F7 kiểm tra chính tả và ngữ pháp của toàn bộ tài liệu.
+	Ctrl+K turns the selected text into a link.	Ctrl+K biến văn bản đã chọn thành liên kết.
+	Ctrl+H finds and replaces text, formatting and special characters.	Ctrl+H tìm và thay thế văn bản, định dạng và ký tự đặc biệt.
+	View › Focus hides everything but your words. I'll wait outside.	Xem › Tập trung ẩn mọi thứ trừ câu chữ của bạn. Tôi sẽ đợi bên ngoài.
+	Writer's block? I find staring at the cursor helps. It's been blinking at me for years.	Bí ý tưởng? Tôi thấy nhìn chằm chằm vào con trỏ khá có ích. Nó đã nháy mắt với tôi nhiều năm rồi.
+	Still there? I can hear you thinking.	Còn đó không? Tôi nghe thấy bạn đang suy nghĩ đấy.
+	Take your time. The page isn't going anywhere. Neither am I. Ever.	Cứ từ từ. Trang giấy không chạy đi đâu cả. Tôi cũng vậy. Không bao giờ.
+	Fun fact: a blank page is just a draft that hasn't been told yet.	Sự thật thú vị: trang trắng chỉ là một bản nháp chưa ai kể cho nghe.
+	I'd write something myself, but I'm all nib and no ink.	Tôi cũng muốn tự viết gì đó, nhưng tôi có ngòi mà không có mực. Sắc sảo thì có, nội dung thì không.
+	Bold choice. Ctrl+Z is right there if you need it.	Lựa chọn táo bạo. Ctrl+Z ở ngay đó nếu bạn cần.
+	Gone! Like it was never written. Mostly because it now wasn't.	Biến mất! Như thể chưa từng được viết. Chủ yếu vì giờ nó đúng là chưa được viết.
+	Ah, the editing phase. My favourite. Very decisive.	À, giai đoạn biên tập. Giai đoạn tôi thích nhất. Rất quyết đoán.
+	Saved. Saved again. Still saved. It's very saved.	Đã lưu. Lại lưu. Vẫn lưu. Lưu kỹ lắm rồi.
+	I promise it's saved. I checked. Twice.	Tôi hứa là đã lưu. Tôi kiểm tra rồi. Hai lần.
+	Your document is now the most saved document in history.	Tài liệu của bạn giờ là tài liệu được lưu nhiều nhất lịch sử.
+	Ah, Latin. The language of deadlines.	À, tiếng Latin. Một ngôn ngữ chết, giống hệt hạn chót hôm qua.
+	Lorem ipsum: because the real words are still at the café.	Lorem ipsum: vì những chữ thật vẫn đang ngồi ở quán cà phê.
+	Undo, undo, undo… we're time travelling now.	Hoàn tác, hoàn tác, hoàn tác… giờ chúng ta đang du hành thời gian.
+	Careful, any further back and we'll undo the invention of paper.	Cẩn thận, lùi thêm chút nữa là chúng ta hoàn tác luôn việc phát minh ra giấy.
+	Rewinding. Tell me when to stop.	Đang tua lại. Bảo tôi khi nào dừng nhé.
+	{words} words! I'd throw confetti but I'd have to clean it up.	{words} từ! Tôi muốn tung pháo giấy nhưng rồi lại phải tự dọn.
+	{words} words. That's {words} more than I've written today.	{words} từ. Hơn số từ tôi viết hôm nay đúng {words} từ.
+	{words} words and counting. Literally. I'm counting.	{words} từ và vẫn đang tăng. Theo nghĩa đen. Tôi đang đếm đây.
+	Hi! I'm Nib, your writing assistant. I offer tips, shortcuts and the occasional unsolicited opinion. Shall I stick around?	Xin chào! Tôi là Nib, trợ lý viết của bạn. Tôi đưa ra mẹo, phím tắt và thỉnh thoảng cả vài ý kiến không ai hỏi. Tôi ở lại nhé?
+	Keep me around	Ở lại đi
+	Not now	Để sau
+	Tip	Mẹo
+	From {name}	Từ {name}
+	an agent	một tác tử
+	Don't show me this tip again	Đừng hiện lại mẹo này
+	Hide	Ẩn
+	Sayings	Lời bình

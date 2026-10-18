@@ -2708,3 +2708,47 @@
 	Show the Assistant	Az asszisztens megjelenítése
 	Show the tips you asked not to see again.	Újra megjeleníti az elrejtett tippeket.
 	Sometimes	Néha
+# The Assistant, Nib: Tips, Sayings and the Balloon (#959)
+	It looks like you're writing a letter. Want an envelope for it, or a letter template to start from?	Úgy tűnik, levelet írsz. Kérsz hozzá borítékot, vagy egy levélsablont, amelyből kiindulhatsz?
+	You started a list. Press Enter twice to end it, or Backspace at the start of an item to turn it back into text.	Listát kezdtél. A befejezéshez nyomd meg kétszer az Entert, vagy egy elem elején a Backspace-t, hogy visszaalakítsd szöveggé.
+	Faster: {command} is {key} on the keyboard.	Gyorsabban megy: {command} billentyűparancsa {key}.
+	You haven't saved in a while, and AutoSave is off. Save now?	Egy ideje nem mentettél, és az Automatikus mentés ki van kapcsolva. Mentsünk most?
+	Letter template	Levélsablon
+	Can't find a command? Press Alt+Q and type what you want to do.	Nem találsz egy parancsot? Nyomd meg az Alt+Q billentyűt, és írd be, mit szeretnél tenni.
+	Ctrl+Enter starts a new page. Much tidier than pressing Enter until it happens.	A Ctrl+Enter új oldalt kezd. Sokkal rendezettebb, mint addig nyomkodni az Entert, amíg magától megtörténik.
+	Show/Hide ¶ (Ctrl+Shift+8) shows the spaces, tabs and breaks hiding in your text.	A Megjelenítés/elrejtés ¶ (Ctrl+Shift+8) megmutatja a szövegedben rejtőző szóközöket, tabulátorokat és töréseket.
+	F4 repeats your last action. Formatting ten headings is suddenly one click and nine taps.	Az F4 megismétli az utolsó műveletet. Tíz címsor formázása hirtelen egy kattintás és kilenc koppintás.
+	Shift+Enter starts a new line without starting a new paragraph.	A Shift+Enter új sort kezd anélkül, hogy új bekezdést kezdene.
+	Ctrl+Shift+G counts your words, characters and paragraphs.	A Ctrl+Shift+G megszámolja a szavaidat, karaktereidet és bekezdéseidet.
+	F7 checks the spelling and grammar of the whole document.	Az F7 ellenőrzi az egész dokumentum helyesírását és nyelvtanát.
+	Ctrl+K turns the selected text into a link.	A Ctrl+K linkké alakítja a kijelölt szöveget.
+	Ctrl+H finds and replaces text, formatting and special characters.	A Ctrl+H szöveget, formázást és speciális karaktereket keres és cserél.
+	View › Focus hides everything but your words. I'll wait outside.	Nézet › Fókusz: minden eltűnik, csak a szavaid maradnak. Kint várok.
+	Writer's block? I find staring at the cursor helps. It's been blinking at me for years.	Írói válság? Nekem a kurzor bámulása segít. Évek óta pislog rám.
+	Still there? I can hear you thinking.	Ott vagy még? Hallom, ahogy gondolkodsz.
+	Take your time. The page isn't going anywhere. Neither am I. Ever.	Csak nyugodtan. A lap nem szalad el. Én sem. Soha.
+	Fun fact: a blank page is just a draft that hasn't been told yet.	Érdekesség: az üres lap csak egy piszkozat, amelynek még senki nem mondta el, miről szól.
+	I'd write something myself, but I'm all nib and no ink.	Írnék én is valamit, de csak egy hegy vagyok tinta nélkül. Nagy a szám, de üres a tartály.
+	Bold choice. Ctrl+Z is right there if you need it.	Merész választás. A Ctrl+Z ott van, ha kell.
+	Gone! Like it was never written. Mostly because it now wasn't.	Eltűnt! Mintha sosem írták volna le. Főleg azért, mert most már tényleg nem.
+	Ah, the editing phase. My favourite. Very decisive.	Á, a szerkesztési fázis. A kedvencem. Nagyon határozott.
+	Saved. Saved again. Still saved. It's very saved.	Mentve. Újra mentve. Még mindig mentve. Nagyon mentve van.
+	I promise it's saved. I checked. Twice.	Ígérem, el van mentve. Megnéztem. Kétszer.
+	Your document is now the most saved document in history.	A dokumentumod mostantól a történelem legtöbbet mentett dokumentuma.
+	Ah, Latin. The language of deadlines.	Á, latin. Holt nyelv, akárcsak a tegnapi határidő.
+	Lorem ipsum: because the real words are still at the café.	Lorem ipsum: mert az igazi szavak még a kávézóban ülnek.
+	Undo, undo, undo… we're time travelling now.	Visszavonás, visszavonás, visszavonás… most már időutazunk.
+	Careful, any further back and we'll undo the invention of paper.	Óvatosan, még egy kicsit vissza, és visszavonjuk a papír feltalálását.
+	Rewinding. Tell me when to stop.	Visszatekerés. Szólj, mikor álljak meg.
+	{words} words! I'd throw confetti but I'd have to clean it up.	{words} szó! Szórnék konfettit, de utána nekem kéne feltakarítani.
+	{words} words. That's {words} more than I've written today.	{words} szó. Ez {words} szóval több, mint amennyit ma én írtam.
+	{words} words and counting. Literally. I'm counting.	{words} szó, és a számláló pörög. Szó szerint. Én számolok.
+	Hi! I'm Nib, your writing assistant. I offer tips, shortcuts and the occasional unsolicited opinion. Shall I stick around?	Szia! Nib vagyok, az íróasszisztensed. Tippeket, billentyűparancsokat és néha kéretlen véleményt is adok. Maradjak?
+	Keep me around	Maradj csak
+	Not now	Most nem
+	Tip	Tipp
+	From {name}	Feladó: {name}
+	an agent	ügynök
+	Don't show me this tip again	Ne mutasd többé ezt a tippet
+	Hide	Elrejtés
+	Sayings	Beszólások

@@ -2712,3 +2712,47 @@ preview	Title	Naslov
 	Show the Assistant	Prikaži asistenta
 	Show the tips you asked not to see again.	Ponovno prikazuje savjete koje ste sakrili.
 	Sometimes	Ponekad
+# The Assistant, Nib: Tips, Sayings and the Balloon (#959)
+	It looks like you're writing a letter. Want an envelope for it, or a letter template to start from?	Čini se da pišete pismo. Želite li omotnicu za njega ili predložak pisma za početak?
+	You started a list. Press Enter twice to end it, or Backspace at the start of an item to turn it back into text.	Započeli ste popis. Pritisnite Enter dvaput da ga završite ili Backspace na početku stavke da je ponovno pretvorite u tekst.
+	Faster: {command} is {key} on the keyboard.	Brže: {command} je {key} na tipkovnici.
+	You haven't saved in a while, and AutoSave is off. Save now?	Dugo niste spremali, a automatsko spremanje je isključeno. Spremiti sada?
+	Letter template	Predložak pisma
+	Can't find a command? Press Alt+Q and type what you want to do.	Ne možete pronaći naredbu? Pritisnite Alt+Q i upišite što želite učiniti.
+	Ctrl+Enter starts a new page. Much tidier than pressing Enter until it happens.	Ctrl+Enter započinje novu stranicu. Puno urednije nego pritiskati Enter dok se ne dogodi.
+	Show/Hide ¶ (Ctrl+Shift+8) shows the spaces, tabs and breaks hiding in your text.	Prikaži/sakrij ¶ (Ctrl+Shift+8) prikazuje razmake, tabulatore i prijelome koji se skrivaju u vašem tekstu.
+	F4 repeats your last action. Formatting ten headings is suddenly one click and nine taps.	F4 ponavlja vašu zadnju radnju. Oblikovanje deset naslova odjednom postaje jedan klik i devet pritisaka.
+	Shift+Enter starts a new line without starting a new paragraph.	Shift+Enter započinje novi redak bez započinjanja novog odlomka.
+	Ctrl+Shift+G counts your words, characters and paragraphs.	Ctrl+Shift+G broji vaše riječi, znakove i odlomke.
+	F7 checks the spelling and grammar of the whole document.	F7 provjerava pravopis i gramatiku cijelog dokumenta.
+	Ctrl+K turns the selected text into a link.	Ctrl+K pretvara odabrani tekst u poveznicu.
+	Ctrl+H finds and replaces text, formatting and special characters.	Ctrl+H traži i zamjenjuje tekst, oblikovanje i posebne znakove.
+	View › Focus hides everything but your words. I'll wait outside.	Prikaz › Fokus skriva sve osim vaših riječi. Čekat ću vani.
+	Writer's block? I find staring at the cursor helps. It's been blinking at me for years.	Spisateljska blokada? Meni pomaže buljiti u pokazivač. Trepće mi već godinama.
+	Still there? I can hear you thinking.	Još ste tu? Čujem kako razmišljate.
+	Take your time. The page isn't going anywhere. Neither am I. Ever.	Polako. Stranica ne ide nikamo. Ne idem ni ja. Nikad.
+	Fun fact: a blank page is just a draft that hasn't been told yet.	Zanimljivost: prazna stranica samo je skica kojoj još nitko nije rekao što će biti.
+	I'd write something myself, but I'm all nib and no ink.	I sam bih nešto napisao, ali ja sam pero bez tinte. Sav u pritisku, a ni slova.
+	Bold choice. Ctrl+Z is right there if you need it.	Hrabar izbor. Ctrl+Z je tu ako zatreba.
+	Gone! Like it was never written. Mostly because it now wasn't.	Nestalo! Kao da nikad nije ni napisano. Uglavnom zato što sad više i nije.
+	Ah, the editing phase. My favourite. Very decisive.	A, faza uređivanja. Moja omiljena. Vrlo odlučno.
+	Saved. Saved again. Still saved. It's very saved.	Spremljeno. Opet spremljeno. I dalje spremljeno. Baš je spremljeno.
+	I promise it's saved. I checked. Twice.	Obećavam da je spremljeno. Provjerio sam. Dvaput.
+	Your document is now the most saved document in history.	Vaš je dokument sada najspremljeniji dokument u povijesti.
+	Ah, Latin. The language of deadlines.	A, latinski. Mrtav jezik — materinji jezik krajnjih rokova.
+	Lorem ipsum: because the real words are still at the café.	Lorem ipsum: jer prave riječi još sjede u kafiću.
+	Undo, undo, undo… we're time travelling now.	Poništi, poništi, poništi… sad putujemo kroz vrijeme.
+	Careful, any further back and we'll undo the invention of paper.	Oprezno, još malo unatrag i poništit ćemo izum papira.
+	Rewinding. Tell me when to stop.	Premotavam. Recite kad da stanem.
+	{words} words! I'd throw confetti but I'd have to clean it up.	Riječi: {words}! Bacio bih konfete, ali onda bih ih morao pospremiti.
+	{words} words. That's {words} more than I've written today.	Riječi: {words}. To je {words} više nego što sam ja danas napisao.
+	{words} words and counting. Literally. I'm counting.	Riječi: {words}, i brojim dalje. Doslovno. Ja brojim.
+	Hi! I'm Nib, your writing assistant. I offer tips, shortcuts and the occasional unsolicited opinion. Shall I stick around?	Bok! Ja sam Nib, vaš pomoćnik za pisanje. Nudim savjete, prečace i pokoje nepozvano mišljenje. Da ostanem?
+	Keep me around	Ostani
+	Not now	Ne sada
+	Tip	Savjet
+	From {name}	Od: {name}
+	an agent	agent
+	Don't show me this tip again	Ne prikazuj mi više ovaj savjet
+	Hide	Sakrij
+	Sayings	Opaske

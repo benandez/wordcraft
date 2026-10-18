@@ -2315,3 +2315,47 @@
 	Show the Assistant	Прикажи асистента
 	Show the tips you asked not to see again.	Поново приказује савете које сте сакрили.
 	Sometimes	Понекад
+# The Assistant, Nib: Tips, Sayings and the Balloon (#959)
+	It looks like you're writing a letter. Want an envelope for it, or a letter template to start from?	Изгледа да пишете писмо. Да ли вам треба коверта за њега или шаблон писма за почетак?
+	You started a list. Press Enter twice to end it, or Backspace at the start of an item to turn it back into text.	Започели сте листу. Притисните Enter двапут да је завршите или Backspace на почетку ставке да је поново претворите у текст.
+	Faster: {command} is {key} on the keyboard.	Брже: {command} је {key} на тастатури.
+	You haven't saved in a while, and AutoSave is off. Save now?	Дуго нисте сачували, а аутоматско чување је искључено. Сачувати сада?
+	Letter template	Шаблон писма
+	Can't find a command? Press Alt+Q and type what you want to do.	Не можете да нађете команду? Притисните Alt+Q и откуцајте шта желите да урадите.
+	Ctrl+Enter starts a new page. Much tidier than pressing Enter until it happens.	Ctrl+Enter почиње нову страницу. Много уредније него притискати Enter док се не деси.
+	Show/Hide ¶ (Ctrl+Shift+8) shows the spaces, tabs and breaks hiding in your text.	Прикажи/сакриј ¶ (Ctrl+Shift+8) приказује размаке, табулаторе и преломе који се крију у вашем тексту.
+	F4 repeats your last action. Formatting ten headings is suddenly one click and nine taps.	F4 понавља последњу радњу. Форматирање десет наслова одједном постаје један клик и девет притисака.
+	Shift+Enter starts a new line without starting a new paragraph.	Shift+Enter почиње нови ред без започињања новог пасуса.
+	Ctrl+Shift+G counts your words, characters and paragraphs.	Ctrl+Shift+G броји ваше речи, знакове и пасусе.
+	F7 checks the spelling and grammar of the whole document.	F7 проверава правопис и граматику целог документа.
+	Ctrl+K turns the selected text into a link.	Ctrl+K претвара изабрани текст у везу.
+	Ctrl+H finds and replaces text, formatting and special characters.	Ctrl+H проналази и замењује текст, обликовање и специјалне знакове.
+	View › Focus hides everything but your words. I'll wait outside.	Приказ › Фокус скрива све осим ваших речи. Чекаћу напољу.
+	Writer's block? I find staring at the cursor helps. It's been blinking at me for years.	Блокада писца? Мени помаже да буљим у курсор. Трепће ми већ годинама.
+	Still there? I can hear you thinking.	Још сте ту? Чујем како размишљате.
+	Take your time. The page isn't going anywhere. Neither am I. Ever.	Полако. Страница не иде никуд. Не идем ни ја. Никад.
+	Fun fact: a blank page is just a draft that hasn't been told yet.	Занимљивост: празна страница је само нацрт коме још нико није рекао шта ће бити.
+	I'd write something myself, but I'm all nib and no ink.	И сам бих нешто написао, али ја сам перо без мастила. Сав у притиску, а ни слова.
+	Bold choice. Ctrl+Z is right there if you need it.	Храбар избор. Ctrl+Z је ту ако затреба.
+	Gone! Like it was never written. Mostly because it now wasn't.	Нестало! Као да никад није ни написано. Углавном зато што сад више и није.
+	Ah, the editing phase. My favourite. Very decisive.	А, фаза уређивања. Моја омиљена. Веома одлучно.
+	Saved. Saved again. Still saved. It's very saved.	Сачувано. Опет сачувано. И даље сачувано. Баш је сачувано.
+	I promise it's saved. I checked. Twice.	Обећавам да је сачувано. Проверио сам. Двапут.
+	Your document is now the most saved document in history.	Ваш документ је сада најсачуванији документ у историји.
+	Ah, Latin. The language of deadlines.	А, латински. Мртав језик — матерњи језик крајњих рокова.
+	Lorem ipsum: because the real words are still at the café.	Lorem ipsum: јер праве речи још седе у кафићу.
+	Undo, undo, undo… we're time travelling now.	Опозови, опозови, опозови… сада путујемо кроз време.
+	Careful, any further back and we'll undo the invention of paper.	Пажљиво, још мало уназад и опозваћемо проналазак папира.
+	Rewinding. Tell me when to stop.	Премотавам. Реците кад да станем.
+	{words} words! I'd throw confetti but I'd have to clean it up.	Речи: {words}! Бацио бих конфете, али онда бих морао да их почистим.
+	{words} words. That's {words} more than I've written today.	Речи: {words}. То је {words} више него што сам ја данас написао.
+	{words} words and counting. Literally. I'm counting.	Речи: {words}, и бројим даље. Буквално. Ја бројим.
+	Hi! I'm Nib, your writing assistant. I offer tips, shortcuts and the occasional unsolicited opinion. Shall I stick around?	Здраво! Ја сам Nib, ваш помоћник за писање. Нудим савете, пречице и понеко ненаручено мишљење. Да останем?
+	Keep me around	Остани
+	Not now	Не сада
+	Tip	Савет
+	From {name}	Од: {name}
+	an agent	агент
+	Don't show me this tip again	Не приказуј више овај савет
+	Hide	Сакриј
+	Sayings	Опаске

@@ -2555,3 +2555,47 @@ preview	Title	제목
 	Show the Assistant	도우미 표시
 	Show the tips you asked not to see again.	숨긴 팁을 다시 표시합니다.
 	Sometimes	가끔
+# The Assistant, Nib: Tips, Sayings and the Balloon (#959)
+	It looks like you're writing a letter. Want an envelope for it, or a letter template to start from?	편지를 쓰시는 것 같네요. 봉투를 만들까요, 아니면 편지 서식 파일로 시작할까요?
+	You started a list. Press Enter twice to end it, or Backspace at the start of an item to turn it back into text.	목록을 시작하셨네요. 끝내려면 Enter를 두 번 누르고, 일반 텍스트로 되돌리려면 항목 처음에서 Backspace를 누르세요.
+	Faster: {command} is {key} on the keyboard.	더 빠른 방법: {command} 기능은 키보드에서 {key}입니다.
+	You haven't saved in a while, and AutoSave is off. Save now?	한동안 저장하지 않으셨고 자동 저장도 꺼져 있어요. 지금 저장할까요?
+	Letter template	편지 서식 파일
+	Can't find a command? Press Alt+Q and type what you want to do.	명령을 찾을 수 없나요? Alt+Q를 누르고 하고 싶은 일을 입력하세요.
+	Ctrl+Enter starts a new page. Much tidier than pressing Enter until it happens.	Ctrl+Enter를 누르면 새 페이지가 시작됩니다. 페이지가 넘어갈 때까지 Enter를 누르는 것보다 훨씬 깔끔해요.
+	Show/Hide ¶ (Ctrl+Shift+8) shows the spaces, tabs and breaks hiding in your text.	¶ 표시/숨기기(Ctrl+Shift+8)를 사용하면 텍스트에 숨은 공백, 탭, 나누기가 보입니다.
+	F4 repeats your last action. Formatting ten headings is suddenly one click and nine taps.	F4를 누르면 마지막 작업이 반복됩니다. 제목 열 개 서식 지정이 순식간에 클릭 한 번과 키 아홉 번으로 끝나요.
+	Shift+Enter starts a new line without starting a new paragraph.	Shift+Enter를 누르면 새 단락 없이 줄만 바꿉니다.
+	Ctrl+Shift+G counts your words, characters and paragraphs.	Ctrl+Shift+G를 누르면 단어, 문자, 단락 수를 세어 줍니다.
+	F7 checks the spelling and grammar of the whole document.	F7을 누르면 문서 전체의 맞춤법 및 문법을 검사합니다.
+	Ctrl+K turns the selected text into a link.	Ctrl+K를 누르면 선택한 텍스트가 링크로 바뀝니다.
+	Ctrl+H finds and replaces text, formatting and special characters.	Ctrl+H를 누르면 텍스트, 서식, 특수 문자를 찾아 바꿀 수 있습니다.
+	View › Focus hides everything but your words. I'll wait outside.	보기 › 집중을 사용하면 글자 외에는 모두 숨겨집니다. 저는 밖에서 기다릴게요.
+	Writer's block? I find staring at the cursor helps. It's been blinking at me for years.	글이 막히셨나요? 저는 커서를 가만히 보고 있으면 도움이 되더라고요. 그 커서, 오래전부터 저한테 깜빡이고 있거든요.
+	Still there? I can hear you thinking.	아직 계세요? 생각하는 소리가 들려요.
+	Take your time. The page isn't going anywhere. Neither am I. Ever.	천천히 하세요. 페이지는 어디 안 가요. 저도요. 영원히.
+	Fun fact: a blank page is just a draft that hasn't been told yet.	재미있는 사실: 빈 페이지는 아직 아무 말도 받지 못한 초안일 뿐이에요.
+	I'd write something myself, but I'm all nib and no ink.	저도 무언가 쓰고 싶지만, 펜촉만 있고 잉크는 한 방울도 없어요.
+	Bold choice. Ctrl+Z is right there if you need it.	과감한 선택이네요. 필요하면 Ctrl+Z가 바로 옆에 있어요.
+	Gone! Like it was never written. Mostly because it now wasn't.	사라졌다! 처음부터 안 쓴 것처럼요. 사실 이제 정말 안 쓴 거니까요.
+	Ah, the editing phase. My favourite. Very decisive.	아, 편집 단계군요. 제가 제일 좋아하는 시간이에요. 아주 결단력 있으시네요.
+	Saved. Saved again. Still saved. It's very saved.	저장했어요. 또 저장했어요. 여전히 저장됨. 아주 확실히 저장됐어요.
+	I promise it's saved. I checked. Twice.	정말 저장됐어요. 확인했어요. 두 번이나요.
+	Your document is now the most saved document in history.	이 문서는 이제 역사상 가장 많이 저장된 문서예요.
+	Ah, Latin. The language of deadlines.	아, 라틴어군요. 마감 직전에 다들 쓰는 언어죠.
+	Lorem ipsum: because the real words are still at the café.	Lorem ipsum: 진짜 글은 아직 카페에서 쉬는 중이라서요.
+	Undo, undo, undo… we're time travelling now.	실행 취소, 실행 취소, 실행 취소… 이제 시간 여행 중이에요.
+	Careful, any further back and we'll undo the invention of paper.	조심하세요. 더 돌아가면 종이의 발명까지 실행 취소하겠어요.
+	Rewinding. Tell me when to stop.	되감는 중. 멈출 때 말해 주세요.
+	{words} words! I'd throw confetti but I'd have to clean it up.	{words}단어! 축하 종이를 날리고 싶지만 정리는 제가 해야 해서요.
+	{words} words. That's {words} more than I've written today.	{words}단어. 제가 오늘 쓴 것보다 {words}단어 더 많네요.
+	{words} words and counting. Literally. I'm counting.	{words}단어, 계속 늘어나는 중. 진짜로요. 제가 세고 있어요.
+	Hi! I'm Nib, your writing assistant. I offer tips, shortcuts and the occasional unsolicited opinion. Shall I stick around?	안녕하세요! 글쓰기 도우미 Nib이에요. 팁, 바로 가기 키, 그리고 가끔은 묻지도 않은 의견을 드려요. 계속 함께 있을까요?
+	Keep me around	계속 있어 주세요
+	Not now	나중에
+	Tip	팁
+	From {name}	보낸 사람: {name}
+	an agent	에이전트
+	Don't show me this tip again	이 팁을 다시 표시 안 함
+	Hide	숨기기
+	Sayings	한마디
