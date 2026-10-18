@@ -4446,6 +4446,9 @@ mod tests {
         // body text above).
         let caret = a.session.sel.clone();
         frame(&mut a, vec![btn(at, true)]);
+        // Already at the press, before the release can decide anything.
+        assert_eq!(a.session.sel, caret, "pressing in the footer area doesn't move the caret");
+        assert!((a.canvas.scroll_offset.y - before.y).abs() < 1.0, "pressing doesn't scroll: {before:?} -> {:?}", a.canvas.scroll_offset);
         frame(&mut a, vec![btn(at, false)]);
         for _ in 0..40 {
             frame(&mut a, Vec::new());
