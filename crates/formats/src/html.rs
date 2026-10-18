@@ -280,15 +280,27 @@ pub fn unescape(s: &str) -> String {
     out
 }
 
-/// Decode HTML bytes: BOM, then a `charset` in the first 2 KB, else UTF-8 with a Windows-1252
-/// fallback.
+fn sniff_charset(head: &str) -> Option<&str> {
+    let (i, n) = head.find("charset").map(|i| (i, 7)).or_else(|| head.find("encoding").map(|i| (i, 8)))?;
+    let after = head.get(i + n..)?.trim_start().strip_prefix('=')?;
+    let trimmed = after.trim_start().trim_start_matches(['"', '\'']);
+    let end = trimmed.find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | ';' | '>' | '/')).unwrap_or(trimmed.len());
+    let label = trimmed[..end].trim();
+    if label.is_empty() { None } else { Some(label) }
+}
+
+/// Decode HTML bytes: BOM, then a `charset` in the first 2 KB, else UTF-8 with a legacy fallback.
 pub fn decode(b: &[u8]) -> String {
     if b.starts_with(&[0xFF, 0xFE]) || b.starts_with(&[0xFE, 0xFF]) || b.starts_with(&[0xEF, 0xBB, 0xBF]) {
         return crate::txt::decode(b);
     }
     let head = String::from_utf8_lossy(b.get(..b.len().min(2048)).unwrap_or(b)).to_ascii_lowercase();
-    let latin = head.contains("charset=windows-1252") || head.contains("charset=iso-8859-1") || head.contains("charset=\"windows-1252\"");
-    if !latin && let Ok(s) = std::str::from_utf8(b) {
+    if let Some(label) = sniff_charset(&head)
+        && let Some(s) = crate::txt::decode_as(b, label)
+    {
+        return s;
+    }
+    if let Ok(s) = std::str::from_utf8(b) {
         return s.to_string();
     }
     crate::txt::decode(b)
@@ -1156,8 +1168,18 @@ impl<'r> Builder<'r> {
                         fmt.font = Some(fam);
                     }
                 }
-                if let Some(sz) = attr(attrs, "size").and_then(|s| s.trim().parse::<i32>().ok()) {
-                    fmt.size = Some([7.5, 10.0, 12.0, 13.5, 18.0, 24.0, 36.0].get((sz.clamp(1, 7) - 1) as usize).copied().unwrap_or(12.0));
+                if let Some(sz) = attr(attrs, "size") {
+                    let s = sz.trim();
+                    let val = if let Some(rest) = s.strip_prefix('+') {
+                        rest.parse::<i32>().ok().map(|d| 3 + d)
+                    } else if let Some(rest) = s.strip_prefix('-') {
+                        rest.parse::<i32>().ok().map(|d| 3 - d)
+                    } else {
+                        s.parse::<i32>().ok()
+                    };
+                    if let Some(sz) = val {
+                        fmt.size = Some([7.5, 10.0, 12.0, 13.5, 18.0, 24.0, 36.0].get((sz.clamp(1, 7) - 1) as usize).copied().unwrap_or(12.0));
+                    }
                 }
             }
             "a" => {
@@ -1940,5 +1962,37 @@ mod tests {
         assert_eq!(paras2.len(), 2);
         assert!(!paras2[0].page_break);
         assert!(paras2[1].page_break);
+    }
+
+    #[test]
+    fn font_size_relative_and_absolute() {
+        let f = parse("<font size=\"+1\">larger</font><font size=\"-1\">smaller</font><font size=\"5\">huge</font>");
+        let inls = match &f.blocks[0] {
+            FBlock::Para(p) => &p.inlines,
+            _ => panic!("expected para"),
+        };
+        let sizes: Vec<Option<f32>> = inls
+            .iter()
+            .map(|i| match i {
+                Inline::Text(_, fmt) => fmt.size,
+                _ => None,
+            })
+            .collect();
+        assert_eq!(sizes, vec![Some(13.5), Some(10.0), Some(18.0)]);
+    }
+
+    #[test]
+    fn decode_with_charset_declarations() {
+        let iso = b"<html><head><meta charset=\"iso-8859-1\"></head><body>\xE9l\xE8ve</body></html>";
+        assert!(decode(iso).contains("élève"));
+
+        let win = b"<html><head><meta charset='windows-1252'></head><body>\x80100</body></html>";
+        assert!(decode(win).contains("€100"));
+
+        let gbk = b"<html><head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=gbk\"></head><body>\xC4\xE3\xBA\xC3</body></html>";
+        assert!(decode(gbk).contains("你好"));
+
+        let xml = b"<?xml version=\"1.0\" encoding=\"utf-8\"?><html><body>hello</body></html>";
+        assert!(decode(xml).contains("hello"));
     }
 }
