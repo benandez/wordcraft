@@ -136,8 +136,14 @@ impl eframe::App for WebShell {
             self.app.status(msg);
         }
         self.app.logic(ctx);
-        // Store changed preferences straight away: a reload or closed tab runs no exit code (#2132).
-        if let Some(json) = self.prefs.changed(&self.app) {
+        // Store changed preferences soon after they change: a reload or closed tab runs no exit
+        // code (#2132). Checked at most every CHECK_EVERY seconds, with a repaint owed for the last.
+        let now = ctx.input(|i| i.time);
+        let stored = self.prefs.changed(&self.app, now);
+        if self.prefs.owed() {
+            ctx.request_repaint_after(std::time::Duration::from_secs_f64(crate::prefs::CHECK_EVERY));
+        }
+        if let Some(json) = stored {
             match local_storage() {
                 Some(store) => {
                     if let Err(e) = store.set_item(crate::prefs::KEY, &json) {
