@@ -23,11 +23,16 @@ pub(crate) fn replace(ctx: &egui::Context, p: Pos2, bg: Rgb) -> bool {
     true
 }
 
-/// The I-beam centred on `p`, in `fill`, edged in the opposite colour.
+/// The I-beam centred on `p`, in `fill`, edged in the opposite colour. Its strokes are whole
+/// physical pixels wide and lie on pixel edges, so at 125% or 150% scaling the fill isn't blurred
+/// into the edge (a white I-beam on the dark page read grey).
 fn paint(painter: &egui::Painter, p: Pos2, fill: Color32) {
+    let ppp = painter.ctx().pixels_per_point();
     let edge = if fill == Color32::BLACK { Color32::WHITE } else { Color32::BLACK };
-    let x = p.x.round() + 0.5;
-    let (top, bottom) = (p.y.round() - 8.0, p.y.round() + 8.0);
+    // About 1 pt of fill inside about 1 pt of edge on each side, in whole pixels.
+    let fill_px = ppp.round().max(1.0);
+    let (x, y) = (snap(p.x, ppp, fill_px), snap(p.y, ppp, fill_px));
+    let (top, bottom) = (y - 8.0, y + 8.0);
     let bar = |grow: f32| {
         [
             [egui::pos2(x, top), egui::pos2(x, bottom)],
@@ -36,11 +41,18 @@ fn paint(painter: &egui::Painter, p: Pos2, fill: Color32) {
         ]
     };
     for seg in bar(1.0) {
-        painter.line_segment(seg, Stroke::new(3.0, edge));
+        painter.line_segment(seg, Stroke::new(3.0 * fill_px / ppp, edge));
     }
     for seg in bar(0.0) {
-        painter.line_segment(seg, Stroke::new(1.0, fill));
+        painter.line_segment(seg, Stroke::new(fill_px / ppp, fill));
     }
+}
+
+/// `v` (points) moved so a stroke `width_px` physical pixels wide centred on it covers whole
+/// pixels at `ppp` pixels per point.
+fn snap(v: f32, ppp: f32, width_px: f32) -> f32 {
+    let half = width_px / 2.0;
+    ((v * ppp - half).round() + half) / ppp
 }
 
 #[cfg(test)]
@@ -72,7 +84,7 @@ mod tests {
         h.event(egui::Event::PointerMoved(at));
         h.run_steps(2);
         let out = h.output();
-        let x = at.x.round() + 0.5;
+        let x = super::snap(at.x, 1.0, 1.0);
         let stem = out.shapes.iter().find_map(|c| match &c.shape {
             Shape::LineSegment { points: [a, b], stroke } if a.x == x && b.x == x && stroke.width == 1.0 && (b.y - a.y - 16.0).abs() < 0.01 => {
                 Some(stroke.color)
@@ -90,6 +102,23 @@ mod tests {
         assert_eq!(hover_page(&mut h), (CursorIcon::None, Some(Color32::BLACK)), "white paper");
         let mut h = window(true, true);
         assert_eq!(hover_page(&mut h), (CursorIcon::None, Some(Color32::WHITE)), "dark page");
+    }
+
+    /// #1746 review: at 100%, 125%, 150% and 200% scaling the fill and the edge of a stroke centred
+    /// on a snapped position both start and end on whole physical pixels.
+    #[test]
+    fn strokes_lie_on_whole_pixels() {
+        for ppp in [1.0f32, 1.25, 1.5, 2.0] {
+            let fill_px = ppp.round().max(1.0);
+            for v in [0.0f32, 10.3, 99.5, 400.77] {
+                let c = super::snap(v, ppp, fill_px) * ppp;
+                for w in [fill_px, 3.0 * fill_px] {
+                    let start = c - w / 2.0;
+                    assert!((start - start.round()).abs() < 1e-3, "ppp {ppp}, v {v}, width {w}: starts at pixel {start}");
+                }
+                assert!((c / ppp - v).abs() <= 0.5 / ppp + 1e-3, "stays within half a pixel");
+            }
+        }
     }
 
     /// Elsewhere the system's own I-beam stays.
