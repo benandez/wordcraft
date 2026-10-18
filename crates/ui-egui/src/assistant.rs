@@ -216,11 +216,42 @@ fn dismiss(prefs: &mut Prefs, id: &str) {
     }
 }
 
-/// The text, translated, with its placeholders filled.
+/// The text, translated, with its placeholders filled. `{command}` is a command's English
+/// label, translated like the ribbon's.
 fn offer_text(o: &Offer) -> String {
-    let args: Vec<(&str, &str)> = o.args.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    let args: Vec<(&str, &str)> = o.args.iter().map(|(k, v)| (*k, if *k == "command" { tl!(v.as_str()) } else { v.as_str() })).collect();
     crate::i18n::fmt(tl!(o.text), &args)
 }
+
+/// The interface's own words around Nib (the Balloon, Nib's menu, File › Options), for the
+/// catalog test; the Tips and Sayings come from [`engine::texts`].
+#[cfg(test)]
+pub(crate) const UI_TEXTS: [&str; 24] = [
+    "Hi! I'm Nib, your writing assistant. I offer tips, shortcuts and the occasional unsolicited opinion. Shall I stick around?",
+    "Keep me around",
+    "Not now",
+    "Tip",
+    "From {name}",
+    "an agent",
+    "Close",
+    "OK",
+    "Don't show me this tip again",
+    "Nib, your assistant. Drag to move; right-click for options.",
+    "Hide",
+    "Sayings",
+    "Off",
+    "Sometimes",
+    "Annoying",
+    "Mute agent messages",
+    "Reset tips",
+    "Options…",
+    "Assistant",
+    "Show the Assistant",
+    "Sayings:",
+    "Nib floats over the window with tips and the occasional remark.",
+    "Show the tips you asked not to see again.",
+    "Agents connected to WordCraft can show you messages through the Assistant. Muted, they're told you'd rather not.",
+];
 
 /// Clip to `max` characters (never mid-character).
 fn clip(s: &str, max: usize) -> String {

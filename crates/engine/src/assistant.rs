@@ -133,6 +133,31 @@ fn caret_text(s: &Session) -> String {
     s.doc.para_at(&s.sel.focus).map(|p| p.plain_text().chars().take(200).collect()).unwrap_or_default()
 }
 
+// The Tips' texts and button labels (English source; [`texts`] lists them for translation).
+const LETTER: &str = "It looks like you're writing a letter. Want an envelope for it, or a letter template to start from?";
+const LIST_STARTED: &str = "You started a list. Press Enter twice to end it, or Backspace at the start of an item to turn it back into text.";
+/// `{command}` is the command's English label: the UI translates it too.
+const SHORTCUT: &str = "Faster: {command} is {key} on the keyboard.";
+const SAVE_REMINDER: &str = "You haven't saved in a while, and AutoSave is off. Save now?";
+const ENVELOPES: &str = "Envelopes";
+const LETTER_TEMPLATE: &str = "Letter template";
+const RESTART_AT_1: &str = "Restart at 1";
+const SAVE: &str = "Save";
+
+/// Every text the Assistant can show (Tips, Sayings, with their `{placeholders}`) and every
+/// button label: the UI translates each, and its tests check every catalog has them all.
+pub fn texts() -> impl Iterator<Item = &'static str> {
+    [LETTER, LIST_STARTED, SHORTCUT, SAVE_REMINDER, ENVELOPES, LETTER_TEMPLATE, RESTART_AT_1, SAVE]
+        .into_iter()
+        .chain(DAILY.iter().map(|(_, text)| *text))
+        .chain(IDLE)
+        .chain(MASS_DELETE)
+        .chain(SAVE_SPAM)
+        .chain(LOREM)
+        .chain(UNDO)
+        .chain(MILESTONE)
+}
+
 /// Tips whose Triggers match now, most specific first.
 pub fn tips(s: &Session, o: &Observation) -> Vec<Offer> {
     let mut out = Vec::new();
@@ -141,23 +166,17 @@ pub fn tips(s: &Session, o: &Observation) -> Vec<Offer> {
 
     // Letter: a paragraph that starts "Dear …".
     if typing && text.starts_with("Dear ") && text.chars().count() <= 60 {
-        out.push(
-            Offer::tip("letter", "It looks like you're writing a letter. Want an envelope for it, or a letter template to start from?")
-                .button("Envelopes", "mailings.envelopes")
-                .button_with("Letter template", "file.new", json!({"template": "letter"})),
-        );
+        out.push(Offer::tip("letter", LETTER).button(ENVELOPES, "mailings.envelopes").button_with(
+            LETTER_TEMPLATE,
+            "file.new",
+            json!({"template": "letter"}),
+        ));
     }
 
     // List started: AutoFormat just turned the paragraph into a list item.
     let in_list = s.doc.para_at(&s.sel.focus).is_some_and(|p| p.props.numbering.is_some_and(|n| n.num != 0));
     if typing && in_list && text.trim().is_empty() {
-        out.push(
-            Offer::tip(
-                "listStarted",
-                "You started a list. Press Enter twice to end it, or Backspace at the start of an item to turn it back into text.",
-            )
-            .button("Restart at 1", "para.restartNumbering"),
-        );
+        out.push(Offer::tip("listStarted", LIST_STARTED).button(RESTART_AT_1, "para.restartNumbering"));
     }
 
     // Shortcut: the same command from the ribbon or a menu three times, when it has a shortcut.
@@ -168,12 +187,12 @@ pub fn tips(s: &Session, o: &Observation) -> Vec<Offer> {
         && !spec.shortcut.is_empty()
     {
         let key = spec.shortcut.split(" / ").next().unwrap_or(spec.shortcut).replace("Mod+", if cfg!(target_os = "macos") { "⌘" } else { "Ctrl+" });
-        out.push(Offer::tip("shortcut", "Faster: {command} is {key} on the keyboard.").arg("command", spec.label.to_string()).arg("key", key));
+        out.push(Offer::tip("shortcut", SHORTCUT).arg("command", spec.label.to_string()).arg("key", key));
     }
 
     // Save reminder: AutoSave off and twenty minutes of unsaved work.
     if !s.autosave && s.dirty && finite(o.unsaved_for).is_some_and(|t| t >= 20.0 * 60.0) {
-        out.push(Offer::tip("saveReminder", "You haven't saved in a while, and AutoSave is off. Save now?").button("Save", "file.save"));
+        out.push(Offer::tip("saveReminder", SAVE_REMINDER).button(SAVE, "file.save"));
     }
     out
 }
@@ -394,6 +413,39 @@ mod tests {
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(sorted.len(), ids.len());
+    }
+
+    #[test]
+    fn texts_lists_everything_an_offer_can_show() {
+        let all: Vec<&str> = texts().collect();
+        let mut offers = Vec::new();
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        let o = typed(&mut s, "Dear Sam,");
+        offers.extend(tips(&s, &o));
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        s.run("text.insert", &json!({"text": "1."})).unwrap();
+        let o = typed(&mut s, " ");
+        offers.extend(tips(&s, &o));
+        let used = |source| Used { id: "format.bold".into(), source, at: 0.0 };
+        let o = Observation { recent: vec![used(Source::Ribbon), used(Source::Ribbon), used(Source::Ribbon)], ..Default::default() };
+        offers.extend(tips(&s, &o));
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        s.run("text.insert", &json!({"text": "Draft"})).unwrap();
+        s.autosave = false;
+        offers.extend(tips(&s, &Observation { unsaved_for: 25.0 * 60.0, ..Default::default() }));
+        assert_eq!(ids(&offers), ["letter", "listStarted", "shortcut", "saveReminder"]);
+        offers.extend((0..DAILY.len() as u64).map(tip_of_the_day));
+        for seed in 0..6 {
+            let undo = Used { id: "edit.undo".into(), source: Source::Keyboard, at: 0.0 };
+            let o = Observation { deleted: 500, idle: 300.0, recent: vec![undo; 5], seed, ..Default::default() };
+            offers.extend(sayings(&s, &o));
+        }
+        for o in &offers {
+            assert!(all.contains(&o.text), "{:?} is missing from texts()", o.text);
+            for b in &o.buttons {
+                assert!(all.contains(&b.label), "{:?} is missing from texts()", b.label);
+            }
+        }
     }
 
     #[test]
