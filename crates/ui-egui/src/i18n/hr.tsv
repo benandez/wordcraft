@@ -1767,6 +1767,8 @@ template	Letter	Pismo
 	Remove every custom tab and group and show all tabs again?	Želite li ukloniti sve prilagođene kartice i grupe te ponovno prikazati sve kartice?
 	Remove field	Ukloni polje
 	Remove from Quick Access Toolbar	Ukloni s alatne trake za brzi pristup
+	Hide Quick Access Toolbar	Sakrij alatnu traku za brzi pristup
+	Show Quick Access Toolbar	Prikaži alatnu traku za brzi pristup
 	Remove recipient	Ukloni primatelja
 	Remove row	Ukloni redak
 	Remove series	Ukloni niz
@@ -2067,6 +2069,8 @@ template	Letter	Pismo
 	Spaces	Razmaci
 	Spacing	Razmak
 	Spacing (pt):	Razmak (pt):
+	Kerning for fonts:	Kerning fontova:
+	Points and above	pt i više
 	Spacing:	Razmak:
 	Spanish (Mexico)	Španjolski (Meksiko)
 	Spanish (Spain)	Španjolski (Španjolska)
@@ -2662,3 +2666,22 @@ preview	Title	Naslov
 	{added}; {count} couldn't be read: {names}	{added}; nije moguće pročitati ({count}): {names}
 	{names} and {n} more	{names} i još {n}
 	{added}; {n} skipped (limit {max})	{added}; preskočeno: {n} (ograničenje {max})
+	nothing is selected	ništa nije odabrano
+	select a picture or shape first	najprije odaberite sliku ili oblik
+	select recipients first	najprije odaberite primatelje
+	select two or more pictures or shapes first (Shift+click)	odaberite dvije ili više slika ili oblika (Shift+klik)
+	text boxes can't go inside a text box	tekstni okviri ne mogu biti unutar tekstnog okvira
+	the cursor isn't in a table	kursor nije u tablici
+	{name} options	Mogućnosti: {name}
+
+# Drop Cap menu and Drop Cap Options (#2601)
+	Dropped	U tekstu
+	In margin	Na margini
+	Drop Cap Options…	Mogućnosti inicijala…
+	Lines to drop:	Broj redaka:
+	Distance from text:	Udaljenost od teksta:
+	Distance from text	Udaljenost od teksta
+
+# Drop Cap disabled reasons (#2601)
+	the paragraph is empty	odlomak je prazan
+	the paragraph starts with a space	odlomak počinje razmakom
