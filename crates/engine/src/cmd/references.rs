@@ -425,7 +425,7 @@ fn toc_field(p: &Paragraph) -> Option<String> {
     p.objects.iter().find_map(|o| match o {
         InlineObject::Field { instr, .. } => {
             let f = FieldCode::parse(instr);
-            (f.name == "TOC" && !f.has('c')).then(|| instr.clone())
+            (f.name == "TOC" && !f.has('c') && !f.has('a')).then(|| instr.clone())
         }
         _ => None,
     })

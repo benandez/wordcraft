@@ -308,16 +308,18 @@ pub fn specs() -> Vec<CommandSpec> {
         ),
         CommandSpec::new("references.bibliography", "Bibliography", "References › Citations & Bibliography", |s, v| {
             let title = p::str(v, "title").unwrap_or(style(&s.bib_style).bib_title).to_string();
-            generated_list(s, "BIBLIOGRAPHY", &title)?;
+            generated_list(s, "BIBLIOGRAPHY", &title, TabLeader::Dot)?;
             sel_result(s)
         })
         .params(r#"{"title"?: string}"#),
         CommandSpec::new("references.tableOfFigures", "Insert Table of Figures", "References › Captions", |s, v| {
-            let label = p::str(v, "label").unwrap_or("Figure").to_string();
-            generated_list(s, &format!("TOC \\c \"{label}\""), "")?;
+            let leader = super::references::leader(p::str(v, "tabLeader").unwrap_or("dot"));
+            generated_list(s, &figures_instr(v), "", leader)?;
             sel_result(s)
         })
-        .params(r#"{"label"?: "Figure|Table|Equation"}"#),
+        .params(
+            r#"{"label"?: caption label (Figure, Table, Equation or one of your own; default Figure), "includeLabel"?: bool, "pageNumbers"?: bool, "rightAlign"?: bool, "tabLeader"?: "dot|hyphen|underscore|none"}"#,
+        ),
         CommandSpec::new("references.updateFigures", "Update Table", "References › Captions", |s, _| {
             update_generated(s)?;
             sel_result(s)
@@ -334,7 +336,7 @@ pub fn specs() -> Vec<CommandSpec> {
         .params(r#"{"entry"?: string}"#)
         .key(super::non_mac("Alt+Shift+I")),
         CommandSpec::new("references.tableOfAuthorities", "Insert Table of Authorities", "References › Table of Authorities", |s, _| {
-            generated_list(s, "TOA", "Table of Authorities")?;
+            generated_list(s, "TOA", "Table of Authorities", TabLeader::Dot)?;
             sel_result(s)
         }),
         CommandSpec::new("references.updateAuthorities", "Update Table", "References › Table of Authorities", |s, _| {
@@ -773,7 +775,8 @@ fn refresh_citations(s: &mut Session) -> Result<(), CmdError> {
 
 /// Generated lists (BIBLIOGRAPHY, INDEX, table of figures, TOA): a heading paragraph holding
 /// the field, then entry paragraphs marked with the "GeneratedEntry" style family.
-pub(crate) fn generated_list(s: &mut Session, instr: &str, title: &str) -> Result<(), CmdError> {
+/// Insert a generated list at the caret; its page numbers get `leader` (Update Table keeps it).
+pub(crate) fn generated_list(s: &mut Session, instr: &str, title: &str, leader: TabLeader) -> Result<(), CmdError> {
     let at = delete_selection(s)?;
     if at.story != StoryRef::Body || at.path.depth() > 0 {
         return Err(CmdError::Failed("lists go in the main text".into()));
@@ -787,14 +790,43 @@ pub(crate) fn generated_list(s: &mut Session, instr: &str, title: &str) -> Resul
     )?;
     let i = if s.doc.para_at(&at).is_some_and(|p| p.is_empty()) { at.path.last() } else { s.doc.split_paragraph(&at)?.path.last() };
     s.doc.insert_block(StoryRef::Body, &Path::top(i), Block::Para(head))?;
+    // A stand-in entry carrying the leader, which the rebuild reads before replacing it.
+    let mut seed = Paragraph::new().styled(ENTRY_STYLE);
+    seed.props.tabs = Some(vec![TabStop { pos: 0.0, align: TabAlign::Right, leader }]);
+    s.doc.insert_block(StoryRef::Body, &Path::top(i + 1), Block::Para(seed))?;
     update_generated(s)
+}
+
+/// The TOC field instruction for `references.tableOfFigures` (ECMA-376 §17.16.5.68): `\\c` the
+/// caption label, or `\\a` to leave the label and number out of the entries; `\\n` without page
+/// numbers; `\\p " "` a space before the page number instead of a tab.
+fn figures_instr(v: &Value) -> String {
+    let label: String = p::str(v, "label").unwrap_or("").chars().filter(|c| !matches!(c, '"' | '\\')).take(64).collect();
+    let label = if label.trim().is_empty() { "Figure" } else { label.trim() };
+    let on = |k: &str| p::bool(v, k).unwrap_or(true);
+    let mut s = format!("TOC \\{} \"{label}\"", if on("includeLabel") { 'c' } else { 'a' });
+    if !on("pageNumbers") {
+        s.push_str(" \\n");
+    } else if !on("rightAlign") {
+        s.push_str(" \\p \" \"");
+    }
+    s
+}
+
+/// A caption's text without its label and number ("Figure 1: The kiln" → "The kiln"), for `\\a`.
+fn caption_body<'a>(text: &'a str, label: &str) -> &'a str {
+    let rest = text.strip_prefix(label).unwrap_or(text).trim_start();
+    // The number, with any chapter number and separator (`2-1`, `A`, `iv`).
+    let rest = rest.trim_start_matches(|c: char| c.is_alphanumeric() || matches!(c, '.' | '-' | '–' | '—'));
+    rest.trim_start_matches(|c: char| c.is_whitespace() || matches!(c, ':' | '.' | '-' | '–' | '—'))
 }
 
 fn list_kind(p: &Paragraph) -> Option<String> {
     p.objects.iter().find_map(|o| match o {
         InlineObject::Field { instr, .. } => {
             let t = instr.trim_start();
-            (t.starts_with("BIBLIOGRAPHY") || t.starts_with("INDEX") || t.starts_with("TOA") || t.starts_with("TOC \\c")).then(|| t.to_string())
+            (t.starts_with("BIBLIOGRAPHY") || t.starts_with("INDEX") || t.starts_with("TOA") || t.starts_with("TOC \\c") || t.starts_with("TOC \\a"))
+                .then(|| t.to_string())
         }
         _ => None,
     })
@@ -817,8 +849,10 @@ pub fn update_generated(s: &mut Session) -> Result<(), CmdError> {
             i += 1;
             continue;
         }
-        // Remove old entries.
-        while s.doc.body.get(i + 1).and_then(|b| b.as_para()).is_some_and(|p| p.props.style.as_deref() == Some(ENTRY_STYLE)) {
+        // Remove old entries, keeping their leader.
+        let mut leader = None;
+        while let Some(p) = s.doc.body.get(i + 1).and_then(|b| b.as_para()).filter(|p| p.props.style.as_deref() == Some(ENTRY_STYLE)) {
+            leader = leader.or_else(|| p.props.tabs.as_ref()?.last().map(|t| t.leader));
             s.doc.remove_block(StoryRef::Body, &Path::top(i + 1))?;
         }
         let lines = entries_for(s, &kind);
@@ -830,7 +864,7 @@ pub fn update_generated(s: &mut Session) -> Result<(), CmdError> {
                 para.props.indent_first = Some(-36.0);
             }
             if text.contains('\t') {
-                para.props.tabs = Some(vec![TabStop { pos: width - 0.5, align: TabAlign::Right, leader: TabLeader::Dot }]);
+                para.props.tabs = Some(vec![TabStop { pos: width - 0.5, align: TabAlign::Right, leader: leader.unwrap_or(TabLeader::Dot) }]);
             }
             s.doc.insert_block(StoryRef::Body, &Path::top(i + 1 + k), Block::Para(para))?;
         }
@@ -875,9 +909,10 @@ fn entries_for(s: &mut Session, kind: &str) -> Vec<(String, bool)> {
     // Collect marks with positions.
     let mut marks: Vec<(String, Pos)> = Vec::new();
     let caption_label = kind.split('"').nth(1).unwrap_or("Figure").to_string();
+    let figures = kind.starts_with("TOC \\c") || kind.starts_with("TOC \\a");
     for path in s.doc.para_paths(StoryRef::Body) {
         let Some(p) = s.doc.para(StoryRef::Body, &path) else { continue };
-        if kind.starts_with("TOC \\c") {
+        if figures {
             if p.props.style.as_deref() == Some("Caption") && p.plain_text().starts_with(&caption_label) {
                 marks.push((p.plain_text(), Pos { story: StoryRef::Body, path: path.clone(), off: 0 }));
             }
@@ -900,7 +935,7 @@ fn entries_for(s: &mut Session, kind: &str) -> Vec<(String, bool)> {
         let mut v = Vec::new();
         for path in s.doc.para_paths(StoryRef::Body) {
             let Some(p) = s.doc.para(StoryRef::Body, &path) else { continue };
-            if kind.starts_with("TOC \\c") {
+            if figures {
                 if p.props.style.as_deref() == Some("Caption") && p.plain_text().starts_with(&caption_label) {
                     v.push(Pos { story: StoryRef::Body, path: path.clone(), off: 0 });
                 }
@@ -923,8 +958,16 @@ fn entries_for(s: &mut Session, kind: &str) -> Vec<(String, bool)> {
             x.1 = pg;
         }
     }
-    if kind.starts_with("TOC \\c") {
-        return with_pages.into_iter().map(|(t, p)| (format!("{t}\t{p}"), false)).collect();
+    if figures {
+        let f = super::references::FieldCode::parse(kind);
+        let sep = if f.has('n') { None } else { Some(f.arg('p').unwrap_or("\t").to_string()) };
+        return with_pages
+            .into_iter()
+            .map(|(t, p)| {
+                let t = if f.has('a') { caption_body(&t, &caption_label) } else { &t };
+                (sep.as_ref().map_or_else(|| t.to_string(), |sep| format!("{t}{sep}{p}")), false)
+            })
+            .collect();
     }
     // Index / TOA: group by entry, sort, list pages.
     let lang = super::default_lang(s);
@@ -1259,6 +1302,39 @@ mod tests {
         let (name, _) = s.doc.bookmarks().into_iter().find(|(n, _)| n.starts_with("_Ref")).unwrap();
         assert_eq!(crate::cmd::references::bookmark_text(&s.doc, &name).as_deref(), Some("Figure 1"));
         assert!(fields(&s).contains(&(format!("REF {name} \\h"), "Figure 1".to_string())), "{:?}", fields(&s));
+    }
+
+    /// #3013: a list of tables next to the list of figures, with the dialog's options.
+    #[test]
+    fn table_of_figures_options() {
+        let mut s = Session::new(wordcraft_doc::Document::from_text("Kiln\nPress\nEnd"));
+        s.run("select.text", &json!({"text": "Kiln"})).unwrap();
+        s.run("references.caption", &json!({"label": "Figure", "text": "The kiln"})).unwrap();
+        s.run("select.text", &json!({"text": "Press"})).unwrap();
+        s.run("references.caption", &json!({"label": "Table", "text": "Press sizes"})).unwrap();
+        s.run("caret.docEnd", &json!({})).unwrap();
+        s.run("references.tableOfFigures", &json!({"label": "Table", "includeLabel": false, "tabLeader": "hyphen"})).unwrap();
+        let t = s.doc.plain_text(StoryRef::Body);
+        assert!(t.contains("\nPress sizes\t1") && !t.contains("The kiln\t"), "{t}");
+        let entry = |s: &Session, text: &str| {
+            s.doc
+                .body
+                .iter()
+                .filter_map(|b| b.as_para())
+                .find(|p| p.props.style.as_deref() == Some(ENTRY_STYLE) && p.plain_text().starts_with(text))
+                .cloned()
+                .unwrap()
+        };
+        assert_eq!(entry(&s, "Press sizes").props.tabs.unwrap()[0].leader, TabLeader::Hyphen);
+        // Update Table keeps the leader.
+        s.run("references.updateFigures", &json!({})).unwrap();
+        assert_eq!(entry(&s, "Press sizes").props.tabs.unwrap()[0].leader, TabLeader::Hyphen);
+        s.run("text.newParagraph", &json!({})).unwrap();
+        s.run("references.tableOfFigures", &json!({"label": "Figure", "pageNumbers": false})).unwrap();
+        assert!(s.doc.plain_text(StoryRef::Body).contains("\nFigure 1: The kiln\n"));
+        s.run("text.newParagraph", &json!({})).unwrap();
+        s.run("references.tableOfFigures", &json!({"label": "Fig\"ure\\", "rightAlign": false})).unwrap();
+        assert!(s.doc.plain_text(StoryRef::Body).contains("\nFigure 1: The kiln 1"), "label cleaned, page after a space");
     }
 
     /// #2940: a caption with a label of the person's own (Insert Caption › New Label) is a

@@ -2559,6 +2559,8 @@ fn input_dialog(id: &str, params: &Value) -> Option<&'static str> {
         "references.caption" | "references.index" if params.as_object().is_none_or(|m| m.is_empty()) => {
             Some(if id == "references.caption" { "caption" } else { "index" })
         }
+        // Insert Table of Figures without settings shows its dialog (#3013).
+        "references.tableOfFigures" if params.as_object().is_none_or(|m| m.is_empty()) => Some("tableOfFigures"),
         "references.markEntry" if !has("entry") => Some("markEntry"),
         // Cross-reference without a target shows its dialog (#916); scripts get the target list.
         "insert.crossReference" if !has("target") => Some("crossReference"),
