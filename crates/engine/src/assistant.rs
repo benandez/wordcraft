@@ -42,8 +42,6 @@ pub struct Observation {
     pub now: f64,
     /// Seconds since the user last typed or clicked in the document.
     pub idle: f64,
-    /// Local hour of day, 0–23, when known.
-    pub hour: Option<u8>,
     /// Characters removed by the last command.
     pub deleted: usize,
     /// Seconds the document has had unsaved changes.
@@ -221,11 +219,6 @@ const SAVE_SPAM: [&str; 3] = [
     "Your document is now the most saved document in history.",
 ];
 const LOREM: [&str; 2] = ["Ah, Latin. The language of deadlines.", "Lorem ipsum: because the real words are still at the café."];
-const MIDNIGHT: [&str; 3] = [
-    "Writing after midnight? The best ideas and the worst typos happen now.",
-    "It's late. I'll keep the lamp on.",
-    "Burning the midnight ink, I see.",
-];
 const UNDO: [&str; 3] = [
     "Undo, undo, undo… we're time travelling now.",
     "Careful, any further back and we'll undo the invention of paper.",
@@ -266,9 +259,6 @@ pub fn sayings(s: &Session, o: &Observation) -> Vec<Offer> {
     let words = s.word_count();
     if let Some(m) = MILESTONES.iter().rev().find(|&&m| o.words_before < m && words >= m) {
         out.push(Offer::saying("milestone", pick(&MILESTONE, o.seed)).arg("words", m.to_string()));
-    }
-    if o.hour.is_some_and(|h| h < 4) && finite(o.idle).is_some_and(|i| i < 60.0) && matches!(last_id(o), Some("text.insert")) {
-        out.push(Offer::saying("midnight", pick(&MIDNIGHT, o.seed)));
     }
     if finite(o.idle).is_some_and(|i| i >= 180.0) {
         out.push(Offer::saying("idle", pick(&IDLE, o.seed)));
@@ -379,13 +369,7 @@ mod tests {
     }
 
     #[test]
-    fn midnight_and_milestones() {
-        let mut s = Session::new(wordcraft_doc::Document::new());
-        let mut o = typed(&mut s, "Night");
-        o.hour = Some(1);
-        assert_eq!(ids(&sayings(&s, &o)), ["midnight"]);
-        o.hour = Some(13);
-        assert!(sayings(&s, &o).is_empty());
+    fn milestones() {
         let words = "word ".repeat(500);
         let mut s = Session::new(wordcraft_doc::Document::new());
         s.run("text.insert", &json!({"text": words})).unwrap();
@@ -415,7 +399,6 @@ mod tests {
                 now: x,
                 idle: x,
                 unsaved_for: x,
-                hour: Some(255),
                 deleted: usize::MAX,
                 words_before: usize::MAX,
                 seed: u64::MAX,

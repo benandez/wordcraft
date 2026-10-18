@@ -187,6 +187,7 @@ pub fn tool_definitions() -> Value {
 
 /// Agent messages carry the connected client's name (`clientInfo` from `initialize`) as their
 /// sender, whatever the arguments say, so an agent can't speak as WordCraft or another agent.
+/// (The app's control channel also refuses `from` WordCraft or Nib from any client, and unmuting.)
 /// Covers `say_to_user`, and `ui.assistantSay` through `execute` and `batch`.
 pub fn stamp_sender(tool: &str, args: &mut Value, client: Option<&str>) {
     let from = Value::String(client.unwrap_or("").to_string());

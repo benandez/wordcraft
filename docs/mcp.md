@@ -129,7 +129,7 @@ files it was given rather than guarding against other software on the computer.
 | `render_page` | a page as PNG |
 | `parity` | feature coverage |
 | `screenshot`, `click`, `key`, `ui_inspect` | app only (`--connect`) |
-| `say_to_user` | app only: a message (or a question with up to 3 `choices`) for the person at the keyboard, shown by Nib, the Assistant, labelled with your client's name (`clientInfo` from `initialize`); read the answer with `execute ui.assistantReply {id}` (#959) |
+| `say_to_user` | app only: a message (or a question with up to 3 `choices`) for the person at the keyboard, shown by Nib, the Assistant, labelled with your client's name (`clientInfo` from `initialize`); read the answer with `execute ui.assistantReply {id}`; once the user mutes agent messages, only the user can unmute them (#959) |
 
 ### Several documents
 

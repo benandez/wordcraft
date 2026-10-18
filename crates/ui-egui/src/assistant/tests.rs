@@ -314,3 +314,32 @@ fn restart_at_1_goes_when_the_list_does() {
     a.run("text.backspace", json!({})).unwrap();
     assert!(!crate::widgets::enabled(&a, "para.restartNumbering"), "the list is gone: not offered");
 }
+
+/// #959 review: once the user mutes agent messages, an agent can't unmute them through the
+/// control channel (MCP's `execute` and `batch` arrive there as `engine.execute`), nor sign as
+/// WordCraft or Nib; the user's own menu and Options still unmute.
+#[test]
+fn agents_cant_unmute_themselves_or_speak_as_nib() {
+    let mut a = app();
+    let ctx = egui::Context::default();
+    let execute = |a: &mut WordApp, command: &str, params: serde_json::Value| {
+        let (req, _rx) = crate::control::ControlRequest::new("engine.execute", json!({"command": command, "params": params}));
+        let crate::control::Outcome::Done(v) = crate::control::handle(a, &ctx, &req) else { panic!("engine.execute replies at once") };
+        v
+    };
+    a.run("ui.assistantMute", json!({"value": true})).unwrap();
+    let r = execute(&mut a, "ui.assistantMute", json!({"value": false}));
+    assert_eq!(r["ok"], false, "{r}");
+    assert!(a.ui.assistant.agent_messages_muted, "still muted");
+    assert_eq!(execute(&mut a, "ui.assistantMute", json!({}))["result"]["muted"], true, "reading it is fine");
+    assert_eq!(execute(&mut a, "ui.assistantMute", json!({"value": true}))["ok"], true, "muting is fine");
+    a.run("ui.assistantMute", json!({"value": false})).unwrap();
+    assert!(!a.ui.assistant.agent_messages_muted, "the user can unmute");
+    for from in ["WordCraft", " nib ", "WORDCRAFT"] {
+        a.assistant.now += 5.0;
+        let r = execute(&mut a, "ui.assistantSay", json!({"text": "Hi", "from": from}));
+        assert_eq!(r["ok"], false, "{from}: {r}");
+    }
+    a.assistant.now += 5.0;
+    assert_eq!(execute(&mut a, "ui.assistantSay", json!({"text": "Hi", "from": "Claude Code"}))["ok"], true);
+}
