@@ -2167,8 +2167,10 @@ fn mouse(app: &mut WordApp, ui: &Ui, resp: &egui::Response, rects: &[Rect], layo
         None
     };
     if resp.double_clicked() {
-        if let Some((_, header)) = hf_zone
-            && story == StoryRef::Body
+        // Also from another header/footer: with Different First Page on, page 1's header is not
+        // the one being edited on page 2 (#2826).
+        if let Some((shown, header)) = hf_zone
+            && (story == StoryRef::Body || (shown != Some(story) && matches!(part_kind(app, story), Some(PartKind::Header | PartKind::Footer))))
         {
             let id = if header { "insert.editHeader" } else { "insert.editFooter" };
             if app.run(id, json!({ "page": page })).is_ok()
@@ -3737,6 +3739,49 @@ mod tests {
         double_click(&mut h, body);
         assert_eq!(h.state().session.sel.focus.story, StoryRef::Body);
         assert_eq!(h.state().session.doc.plain_text(footer), "Page foot");
+    }
+
+    /// #2826: editing the default header, then turning on Different First Page: a double-click in
+    /// page 1's top margin goes into page 1's own (new) header, and typing lands there.
+    #[test]
+    fn double_click_reaches_the_first_page_header_from_another_header() {
+        use egui::{Event, PointerButton};
+        let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
+        a.run("text.insert", json!({"text": "Body text"})).unwrap();
+        a.run("view.commentsPane", json!({"value": false})).unwrap();
+        a.run("insert.header", json!({"text": "Head"})).unwrap();
+        let head = a.session.sel.focus.story;
+        a.run("layout.differentFirstPage", json!({"value": true})).unwrap();
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 2200.0)).with_step_dt(1.0 / 60.0).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            a,
+        );
+        for _ in 0..6 {
+            h.step();
+        }
+        let page = h.state_mut().session.layout().pages[0].clone();
+        assert!(page.header_story.is_none());
+        let at = page_to_screen(h.state_mut(), 0, page.body.x + 20.0, page.body.y / 2.0).expect("top margin on screen");
+        h.event(Event::PointerMoved(at));
+        for _ in 0..2 {
+            h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: true, modifiers: Default::default() });
+            h.step();
+            h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: false, modifiers: Default::default() });
+            h.step();
+        }
+        let first = h.state().session.sel.focus.story;
+        assert_eq!(part_kind(h.state(), first), Some(PartKind::Header));
+        assert_ne!(first, head, "page 1's own header, not the default one");
+        h.event(Event::Text("Cover".into()));
+        for _ in 0..3 {
+            h.step();
+        }
+        assert_eq!(h.state().session.doc.plain_text(first), "Cover");
+        assert_eq!(h.state_mut().session.layout().pages[0].header_story.map(StoryRef::Part), Some(first));
     }
 
     /// #513: right-clicking a picture selects it and offers Wrap Text, as in Word; choosing
