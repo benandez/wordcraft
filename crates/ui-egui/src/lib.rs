@@ -2808,6 +2808,18 @@ mod tests {
         h.run_steps(3);
         assert!(h.query_by_label("Insert").is_some(), "the ribbon drops down");
         assert!(h.state().session.view.focus_mode, "still in Focus");
+        // A click on the dropped ribbon works it and leaves it down; one on the page puts it away.
+        h.get_by_label("Insert").click();
+        h.run_steps(3);
+        assert!(h.state().focus_ribbon && h.state().ui.tab == "Insert", "a click on the ribbon keeps it down");
+        let page = crate::canvas::page_to_screen(h.state_mut(), 0, 300.0, 600.0).unwrap();
+        h.event(egui::Event::PointerMoved(page));
+        h.event(egui::Event::PointerButton { pos: page, button: egui::PointerButton::Primary, pressed: true, modifiers: Default::default() });
+        h.event(egui::Event::PointerButton { pos: page, button: egui::PointerButton::Primary, pressed: false, modifiers: Default::default() });
+        h.run_steps(3);
+        assert!(!h.state().focus_ribbon && h.state().session.view.focus_mode, "a click on the page puts it away, still in Focus");
+        h.state_mut().focus_ribbon = true;
+        h.run_steps(3);
         h.key_press(egui::Key::Escape);
         h.run_steps(3);
         let a = h.state_mut();
