@@ -335,7 +335,13 @@ fn agents_cant_unmute_themselves_or_speak_as_nib() {
     assert_eq!(execute(&mut a, "ui.assistantMute", json!({"value": true}))["ok"], true, "muting is fine");
     a.run("ui.assistantMute", json!({"value": false})).unwrap();
     assert!(!a.ui.assistant.agent_messages_muted, "the user can unmute");
-    for from in ["WordCraft", " nib ", "WORDCRAFT"] {
+    // A bare command id as the method goes through the same check.
+    a.run("ui.assistantMute", json!({"value": true})).unwrap();
+    let (req, _rx) = crate::control::ControlRequest::new("ui.assistantMute", json!({"value": false}));
+    let crate::control::Outcome::Done(r) = crate::control::handle(&mut a, &ctx, &req) else { panic!("replies at once") };
+    assert_eq!(r["ok"], false, "{r}");
+    a.run("ui.assistantMute", json!({"value": false})).unwrap();
+    for from in ["WordCraft", " nib ", "WORDCRAFT", "Nib\u{200B}", "Word\u{2060}Craft", "N.i.b"] {
         a.assistant.now += 5.0;
         let r = execute(&mut a, "ui.assistantSay", json!({"text": "Hi", "from": from}));
         assert_eq!(r["ok"], false, "{from}: {r}");

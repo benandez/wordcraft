@@ -379,6 +379,17 @@ fn agent_messages_carry_the_clients_name() {
     assert_eq!(says[0]["choices"], json!(["OK"]));
 }
 
+/// A title of only control characters falls back on the name, not an empty sender.
+#[test]
+fn a_blank_client_title_falls_back_on_the_name() {
+    let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let mut s = Server::new(Box::new(FakeApp { calls: calls.clone() }));
+    call(&mut s, 1, "initialize", json!({"protocolVersion": "2025-06-18", "clientInfo": {"name": "claude-code", "title": "\u{7}\n"}}));
+    call(&mut s, 2, "tools/call", json!({"name": "say_to_user", "arguments": {"text": "Hi"}}));
+    let calls = calls.lock().unwrap();
+    assert!(calls.iter().any(|(_, p)| p["params"]["from"] == "claude-code"), "{calls:?}");
+}
+
 /// Headless, there is no Nib to speak through: the agent is told to start the app.
 #[test]
 fn headless_agent_messages_need_the_app() {
