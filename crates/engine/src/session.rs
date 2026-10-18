@@ -418,6 +418,9 @@ pub struct Session {
     )>,
     /// Picture edits: edited media key → original media key (Reset Picture).
     pub originals: std::collections::HashMap<String, String>,
+    /// Picture effects, styles and borders: drawn media key → what was drawn on which bitmap,
+    /// so the next one replaces them instead of drawing over them (#2052).
+    pub picture_looks: std::collections::HashMap<String, crate::cmd::objects::PictureLook>,
     /// Last mutating command (Repeat).
     pub last_command: Option<(String, Value)>,
     /// Macro being recorded: (name, steps).
@@ -636,6 +639,7 @@ impl Session {
             cache: LayoutCache::new(),
             layout: None,
             originals: Default::default(),
+            picture_looks: Default::default(),
             last_command: None,
             recording: None,
             macros: Default::default(),
@@ -1111,6 +1115,7 @@ impl Session {
             cache: _,
             layout: _,
             originals: _,
+            picture_looks: _,
             last_command: _,
             recording: _,
             macros: _,
@@ -1380,7 +1385,8 @@ impl Session {
         // As in Word, text typed at either end of a hyperlink isn't part of it; only typing
         // inside the link extends it.
         let inside_link = props.link.is_some() && f.off > 0 && f.off < p.len() && p.props_of_char(f.off).link == props.link;
-        let mut out = if props.link.is_some() && !inside_link { props.unlinked() } else { props.clone() };
+        // Text typed next to a symbol is in the text's font, not the symbol's (`w:sym`).
+        let mut out = (if props.link.is_some() && !inside_link { props.unlinked() } else { props.clone() }).without_symbol();
         // A footnote or endnote number is raised by its character style; text typed after it is body text.
         if matches!(out.style.as_deref(), Some("FootnoteReference" | "EndnoteReference")) {
             out.style = None;
