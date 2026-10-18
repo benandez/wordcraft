@@ -209,24 +209,24 @@ pub(crate) fn vml_fill(shape: &El, shapetype: Option<&El>) -> Option<Fill> {
         return None;
     }
     let c1 = attr("color").or(own("fillcolor")).map_or(Some(Rgb::WHITE), vml_color)?;
-    let t1 = 100.0 - vml_fraction(attr("opacity")).unwrap_or(1.0) * 100.0;
+    let t1 = 100.0 - attr("opacity").and_then(vml_fraction).unwrap_or(1.0) * 100.0;
     let radial = match attr("type") {
         Some("gradient") => false,
         Some("gradientRadial") => true,
         _ => return Fill::Solid { color: c1, transparency: t1 }.sanitized(),
     };
     let c2 = attr("color2").and_then(vml_color).unwrap_or(Rgb::WHITE);
-    let t2 = 100.0 - vml_fraction(attr("o:opacity2")).unwrap_or(1.0) * 100.0;
+    let t2 = 100.0 - attr("o:opacity2").and_then(vml_fraction).unwrap_or(1.0) * 100.0;
     let stop = |pos: f32, (color, transparency): (Rgb, f32)| GradStop { pos, color, transparency };
     let (a, b) = ((c1, t1), (c2, t2));
-    let focus = attr("focus").and_then(|v| vml_fraction(Some(v))).unwrap_or(0.0).clamp(-1.0, 1.0) * 100.0;
+    let focus = attr("focus").and_then(vml_fraction).unwrap_or(0.0).clamp(-1.0, 1.0) * 100.0;
     let colors: Vec<GradStop> = attr("colors")
         .into_iter()
         .flat_map(|v| v.split(';'))
         .take(MAX_STOPS)
         .filter_map(|s| {
             let (pos, c) = s.trim().split_once(' ')?;
-            Some(stop(vml_fraction(Some(pos))? * 100.0, (vml_color(c)?, t1)))
+            Some(stop(vml_fraction(pos)? * 100.0, (vml_color(c)?, t1)))
         })
         .collect();
     let stops = if colors.len() >= 2 {
@@ -244,7 +244,7 @@ pub(crate) fn vml_fill(shape: &El, shapetype: Option<&El>) -> Option<Fill> {
         // `focusposition` "x,y" (fractions of the shape) is the centre.
         let fp = attr("focusposition").unwrap_or("0.5,0.5");
         let (x, y) = fp.split_once(',').unwrap_or((fp, fp));
-        let (x, y) = (vml_fraction(Some(x)).unwrap_or(0.5) * 100.0, vml_fraction(Some(y)).unwrap_or(0.5) * 100.0);
+        let (x, y) = (vml_fraction(x).unwrap_or(0.5) * 100.0, vml_fraction(y).unwrap_or(0.5) * 100.0);
         GradientKind::Path { shape: PathShape::Circle, focus: [x, y, 100.0 - x, 100.0 - y] }
     } else {
         // VML's angle is counter-clockwise from a top-to-bottom gradient.
@@ -254,13 +254,14 @@ pub(crate) fn vml_fill(shape: &El, shapetype: Option<&El>) -> Option<Fill> {
     Fill::Gradient(Arc::new(Gradient { stops, kind, tile: None, rot_with_shape: true, flip: GradientFlip::None })).sanitized()
 }
 
-/// A VML fraction: `0.5`, `50%`, or 65536ths (`32768f`).
-fn vml_fraction(v: Option<&str>) -> Option<f32> {
-    let v = v?.trim();
+/// A VML fraction (`opacity`, `focus`, a `colors` position): `0.5`, `50%`, or 65536ths
+/// (`32768f`). Not clamped: a focus runs from -1 to 1.
+pub(crate) fn vml_fraction(v: &str) -> Option<f32> {
+    let v = v.trim();
     let n = if let Some(f) = v.strip_suffix('f') {
-        f.parse::<f32>().ok()? / 65536.0
+        f.trim().parse::<f32>().ok()? / 65_536.0
     } else if let Some(p) = v.strip_suffix('%') {
-        p.parse::<f32>().ok()? / 100.0
+        p.trim().parse::<f32>().ok()? / 100.0
     } else {
         v.parse::<f32>().ok()?
     };

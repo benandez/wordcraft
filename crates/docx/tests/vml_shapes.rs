@@ -270,3 +270,29 @@ fn a_top_level_shape_still_finds_its_shapetype() {
     let InlineObject::Shape { kind, fill, .. } = objects(&d)[0].clone() else { panic!("{:?}", objects(&d)) };
     assert_eq!((kind, fill), (ShapeKind::Diamond, Some(wordcraft_doc::fill::Fill::solid(wordcraft_doc::Rgb(0x00, 0xff, 0x00)))));
 }
+
+#[test]
+fn a_preset_takes_its_gradient_from_the_shapetype() {
+    // #1500: the shape states nothing but its shapetype; the shapetype's `v:fill` (a gradient to
+    // `color2`, its opacity in 65536ths) is the shape's fill, and it survives saving.
+    use std::sync::Arc;
+    use wordcraft_doc::fill::{Fill, Gradient, GradientFlip, GradientKind};
+    use wordcraft_doc::wordart::GradStop;
+    let d = read_body(&pict(concat!(
+        r##"<v:shapetype id="_x0000_t4" o:spt="4" fillcolor="#ff0000"><v:fill type="gradient" color2="#0000ff" opacity="32768f"/></v:shapetype>"##,
+        r##"<v:shape style="width:40pt;height:40pt" type="#_x0000_t4"/>"##,
+    )));
+    let stop = |pos: f32, color, transparency: f32| GradStop { pos, color, transparency };
+    let want = Fill::Gradient(Arc::new(Gradient {
+        stops: vec![stop(0.0, wordcraft_doc::Rgb(0xff, 0, 0), 50.0), stop(100.0, wordcraft_doc::Rgb(0, 0, 0xff), 0.0)],
+        kind: GradientKind::Linear { angle: 90.0, scaled: false },
+        tile: None,
+        rot_with_shape: true,
+        flip: GradientFlip::None,
+    }));
+    let saved = wordcraft_docx::read(&wordcraft_docx::write(&d).unwrap()).unwrap();
+    for doc in [&d, &saved] {
+        let InlineObject::Shape { kind, fill, .. } = objects(doc)[0].clone() else { panic!("{:?}", objects(doc)) };
+        assert_eq!((kind, fill), (ShapeKind::Diamond, Some(want.clone())));
+    }
+}

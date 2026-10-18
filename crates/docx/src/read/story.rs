@@ -13,7 +13,7 @@ use wordcraft_doc::{Block, Blocks, InlineObject, Paragraph, PartKind, RevisionKi
 
 use super::Reader;
 use super::props::{sectpr, tcpr, trpr};
-use super::shape_style::{own_fill, preset_kind, shape_paint, vml_color, vml_fill, vml_preset_kind};
+use super::shape_style::{own_fill, preset_kind, shape_paint, vml_color, vml_fill, vml_fraction, vml_preset_kind};
 use crate::package::{ContentTypes, Rels, rt};
 use crate::units::{int, measure, u32_of};
 use crate::xml::{El, Node};
@@ -1746,7 +1746,7 @@ impl Reader<'_> {
             && let Some(path) = shape.attr("path")
             && let Some(vp) = super::freeform::vml_path(path, shape.attr("coordsize"), shape.attr("coordorigin"), w, h)
         {
-            let opacity = |el: &str| shape.child(el).and_then(|e| e.attr("opacity")).and_then(vml_fraction).unwrap_or(1.0);
+            let opacity = |el: &str| shape.child(el).and_then(|e| e.attr("opacity")).and_then(vml_opacity).unwrap_or(1.0);
             let fill = fill.filter(|_| !vp.no_fill && opacity("v:fill") > 0.0);
             let stroke = stroke.filter(|_| !vp.no_stroke);
             if stroke.is_none() && fill.is_none() {
@@ -2216,21 +2216,13 @@ fn vml_watermark(shape: &El) -> Option<wordcraft_doc::Watermark> {
         .filter(|f| !f.is_empty())
         .unwrap_or(default.font);
     let color = shape.attr("fillcolor").and_then(vml_color).unwrap_or(default.color);
-    let opacity = shape.child("v:fill").and_then(|f| f.attr("opacity")).and_then(vml_fraction).unwrap_or(1.0);
+    let opacity = shape.child("v:fill").and_then(|f| f.attr("opacity")).and_then(vml_opacity).unwrap_or(1.0);
     Some(wordcraft_doc::Watermark { text, font, color, diagonal: vml_spin(style).deg != 0.0, semitransparent: opacity < 1.0 })
 }
 
-/// A VML fraction (`opacity`): a number, a percentage, or 65536ths with an `f` suffix; 0..=1.
-fn vml_fraction(v: &str) -> Option<f32> {
-    let v = v.trim();
-    let f = if let Some(n) = v.strip_suffix('f') {
-        n.trim().parse::<f32>().ok()? / 65_536.0
-    } else if let Some(n) = v.strip_suffix('%') {
-        n.trim().parse::<f32>().ok()? / 100.0
-    } else {
-        v.parse::<f32>().ok()?
-    };
-    f.is_finite().then(|| f.clamp(0.0, 1.0))
+/// A VML `opacity`, 0..=1.
+fn vml_opacity(v: &str) -> Option<f32> {
+    vml_fraction(v).map(|f| f.clamp(0.0, 1.0))
 }
 
 /// A VML shape's turn: `rotation` in degrees, or 65536ths of one with an `fd` suffix; `flip`: `x`
