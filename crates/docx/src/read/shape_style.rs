@@ -164,9 +164,15 @@ pub(crate) fn shape_paint(sppr: Option<&El>, style: Option<&El>, theme: &[Rgb], 
     };
     let fill = own_fill(sppr, theme, group).unwrap_or_else(|| {
         let (idx, r) = style_ref("a:fillRef").filter(|(idx, _)| *idx > 0)?;
-        // The theme style in the reference's colour (`phClr`), else that colour.
+        // The theme style in the reference's colour (`phClr`), else that colour: also for a style
+        // the model can't hold (a picture fill), so the shape doesn't vanish.
         let ph = color_alpha(r, theme, None)?;
-        styles.get(idx).map_or(Some(Fill::Solid { color: ph.0, transparency: ph.1 }), |st| read_fill(st, theme, Some(ph)))
+        let solid = Fill::Solid { color: ph.0, transparency: ph.1 };
+        match styles.get(idx) {
+            Some(st) if st.name == "a:noFill" => None,
+            Some(st) => read_fill(st, theme, Some(ph)).or(Some(solid)),
+            None => Some(solid),
+        }
     });
     let ln = sppr.and_then(|s| s.child("a:ln"));
     let line_ref = style_ref("a:lnRef").filter(|(idx, _)| *idx > 0);
@@ -370,6 +376,20 @@ mod tests {
         );
         let p = shape_paint(Some(&sp), Some(&st), &THEME_COLORS, &ThemeFills::default(), None);
         assert_eq!((p.fill, p.stroke), (None, None));
+    }
+
+    #[test]
+    fn a_theme_picture_fill_falls_back_on_the_reference_colour() {
+        let fmt = el(
+            r#"<a:fmtScheme xmlns:wps="w" xmlns:a="a"><a:fillStyleLst><a:noFill/><a:blipFill><a:blip/></a:blipFill></a:fillStyleLst></a:fmtScheme>"#,
+        );
+        let styles = ThemeFills::read(Some(&fmt));
+        let st = |idx: u8| {
+            el(&format!(r#"<wps:style xmlns:wps="w" xmlns:a="a"><a:fillRef idx="{idx}"><a:srgbClr val="112233"/></a:fillRef></wps:style>"#))
+        };
+        assert_eq!(shape_paint(None, Some(&st(2)), &THEME_COLORS, &styles, None).fill, Some(Fill::solid(Rgb(0x11, 0x22, 0x33))));
+        // An explicit theme `a:noFill` stays none.
+        assert_eq!(shape_paint(None, Some(&st(1)), &THEME_COLORS, &styles, None).fill, None);
     }
 
     #[test]
