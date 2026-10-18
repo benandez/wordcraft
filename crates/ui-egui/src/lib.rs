@@ -2837,6 +2837,74 @@ mod tests {
         assert!(h.query_by_label("Insert").is_some(), "Full Screen keeps the ribbon");
     }
 
+    /// A harness on a document with text whose page has the keyboard.
+    fn canvas_harness() -> egui_kittest::Harness<'static, WordApp> {
+        let mut a = app();
+        a.run("text.insert", json!({"text": "Hello"})).unwrap();
+        let mut h = harness(a);
+        h.run_steps(4);
+        h.state_mut().canvas.want_focus = true;
+        h.run_steps(3);
+        assert!(h.state().canvas.focused, "the page has the keyboard");
+        h
+    }
+
+    /// #1678: one Escape path. In Focus with text selected on the page, the first Escape only
+    /// collapses the selection, as in a normal window, and the second leaves Focus. A handler that
+    /// takes Escape for Focus before the page sees it would leave Focus with the selection kept.
+    #[test]
+    fn focus_esc_collapses_the_selection_first_then_leaves() {
+        let mut h = canvas_harness();
+        h.state_mut().run("view.focus", json!({})).unwrap();
+        h.run_steps(3);
+        h.state_mut().run("select.all", json!({})).unwrap();
+        h.run_steps(2);
+        assert!(h.state().canvas.focused && h.state().session.view.focus_mode);
+        assert!(!h.state().session.sel.is_collapsed(), "text is selected");
+        h.key_press(egui::Key::Escape);
+        h.run_steps(3);
+        assert!(h.state().session.sel.is_collapsed(), "the first Escape collapses the selection");
+        assert!(h.state().session.view.focus_mode, "and keeps Focus");
+        h.key_press(egui::Key::Escape);
+        h.run_steps(3);
+        assert!(!h.state().session.view.focus_mode, "the second Escape leaves Focus");
+    }
+
+    /// Ctrl+F1 pressed on the page, through the app's key handling.
+    #[cfg(not(target_os = "macos"))]
+    fn press_ctrl_f1(h: &mut egui_kittest::Harness<'static, WordApp>) {
+        let modifiers = egui::Modifiers { ctrl: true, command: true, ..Default::default() };
+        h.event(egui::Event::Key { key: egui::Key::F1, physical_key: None, pressed: true, repeat: false, modifiers });
+        h.event(egui::Event::Key { key: egui::Key::F1, physical_key: None, pressed: false, repeat: false, modifiers });
+        h.run_steps(3);
+    }
+
+    /// #1678: unbound, Ctrl+F1 collapses the ribbon and a second one brings it back (not on
+    /// macOS, where Ctrl+F1 is the system's).
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn ctrl_f1_through_the_app_collapses_the_ribbon() {
+        let mut h = canvas_harness();
+        assert!(!h.state().ui.ribbon_collapsed);
+        press_ctrl_f1(&mut h);
+        assert!(h.state().ui.ribbon_collapsed, "Ctrl+F1 collapses the ribbon");
+        assert!(!h.state().session.view.focus_mode);
+        press_ctrl_f1(&mut h);
+        assert!(!h.state().ui.ribbon_collapsed, "and brings it back");
+    }
+
+    /// #1678: a Ctrl+F1 the user binds in Customize Keyboard runs their command through the app,
+    /// and the ribbon stays as it was.
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn a_user_bound_ctrl_f1_through_the_app_runs_the_command() {
+        let mut h = canvas_harness();
+        h.state_mut().session.keymap = wordcraft_engine::keymap::KeyMap::from_value(&json!({"assigned": {"Mod+F1": "view.focus"}}));
+        press_ctrl_f1(&mut h);
+        assert!(h.state().session.view.focus_mode, "the bound command ran");
+        assert!(!h.state().ui.ribbon_collapsed, "the ribbon is unchanged");
+    }
+
     /// The caption is Inter semibold, which has no Hebrew (or Arabic, Thai, …), so egui would
     /// paint each of those letters as `?`. Opening such a file borrows one document fallback
     /// face. A CJK name uses the CJK UI font instead of that list.
