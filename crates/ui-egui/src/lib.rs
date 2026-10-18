@@ -931,6 +931,9 @@ impl WordApp {
         if let Some(r) = self.ui_command(id, &params) {
             return r;
         }
+        if id == "file.close" {
+            return self.close_document(&params);
+        }
         if id == "file.autosave" {
             return self.set_autosave(&params);
         }
@@ -1091,6 +1094,16 @@ impl WordApp {
         };
         if document != self.session.document_id() {
             return Err("the document the prompt asked about has been replaced".into());
+        }
+        // Don't Save is the user's say-so to discard the changes, which Close otherwise refuses.
+        let mut params = params;
+        if choice == SaveChoice::DontSave && then == "file.close" {
+            match params.as_object_mut() {
+                Some(p) => {
+                    p.insert("force".into(), json!(true));
+                }
+                None => params = json!({"force": true}),
+            }
         }
         let go = match choice {
             SaveChoice::Cancel => false,
@@ -1272,8 +1285,31 @@ impl WordApp {
         if self.quit_requested || !self.session.dirty || !self.has_document() {
             return true;
         }
-        let _ = self.run("file.close", json!({}));
+        // `quit`: once the prompt is answered the window closes too, not just the document.
+        let _ = self.run("file.close", json!({"quit": true}));
         false
+    }
+
+    /// File › Close (Mod+W, Mod+F4) closes the document and keeps the window, as Word does
+    /// (#1712): it shows no page, as after Esc on the Start screen (#1129), and File › New or Open
+    /// goes on from there. `{"quit": true}`, from the window's close button, quits instead. With no
+    /// document open there is nothing to close. Unsaved changes are never discarded unasked: a
+    /// dirty document closes only with `{"force": true}` (Don't Save in the prompt passes it).
+    fn close_document(&mut self, params: &Value) -> Result<Value, String> {
+        if let Some(e) = control::close_refused(self, "file.close", params) {
+            return Err(e.into());
+        }
+        if params.get("quit").and_then(Value::as_bool) == Some(true) {
+            self.quit_requested = true;
+            return Ok(json!({"quit": true}));
+        }
+        if !self.has_document() {
+            return Ok(json!({"closed": false}));
+        }
+        self.execute("file.new", json!({}))?;
+        self.no_document = Some(self.session.document_id());
+        self.ui.backstage = false;
+        Ok(json!({"closed": true}))
     }
 
     fn after_command(&mut self, id: &str) {
@@ -2853,6 +2889,31 @@ mod tests {
         assert!(!b.ui.backstage && b.has_document());
     }
 
+    /// #1908: with no document open the Home ribbon's split buttons grey out like the plain
+    /// buttons beside them, and their drop-down arrow opens no menu.
+    #[test]
+    fn split_buttons_are_disabled_with_no_document() {
+        use egui::accesskit::Role;
+        use egui_kittest::kittest::{NodeT, Queryable};
+        let mut a = app();
+        a.start_screen();
+        a.run("ui.backstage", json!({"value": false})).unwrap();
+        assert!(!a.has_document());
+        let mut h = harness(a);
+        h.run_steps(4);
+        for tip in ["Underline", "Text Highlight Color", "Font Color", "Bullets", "Numbering", "Shading", "Borders"] {
+            let node = h.query_by_role_and_label(Role::Button, tip);
+            assert!(node.is_some_and(|n| n.accesskit_node().is_disabled()), "{tip} is greyed out with no document");
+        }
+        let r = h.get_by_role_and_label(Role::Button, "Underline").rect();
+        let arrow = egui::pos2(r.max.x + 6.5, r.center().y);
+        for pressed in [true, false] {
+            h.event(egui::Event::PointerButton { pos: arrow, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() });
+        }
+        h.run_steps(3);
+        assert!(!egui::Popup::is_any_open(&h.ctx), "the disabled split button's arrow opens no menu");
+    }
+
     /// #1129: the empty window's File tab goes back to the Backstage with only Home, New, Open
     /// and Options; picking Blank document there opens one, ready for typing.
     #[test]
@@ -4426,25 +4487,46 @@ mod tests {
         assert!(body_text(&a).contains(UNSAVED));
     }
 
-    /// Mod+W ran `file.close`, which quit at once.
+    /// Mod+W ran `file.close`, which quit at once; then it asked first, but still quit the whole
+    /// app. #1712: as in Word, it closes the document and the window stays, showing no page, until
+    /// File › New or Open.
     #[test]
-    fn close_asks_before_quitting() {
+    fn close_asks_then_closes_the_document_and_keeps_the_window() {
         let mut a = typed();
         a.run("file.close", json!({})).unwrap();
         assert_eq!(prompt(&a), Some("saveChanges"));
-        assert!(!a.quit_requested);
         a.run("ui.saveChanges", json!({"answer": "cancel"})).unwrap();
-        assert!(!a.quit_requested);
+        assert!(a.has_document() && body_text(&a).contains(UNSAVED), "Cancel keeps the document");
 
         a.run("file.close", json!({})).unwrap();
         a.run("ui.saveChanges", json!({"answer": "dontSave"})).unwrap();
-        assert!(a.quit_requested);
+        assert!(!a.quit_requested, "the window stays");
+        assert!(!a.has_document() && !a.session.dirty && !a.ui.backstage, "no document, no page");
+        assert!(a.close_requested(), "closing the empty window asks nothing");
+        a.run("file.close", json!({})).unwrap();
+        assert!(!a.quit_requested && !a.has_document(), "nothing left to close");
+        a.run("file.new", json!({})).unwrap();
+        assert!(a.has_document(), "File › New goes on from there");
 
         // A clean document closes straight away.
         let mut clean = app();
         clean.run("file.close", json!({})).unwrap();
         assert_eq!(prompt(&clean), None);
-        assert!(clean.quit_requested);
+        assert!(!clean.quit_requested && !clean.has_document());
+    }
+
+    /// A direct programmatic `file.close` (no prompt, no control channel) never discards unsaved
+    /// changes either: it is refused unless `force` says so, as over the control channel.
+    #[test]
+    fn a_direct_close_keeps_unsaved_changes_unless_forced() {
+        let mut a = typed();
+        for params in [json!({}), json!({"quit": true}), json!({"force": "yes"})] {
+            let e = a.execute("file.close", params.clone()).unwrap_err();
+            assert!(e.contains("unsaved") && e.contains("force"), "{params}: {e}");
+            assert!(a.has_document() && !a.quit_requested && body_text(&a).contains(UNSAVED), "{params}");
+        }
+        a.execute("file.close", json!({"force": true})).unwrap();
+        assert!(!a.has_document() && !a.quit_requested);
     }
 
     /// The window's close button quit at once; now it asks (the host cancels the close on false).
@@ -4577,7 +4659,7 @@ mod tests {
     #[test]
     fn enter_answers_with_the_focused_button() {
         use egui_kittest::kittest::Queryable;
-        for (focus, quits, saves) in [(Some("Cancel"), false, false), (Some("Don't Save"), true, false), (None, true, true)] {
+        for (focus, closes, saves) in [(Some("Cancel"), false, false), (Some("Don't Save"), true, false), (None, true, true)] {
             let dir = scratch(&format!("enter-{}", focus.map_or(0, str::len)));
             let path = docx_on_disk(&dir, "Draft");
             let before = std::fs::read(&path).unwrap();
@@ -4614,7 +4696,7 @@ mod tests {
             }
             let a = h.state();
             assert_eq!(prompt(a), None, "{focus:?}: answered");
-            assert_eq!(a.quit_requested, quits, "{focus:?}: quit");
+            assert_eq!(!a.has_document(), closes, "{focus:?}: closed");
             assert_eq!(std::fs::read(&path).unwrap() != before, saves, "{focus:?}: file written");
             let _ = std::fs::remove_dir_all(&dir);
         }
@@ -4625,7 +4707,7 @@ mod tests {
     #[test]
     fn arrow_keys_choose_the_save_prompt_answer() {
         use egui_kittest::kittest::Queryable;
-        for (arrows, focused, quits, saves) in [
+        for (arrows, focused, closes, saves) in [
             (vec![egui::Key::ArrowLeft], "Save", true, true),
             (vec![egui::Key::ArrowRight], "Don't Save", true, false),
             (vec![egui::Key::ArrowRight, egui::Key::ArrowRight, egui::Key::ArrowRight], "Cancel", false, false),
@@ -4667,7 +4749,7 @@ mod tests {
             }
             let a = h.state();
             assert_eq!(prompt(a), None, "{arrows:?}: answered");
-            assert_eq!(a.quit_requested, quits, "{arrows:?}: quit");
+            assert_eq!(!a.has_document(), closes, "{arrows:?}: closed");
             assert_eq!(std::fs::read(&path).unwrap() != before, saves, "{arrows:?}: file written");
             let _ = std::fs::remove_dir_all(&dir);
         }
@@ -4715,7 +4797,7 @@ mod tests {
             h.step();
         }
         assert_eq!(prompt(h.state()), None, "answered");
-        assert!(h.state().quit_requested, "Don't Save closes");
+        assert!(!h.state().has_document() && !h.state().quit_requested, "Don't Save closes the document, not the window (#1712)");
         assert_eq!(std::fs::read(&path).unwrap(), before, "nothing was saved");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -5768,7 +5850,7 @@ mod tests {
         a.services.pick_save = Some(Box::new(move |_| Some(picked.clone())));
         a.run("file.close", json!({})).unwrap();
         a.run("ui.saveChanges", json!({"answer": "save"})).unwrap();
-        assert!(a.quit_requested);
+        assert!(!a.has_document(), "closed once saved");
         let saved = wordcraft_engine::io::open_path(&path).unwrap();
         assert!(saved.plain_text(wordcraft_doc::StoryRef::Body).contains(UNSAVED));
         let _ = std::fs::remove_dir_all(&dir);
@@ -5803,17 +5885,18 @@ mod tests {
         assert_eq!(r["ok"], json!(false), "{r}");
         let e = r["error"].as_str().unwrap_or("");
         assert!(e.contains("unsaved") && e.contains("force"), "{e}");
-        assert!(!a.quit_requested);
+        assert!(a.has_document() && !a.quit_requested);
         assert!(body_text(&a).contains(UNSAVED));
 
         let r = control_execute(&mut a, json!({"command": "file.close", "params": {"force": true}}));
         assert_eq!(r["ok"], json!(true), "{r}");
-        assert!(a.quit_requested);
+        // Closed: the document, not the window (#1712).
+        assert!(!a.has_document() && !a.quit_requested);
 
         let mut clean = app();
         let r = control_execute(&mut clean, json!({"command": "file.close"}));
         assert_eq!(r["ok"], json!(true), "{r}");
-        assert!(clean.quit_requested);
+        assert!(!clean.has_document() && !clean.quit_requested);
     }
 
     /// Every way to name `file.close` over the control channel is guarded (#1268).
@@ -5835,13 +5918,13 @@ mod tests {
             let mut a = typed();
             let r = send(&mut a, method, params.clone());
             assert_eq!(r["ok"], json!(false), "{method} {params}: {r}");
-            assert!(!a.quit_requested, "{method} {params}");
+            assert!(a.has_document() && !a.quit_requested, "{method} {params}");
             assert!(body_text(&a).contains(UNSAVED));
         }
         let mut a = typed();
         let r = send(&mut a, "file.close", json!({"force": true}));
         assert_eq!(r["ok"], json!(true), "{r}");
-        assert!(a.quit_requested);
+        assert!(!a.has_document() && !a.quit_requested);
     }
 
     const MAILINGS: [&str; 3] = ["mailings.envelopes", "mailings.labels", "mailings.finish"];

@@ -252,6 +252,7 @@ can be used without committing Word output.
 | Date | Change | Summary |
 |---|---|---|
 | 2026-10-16 | trivial | East Asian typography row: `w:eastAsianLayout` kept on save, not laid out; no percentage change |
+| 2026-10-15 | trivial | Equations: a script or limit after `_` or `^` is the whole run of letters and digits (`V_dd`, `x^ab`), as in Word for Mac 16.113.4, and Linear format writes it bare (#1609) |
 | 2026-10-12 | minor | Czech proofing review: short-word splits rank after deletion, NOSUGGEST excludes suggestions while accepting typed forms, affix comments apply only to headers, ratios keep spaces and repeated-word messages use Czech quotes; synthetic engine end-to-end and latency checks |
 | 2026-10-12 | minor | Czech spelling from the installed Hunspell dictionary, runtime-table suggestions and generic checks; Czech interface writes cs-CZ documents; no Czech hyphenation patterns bundled; estimates unchanged |
 | 2026-10-13 | trivial | Windows Magnifier follows the caret onto a new line (#1119): Accessibility row updated; no percentage change |
