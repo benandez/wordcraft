@@ -435,9 +435,6 @@ fn next_balloon(app: &mut WordApp) {
         recent: a.log.iter().cloned().collect(),
         now,
         idle: now - a.last_activity,
-        // ponytail: no local clock in WordCraft yet (only UTC), so the after-midnight Saying stays
-        // quiet; pass the local hour here once there is one.
-        hour: None,
         deleted: std::mem::take(&mut a.deleted),
         unsaved_for: a.unsaved_since.map_or(0.0, |t| now - t),
         words_before,

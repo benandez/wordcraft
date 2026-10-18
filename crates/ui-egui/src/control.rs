@@ -123,6 +123,20 @@ pub(crate) fn close_refused(app: &WordApp, id: &str, params: &Value) -> Option<&
 /// The reply to a request that needs a document while none is open (#1129).
 const NO_DOCUMENT: &str = "no document is open; create one (file.new) or open one (file.open) first";
 
+/// What a control client (an agent through MCP, or the raw channel) may not do with Nib (#959):
+/// let agent messages through again once the user has muted them (only Nib's menu and
+/// File › Options › General can), or sign a message as WordCraft or Nib.
+fn agent_refused(id: &str, p: &Value) -> Option<&'static str> {
+    let reserved = |from: &str| ["wordcraft", "nib"].contains(&from.trim().to_lowercase().as_str());
+    match id {
+        "ui.assistantMute" if p.get("value") == Some(&Value::Bool(false)) => {
+            Some("only the user can unmute agent messages (Nib's menu or File › Options › General)")
+        }
+        "ui.assistantSay" if p.get("from").and_then(Value::as_str).is_some_and(reserved) => Some("`from` can't be WordCraft or Nib"),
+        _ => None,
+    }
+}
+
 pub fn handle(app: &mut WordApp, ctx: &egui::Context, req: &ControlRequest) -> Outcome {
     let p = &req.params;
     let s = |k: &str| p.get(k).and_then(Value::as_str);
@@ -132,6 +146,9 @@ pub fn handle(app: &mut WordApp, ctx: &egui::Context, req: &ControlRequest) -> O
             let Some(id) = s("command").or(s("id")) else { return err("missing `command`") };
             let params = p.get("params").cloned().filter(|v| !v.is_null()).unwrap_or(json!({}));
             if let Some(e) = close_refused(app, id, &params) {
+                return err(e);
+            }
+            if let Some(e) = agent_refused(id, &params) {
                 return err(e);
             }
             match app.execute(id, params) {
