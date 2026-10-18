@@ -92,6 +92,10 @@ impl Offer {
         self.buttons.push(Button { label, command, params: json!({}) });
         self
     }
+    fn button_with(mut self, label: &'static str, command: &'static str, params: Value) -> Self {
+        self.buttons.push(Button { label, command, params });
+        self
+    }
     fn arg(mut self, name: &'static str, value: String) -> Self {
         self.args.push((name, value));
         self
@@ -140,7 +144,7 @@ pub fn tips(s: &Session, o: &Observation) -> Vec<Offer> {
         out.push(
             Offer::tip("letter", "It looks like you're writing a letter. Want an envelope for it, or a letter template to start from?")
                 .button("Envelopes", "mailings.envelopes")
-                .button("Letter template", "file.newFromTemplate"),
+                .button_with("Letter template", "file.new", json!({"template": "letter"})),
         );
     }
 
@@ -301,7 +305,8 @@ mod tests {
         let o = typed(&mut s, "Dear Sam,");
         let t = tips(&s, &o);
         assert_eq!(ids(&t), ["letter"]);
-        assert_eq!(t[0].buttons.iter().map(|b| b.command).collect::<Vec<_>>(), ["mailings.envelopes", "file.newFromTemplate"]);
+        assert_eq!(t[0].buttons.iter().map(|b| b.command).collect::<Vec<_>>(), ["mailings.envelopes", "file.new"]);
+        assert_eq!(t[0].buttons[1].params, json!({"template": "letter"}));
         // Not for "Dear" mid-sentence, nor when the last thing wasn't typing.
         let mut s = Session::new(wordcraft_doc::Document::new());
         let o = typed(&mut s, "Oh Dear me");

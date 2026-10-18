@@ -134,9 +134,14 @@ impl Server {
                 let asked = params.get("protocolVersion").and_then(Value::as_str).unwrap_or(PROTOCOL_VERSION);
                 let version = if SUPPORTED_VERSIONS.contains(&asked) { asked } else { PROTOCOL_VERSION };
                 let info = params.get("clientInfo");
-                let name =
-                    info.and_then(|i| i.get("title").or_else(|| i.get("name"))).and_then(Value::as_str).map(str::trim).filter(|n| !n.is_empty());
-                self.client = name.map(|n| n.chars().filter(|c| !c.is_control()).take(40).collect());
+                // The title, else the name, whichever has something left once control characters go.
+                let clean =
+                    |k: &str| info.and_then(|i| i.get(k)).and_then(Value::as_str).map(|n| n.chars().filter(|c| !c.is_control()).collect::<String>());
+                self.client = [clean("title"), clean("name")]
+                    .into_iter()
+                    .flatten()
+                    .map(|n| n.trim().chars().take(40).collect::<String>())
+                    .find(|n| !n.is_empty());
                 Ok(json!({
                     "protocolVersion": version,
                     "capabilities": {"tools": {}, "resources": {}},

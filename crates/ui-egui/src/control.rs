@@ -127,7 +127,9 @@ const NO_DOCUMENT: &str = "no document is open; create one (file.new) or open on
 /// let agent messages through again once the user has muted them (only Nib's menu and
 /// File › Options › General can), or sign a message as WordCraft or Nib.
 fn agent_refused(id: &str, p: &Value) -> Option<&'static str> {
-    let reserved = |from: &str| ["wordcraft", "nib"].contains(&from.trim().to_lowercase().as_str());
+    // Letters and digits only, so invisible or punctuation characters can't slip past.
+    let reserved =
+        |from: &str| ["wordcraft", "nib"].contains(&from.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase().as_str());
     match id {
         "ui.assistantMute" if p.get("value") == Some(&Value::Bool(false)) => {
             Some("only the user can unmute agent messages (Nib's menu or File › Options › General)")
@@ -302,7 +304,7 @@ pub fn handle(app: &mut WordApp, ctx: &egui::Context, req: &ControlRequest) -> O
         }
         other => {
             // Anything else: a command id.
-            if let Some(e) = close_refused(app, other, p) {
+            if let Some(e) = close_refused(app, other, p).or_else(|| agent_refused(other, p)) {
                 return err(e);
             }
             match app.execute(other, p.clone()) {
