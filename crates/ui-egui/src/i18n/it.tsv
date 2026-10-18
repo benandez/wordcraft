@@ -778,6 +778,8 @@
 	Space before/after:	Spazio prima/dopo:
 	Spacing	Spaziatura
 	Spacing (pt):	Spaziatura (pt):
+	Kerning for fonts:	Crenatura per i caratteri:
+	Points and above	punti e oltre
 	Speech	Voce
 	Spelling & Grammar	Ortografia e grammatica
 	Spelling &\nGrammar	Ortografia e\ngrammatica
@@ -1457,6 +1459,8 @@
 	Remove every custom shortcut and restore the built-in keys?	Rimuovere tutte le scelte rapide personalizzate e ripristinare i tasti predefiniti?
 	Remove every custom tab and group and show all tabs again?	Rimuovere tutte le schede e i gruppi personalizzati e mostrare di nuovo tutte le schede?
 	Remove from Quick Access Toolbar	Rimuovi dalla barra di accesso rapido
+	Hide Quick Access Toolbar	Nascondi barra di accesso rapido
+	Show Quick Access Toolbar	Mostra barra di accesso rapido
 	Rename…	Rinomina…
 	Reset All…	Reimposta tutto…
 	Reset…	Reimposta…
@@ -2501,6 +2505,10 @@ preview	Title	Esempio
 	Contains	Contiene
 	Does not contain	Non contiene
 	{count} of {total} recipients will be merged.	Destinatari da unire: {count} su {total}.
+	Find in list:	Trova nell'elenco:
+	Any field	Qualsiasi campo
+	Matches: {count}	Corrispondenze: {count}
+	Show only records that will be merged	Mostra solo i record che verranno uniti
 	Show KeyTips (Alt or F10)	Mostra i suggerimenti tasti (Alt o F10)
 	Reading	Lettura
 	Reading Column Width	Larghezza colonna di lettura
@@ -2671,3 +2679,22 @@ preview	Title	Esempio
 	{added}; {count} couldn't be read: {names}	{added}; {count} non leggibili: {names}
 	{names} and {n} more	{names} e altri {n}
 	{added}; {n} skipped (limit {max})	{added}; {n} saltati (limite {max})
+	nothing is selected	nessuna selezione
+	select a picture or shape first	seleziona prima un'immagine o una forma
+	select recipients first	seleziona prima i destinatari
+	select two or more pictures or shapes first (Shift+click)	seleziona due o più immagini o forme (Maiusc+clic)
+	text boxes can't go inside a text box	le caselle di testo non possono stare in una casella di testo
+	the cursor isn't in a table	il cursore non è in una tabella
+	{name} options	Opzioni di {name}
+
+# Drop Cap menu and Drop Cap Options (#2601)
+	Dropped	Nel testo
+	In margin	Nel margine
+	Drop Cap Options…	Opzioni capolettera…
+	Lines to drop:	Altezza in righe:
+	Distance from text:	Distanza dal testo:
+	Distance from text	Distanza dal testo
+
+# Drop Cap disabled reasons (#2601)
+	the paragraph is empty	il paragrafo è vuoto
+	the paragraph starts with a space	il paragrafo inizia con uno spazio

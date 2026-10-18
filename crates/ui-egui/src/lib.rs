@@ -237,6 +237,10 @@ pub struct UiState {
     #[serde(skip)]
     pub print: print_page::PrintSettings,
     pub ribbon_collapsed: bool,
+    /// The Quick Access Toolbar shows in the title bar (#1945). Its menu's Hide Quick Access
+    /// Toolbar takes it away; Show Quick Access Toolbar (the ribbon's right-click menu, Customize
+    /// Ribbon › Quick Access Toolbar) brings it back. Kept between runs.
+    pub quick_access_toolbar: bool,
     pub recent: Vec<String>,
     /// Symbols inserted from the Symbol dialog, most recent first (#321).
     pub recent_symbols: Vec<dialogs_insert::RecentSymbol>,
@@ -356,6 +360,7 @@ impl Default for UiState {
             backstage_page: "home".into(),
             print: print_page::PrintSettings::default(),
             ribbon_collapsed: false,
+            quick_access_toolbar: true,
             recent: Vec::new(),
             recent_symbols: Vec::new(),
             recent_colors: Vec::new(),
@@ -1496,6 +1501,17 @@ impl WordApp {
                 self.ui.ribbon_collapsed = !self.ui.ribbon_collapsed;
                 json!({"collapsed": self.ui.ribbon_collapsed})
             }
+            "ui.quickAccessToolbar" => {
+                // Hide Quick Access Toolbar (its menu) and Show Quick Access Toolbar (the ribbon's
+                // right-click menu, Customize Ribbon), #1945: `value` true shows the toolbar in
+                // the title bar, false hides it; no value toggles it.
+                match p.get("value") {
+                    None => self.ui.quick_access_toolbar = !self.ui.quick_access_toolbar,
+                    Some(Value::Bool(on)) => self.ui.quick_access_toolbar = *on,
+                    Some(_) => return Some(Err("`value` must be true or false".into())),
+                }
+                json!({"quickAccessToolbar": self.ui.quick_access_toolbar})
+            }
             "ui.keytips" => {
                 if let Some(v) = p.get("value") {
                     let Some(enabled) = v.as_bool() else { return Some(Err("`value` must be a boolean".into())) };
@@ -2555,6 +2571,7 @@ pub(crate) fn works_without_document(id: &str) -> bool {
             | "ui.dialog"
             | "ui.closeDialog"
             | "ui.collapseRibbon"
+            | "ui.quickAccessToolbar"
             | "ui.keytips"
             | "ui.dark"
             | "ui.theme"
@@ -2836,6 +2853,34 @@ mod tests {
         let old: UiState = serde_json::from_str(r#"{"tab":"Insert"}"#).unwrap();
         assert!(old.caret_animation && old.tab == "Insert");
         assert_eq!(a.run("ui.caretAnimation", json!({"value": true})).unwrap()["caretAnimation"], true);
+    }
+
+    /// #1945: showing or hiding the Quick Access Toolbar is a UI command (no value toggles it),
+    /// kept between runs; settings saved before it existed show the toolbar; it works with no
+    /// document open, like the other interface settings.
+    #[test]
+    fn quick_access_toolbar_is_a_ui_command_and_survives_a_restart() {
+        let mut a = app();
+        assert!(a.ui.quick_access_toolbar, "shown by default");
+        assert_eq!(a.run("ui.quickAccessToolbar", json!({})).unwrap(), json!({"quickAccessToolbar": false}), "no value toggles it");
+        assert_eq!(a.run("ui.quickAccessToolbar", json!({})).unwrap(), json!({"quickAccessToolbar": true}));
+        assert_eq!(a.run("ui.quickAccessToolbar", json!({"value": false})).unwrap(), json!({"quickAccessToolbar": false}));
+        for junk in [json!({"value": "no"}), json!({"value": 0}), json!({"value": null}), json!({"value": [true]})] {
+            assert!(a.run("ui.quickAccessToolbar", junk).is_err());
+        }
+        assert!(!a.ui.quick_access_toolbar, "a rejected value keeps the setting");
+        let saved = serde_json::to_string(&a.prefs()).unwrap();
+        assert!(saved.contains(r#""quickAccessToolbar":false"#), "{saved}");
+        let mut b = app();
+        b.apply_prefs(serde_json::from_str(&saved).unwrap());
+        assert!(!b.ui.quick_access_toolbar, "hidden after a restart");
+        let old: UiState = serde_json::from_str(r#"{"tab":"Insert"}"#).unwrap();
+        assert!(old.quick_access_toolbar && old.tab == "Insert", "older settings show the toolbar");
+        assert_eq!(a.run("ui.quickAccessToolbar", json!({"value": true})).unwrap()["quickAccessToolbar"], true);
+        let mut c = app();
+        c.start_screen();
+        assert!(!c.has_document());
+        assert_eq!(c.run("ui.quickAccessToolbar", json!({"value": false})).unwrap()["quickAccessToolbar"], false, "works without a document");
     }
 
     fn harness(a: WordApp) -> egui_kittest::Harness<'static, WordApp> {
@@ -6875,6 +6920,24 @@ mod tests {
         assert!(theme::Tokens::get(&ctx).dark);
     }
 
+    /// #537: where winit reports no OS theme (Linux), System follows the desktop portal's answer
+    /// and pins the window to it, so GNOME's client-side title bar matches the interface and
+    /// follows a theme switch made while the app runs.
+    #[test]
+    fn system_theme_pins_the_title_bar_to_the_desktop_answer() {
+        use egui::{SystemTheme, ViewportCommand};
+        let ctx = egui::Context::default();
+        let mut a = app();
+        a.run("ui.theme", json!({"value": "system"})).unwrap();
+        for dark in [false, true, false] {
+            a.desktop_dark = Some(dark);
+            let sent = theme_frame(&ctx, &mut a, None);
+            let want = if dark { SystemTheme::Dark } else { SystemTheme::Light };
+            assert!(sent.contains(&ViewportCommand::SetTheme(want)), "desktop dark {dark}: {sent:?}");
+            assert_eq!(theme::Tokens::get(&ctx).dark, dark);
+        }
+    }
+
     /// #312: Dark page darkens only the pages; the interface keeps following its own setting.
     #[test]
     fn dark_page_leaves_the_interface_theme_alone() {
@@ -7206,6 +7269,151 @@ mod tests {
         let names: Vec<&str> = a.session.merge.rows.iter().map(|r| r[0].as_str()).collect();
         assert_eq!(names, ["Grace", "Ada"]);
         assert!(open_filters("recipients")[0].1.contains(&"xls"));
+    }
+
+    /// #1576: Find in list and "only records that will be merged" hide rows from the grid
+    /// without touching the list; the shown rows keep their real indices for edit and remove.
+    #[test]
+    fn recipient_list_search_and_merged_view() {
+        let fields: Vec<String> = vec!["Name".into(), "City".into()];
+        let rows: Vec<Vec<String>> = [["Ada", "London"], ["Alan", "Wilmslow"], ["Grace", "LONDON"], ["Émile", "Paris"]]
+            .iter()
+            .map(|r| r.iter().map(|c| c.to_string()).collect())
+            .collect();
+        let none = dialogs::visible_recipients(&rows, None, "", false);
+        assert_eq!(none, [0, 1, 2, 3], "no search, no filter: every row");
+        // Search: any cell, any case, including non-ASCII.
+        assert_eq!(dialogs::visible_recipients(&rows, None, "london", false), [0, 2]);
+        assert_eq!(dialogs::visible_recipients(&rows, None, "  AL ", false), [1], "trimmed, any case");
+        assert_eq!(dialogs::visible_recipients(&rows, None, "émi", false), [3]);
+        let greek = vec![vec!["ΟΣ".to_string()], vec!["ος".to_string()], vec!["Αλφα".to_string()]];
+        assert_eq!(dialogs::visible_recipients(&greek, None, "ος", false), [0, 1], "final sigma matches capital sigma");
+        assert_eq!(dialogs::visible_recipients(&rows, None, "ÉMI", false), [3]);
+        assert!(dialogs::visible_recipients(&rows, None, "zzz", false).is_empty());
+        // Filter only: City = London keeps Ada and Grace.
+        let mut filter = dialogs::RecipientFilter::default();
+        filter.rules.push(dialogs::FilterRow {
+            field: "City".into(),
+            op: wordcraft_engine::cmd::mailings::FilterOp::Equal,
+            value: "London".into(),
+            or: false,
+        });
+        let order = dialogs::merge_order(&fields, &rows, &filter).unwrap();
+        assert_eq!(order, [Some(1), None, Some(2), None]);
+        assert_eq!(dialogs::visible_recipients(&rows, Some(&order), "", false), [0, 1, 2, 3], "unchecked: excluded rows still shown");
+        assert_eq!(dialogs::visible_recipients(&rows, Some(&order), "", true), [0, 2]);
+        // Both: search within the merged records.
+        assert_eq!(dialogs::visible_recipients(&rows, Some(&order), "grace", true), [2]);
+        assert!(dialogs::visible_recipients(&rows, Some(&order), "alan", true).is_empty());
+        // No filter: only_merged hides nothing.
+        assert_eq!(dialogs::visible_recipients(&rows, None, "", true), [0, 1, 2, 3]);
+        // Removing the first shown row removes the real record, not row 0.
+        let shown = dialogs::visible_recipients(&rows, None, "grace", false);
+        let mut edited = rows.clone();
+        edited.remove(shown[0]);
+        assert_eq!(edited.iter().map(|r| r[0].as_str()).collect::<Vec<_>>(), ["Ada", "Alan", "Émile"]);
+        // Hostile order (shorter than the list) never panics; missing entries count as excluded.
+        assert_eq!(dialogs::visible_recipients(&rows, Some(&[Some(1)]), "", true), [0]);
+        // The view settings don't reach the merge.
+        let mut viewed = filter.clone();
+        viewed.find = "grace".into();
+        viewed.only_merged = true;
+        assert_eq!(viewed.params(), filter.params());
+    }
+
+    /// #1576 review: while a cell is edited the grid keeps its rows, so a record the edit stops
+    /// matching stays put instead of sliding another record under the cursor; and New Entry
+    /// shows every row, so the new, empty entry can't be hidden.
+    #[test]
+    fn recipient_grid_holds_its_rows_while_a_cell_is_edited() {
+        let mut held = None;
+        // Not editing: whatever matches now.
+        assert_eq!(dialogs::hold_rows(vec![0, 2], &mut held, false, 4), [0, 2]);
+        assert_eq!(held, None);
+        // Editing starts: the rows shown then are held…
+        assert_eq!(dialogs::hold_rows(vec![0, 2], &mut held, true, 4), [0, 2]);
+        // …even when the edit makes row 0 stop matching.
+        assert_eq!(dialogs::hold_rows(vec![2], &mut held, true, 4), [0, 2]);
+        // A held row past the end of a shrunk list is dropped, never indexed.
+        assert_eq!(dialogs::hold_rows(vec![], &mut held, true, 1), [0]);
+        // Editing ends: the view catches up.
+        assert_eq!(dialogs::hold_rows(vec![2], &mut held, false, 4), [2]);
+        assert_eq!(held, None);
+        assert_eq!(dialogs::hold_rows(vec![1], &mut held, true, 4), [1], "a new edit holds the new rows");
+
+        let mut filter = dialogs::RecipientFilter { find: "grace".into(), only_merged: true, held: Some(vec![1]), ..Default::default() };
+        filter.show_all();
+        assert!(filter.find.is_empty() && !filter.only_merged && filter.held.is_none());
+    }
+
+    /// #1576: the real Edit Recipient List grid in a harness (the dialog body, without the app
+    /// around it): Find, merged-only, an edit while the search hides rows, remove, New Entry.
+    #[test]
+    fn recipient_grid_edits_the_right_record_through_the_ui() {
+        use egui_kittest::kittest::Queryable;
+        type State = (WordApp, Vec<String>, Vec<Vec<String>>, String, dialogs::RecipientFilter);
+        let rows = [["Ada", "London"], ["Alan", "Wilmslow"], ["Grace", "London"], ["Émile", "Paris"]];
+        let mut filter = dialogs::RecipientFilter::default();
+        let rule =
+            dialogs::FilterRow { field: "City".into(), op: wordcraft_engine::cmd::mailings::FilterOp::Equal, value: "London".into(), or: false };
+        filter.rules.push(rule);
+        let state: State = (
+            app(),
+            vec!["Name".into(), "City".into()],
+            rows.iter().map(|r| r.iter().map(|c| c.to_string()).collect()).collect(),
+            String::new(),
+            filter,
+        );
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(900.0, 600.0)).build_ui_state(
+            |ui, s: &mut State| {
+                let (app, fields, rows, message, filter) = s;
+                dialogs::recipient_list(app, ui, fields, rows, message, filter);
+            },
+            state,
+        );
+        h.run_steps(4);
+        // Text boxes in order: Find, two field names, then the visible records' cells.
+        let cells = |h: &egui_kittest::Harness<'_, State>| h.query_all_by_role(egui::accesskit::Role::TextInput).count().saturating_sub(3) / 2;
+        let names = |h: &egui_kittest::Harness<'_, State>| h.state().2.iter().map(|r| r[0].clone()).collect::<Vec<_>>();
+        // Find in list: the first text box. Grace is the only match.
+        let find = h.query_all_by_role(egui::accesskit::Role::TextInput).next().unwrap();
+        find.click();
+        h.run_steps(2);
+        h.query_all_by_role(egui::accesskit::Role::TextInput).next().unwrap().type_text("grace");
+        h.run_steps(3);
+        assert_eq!(h.state().4.find, "grace");
+        assert!(cells(&h) == 1, "search hides the other rows");
+        // Merged-only on top of it: still Grace (London is kept).
+        h.get_by_label("Show only records that will be merged").click();
+        h.run_steps(3);
+        assert!(h.state().4.only_merged && cells(&h) == 1);
+        // Edit Grace's cell to something the search no longer matches: the row stays, and the
+        // edit lands on record 2, not on the first visible row's index.
+        h.query_all_by_role(egui::accesskit::Role::TextInput).nth(3).unwrap().click();
+        h.run_steps(2);
+        h.event(egui::Event::Key {
+            key: egui::Key::A,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers { command: true, ..Default::default() },
+        });
+        h.query_all_by_role(egui::accesskit::Role::TextInput).nth(3).unwrap().type_text("Zed");
+        h.run_steps(3);
+        assert_eq!(names(&h), ["Ada", "Alan", "Zed", "Émile"]);
+        assert_eq!(h.state().4.held, Some(vec![2]), "rows are held while the cell has the keyboard");
+        assert_eq!(cells(&h), 1);
+        // Remove the one shown record: the third "×" (two are field headers).
+        let xs: Vec<_> = h.get_all_by_label("×").collect();
+        xs[2].click();
+        h.run_steps(3);
+        assert_eq!(names(&h), ["Ada", "Alan", "Émile"]);
+        assert!(h.state().4.held.is_none());
+        // New Entry clears the view and appends an empty record.
+        h.get_by_label("New Entry").click();
+        h.run_steps(3);
+        assert_eq!(h.state().2, vec![vec!["Ada", "London"], vec!["Alan", "Wilmslow"], vec!["Émile", "Paris"], vec!["", ""]]);
+        assert!(h.state().4.find.is_empty() && !h.state().4.only_merged);
     }
 
     /// #240: Select Recipients needs data, so clicking it opens the recipient list instead of

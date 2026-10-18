@@ -197,6 +197,7 @@ pub fn measure_table_columns(doc: &wordcraft_doc::Document, t: &Table) -> Vec<(f
                 hide_deleted: Default::default(),
                 table: text.as_ref(),
                 proofing: None,
+                typing_word: None,
                 // Measurement uses a fixed environment (like show_hidden/proofing above).
                 numeral: crate::NumeralMode::default(),
                 exclusions: &[],
@@ -356,7 +357,15 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
     let ncols = t.cols().max(1);
     // Column widths.
     let mut grid: Vec<f32> = if t.grid.len() == ncols {
-        t.grid.iter().map(|w| if w.is_finite() { w.max(4.0) } else { 72.0 }).collect()
+        // Grid units can be narrower than a text box, including omitted row-end columns.
+        t.grid
+            .iter()
+            .map(|&w| match w {
+                w if !w.is_finite() => 72.0,
+                w if w <= 0.0 => 4.0,
+                w => w,
+            })
+            .collect()
     } else {
         vec![avail / ncols as f32; ncols]
     };
@@ -372,8 +381,13 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
         _ => None,
     };
     if let Some(tw) = target {
-        let k = tw / total.max(1.0);
-        grid.iter_mut().for_each(|w| *w *= k);
+        if total > 0.0 && total < 1.0 {
+            // Divide first: a tiny positive total can overflow the scale factor.
+            grid.iter_mut().for_each(|w| *w = (*w / total) * tw);
+        } else {
+            let k = tw / total.max(1.0);
+            grid.iter_mut().for_each(|w| *w *= k);
+        }
         total = tw;
     }
     if total > avail * 1.5 && !t.props.fixed {
@@ -563,7 +577,7 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
                 turned = Some(Turned { turn, len, across, snap, region, ci, top: margins[0] + band_t });
                 (items, len)
             } else {
-                let BoxLayout { mut items, mut height, floats_bottom, last_top } =
+                let BoxLayout { mut items, mut height, floats_bottom, last_top, .. } =
                     layout_box(ctx, story, &cell.blocks, &cpath, cw, BoxContext::Cell(text), depth, None);
                 // A hidden end-of-cell mark: an empty last paragraph takes no room (Word for
                 // Windows: a row of empty such cells is only its borders).
