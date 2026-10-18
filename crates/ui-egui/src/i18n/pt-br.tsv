@@ -193,6 +193,7 @@
 	Use the Insert key to switch overtype on and off	Usar a tecla Insert para ativar e desativar a sobrescrita
 	Whole document	Documento inteiro
 	This section	Esta seção
+	Selected text	Texto selecionado
 	Fill	Cor de fundo
 	Setting:	Tipo:
 	3-D	3D
@@ -2057,6 +2058,7 @@
 	Hyphenation zone:	Zona de hifenização:
 	Italian	Italiano
 	Croatian	Croata
+	Indonesian	Indonésio
 	Japanese	Japonês
 	Korean	Coreano
 	Limit consecutive hyphens to:	Limitar hífens consecutivos a:
@@ -2245,3 +2247,17 @@
 # Reading Mode column widths (#1040)
 	Narrow	Estreita
 	Medium	Média
+# Split Cells and Convert Text to Table (#2592)
+	Merge cells before split	Mesclar células antes de dividir
+	Table size	Tamanho da tabela
+	AutoFit behavior	Comportamento de autoajuste
+	Initial column width:	Largura inicial da coluna:
+	AutoFit to contents	Autoajustar ao conteúdo
+	AutoFit to window	Autoajustar à janela
+	Separate text at	Separar texto em
+	Commas	Vírgulas
+	Other:	Outro:
+	The number must be between 1 and {max}.	O número deve estar entre 1 e {max}.
+	The measurement must be between {min} and {max}.	A medida deve estar entre {min} e {max}.
+	Recently Used Fonts	Fontes usadas recentemente
+	All Fonts	Todas as fontes

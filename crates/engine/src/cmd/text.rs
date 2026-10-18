@@ -55,7 +55,12 @@ fn autoformat(s: &mut Session, text: &str) -> Option<String> {
     let para = s.doc.para_at(f)?;
     let before = para.text.get(..f.off)?;
     let prev = before.chars().next_back();
-    let opening = prev.is_none_or(|p| p.is_whitespace() || "([{<\u{2014}\u{2013}".contains(p));
+    let opening = prev.is_none_or(|p| {
+        p.is_whitespace()
+            || "([{<\u{2014}\u{2013}\u{00AB}\u{2039}\u{201E}\u{201A}".contains(p)
+            || (c == '"' && p == '\u{2018}')
+            || (c == '\'' && p == '\u{201C}')
+    });
     match c {
         '"' => Some(if opening { "\u{201C}" } else { "\u{201D}" }.into()),
         '\'' => Some(if opening { "\u{2018}" } else { "\u{2019}" }.into()),
@@ -792,6 +797,10 @@ fn delete_inner(s: &mut Session, _: &Value) -> CmdResult {
             path.extend([0, 0, 0]);
             s.sel = Selection::caret(Pos { story: f.story, path: wordcraft_doc::Path(path), off: 0 });
         }
+    } else if f.story == StoryRef::Body && f.path.0.len() == 1 && !s.doc.settings.track_changes {
+        // The last paragraph: no paragraph to join, but a section break on its mark (the last
+        // section then holds no paragraph) still goes, as in Word (#2127).
+        s.doc.remove_section_break(f.path.last());
     }
     sel_result(s)
 }

@@ -424,13 +424,15 @@ impl Lp {
             "underline" => one(MNode::Bar { top: false, e: self.arg() }),
             "boxed" | "fbox" => one(MNode::BorderBox { hide: [false; 4], strike: [false; 4], e: self.arg() }),
             "phantom" => one(MNode::Phant { show: false, zero_wid: false, zero_asc: false, zero_desc: false, e: self.arg() }),
-            "overbrace" | "underbrace" | "overparen" | "underparen" => {
+            "overbrace" | "underbrace" | "overparen" | "underparen" | "overbracket" | "underbracket" => {
                 let top = c.starts_with("over");
                 let chr = match c {
                     "overbrace" => '⏞',
                     "underbrace" => '⏟',
                     "overparen" => '⏜',
-                    _ => '⏝',
+                    "underparen" => '⏝',
+                    "overbracket" => '⎴',
+                    _ => '⎵',
                 };
                 let e = self.arg();
                 let g = MNode::GroupChr { chr, top, e };
@@ -774,6 +776,17 @@ fn delim_tex(c: Option<char>) -> String {
     }
 }
 
+fn group_chr_tex(chr: char, top: bool) -> &'static str {
+    match chr {
+        '⏜' => "\\overparen",
+        '⏝' => "\\underparen",
+        '⎴' => "\\overbracket",
+        '⎵' => "\\underbracket",
+        _ if top => "\\overbrace",
+        _ => "\\underbrace",
+    }
+}
+
 fn node(n: &MNode, s: &mut String, depth: usize) {
     match n {
         MNode::Run(r) => {
@@ -901,11 +914,10 @@ fn node(n: &MNode, s: &mut String, depth: usize) {
                 s.push('_');
                 braced(lim, s, depth);
             } else if let [MNode::GroupChr { chr, top, e: inner }] = e.as_slice() {
-                s.push_str(if *top { "\\overbrace" } else { "\\underbrace" });
+                s.push_str(group_chr_tex(*chr, *top));
                 braced(inner, s, depth);
                 s.push(if *upper { '^' } else { '_' });
                 braced(lim, s, depth);
-                let _ = chr;
             } else {
                 s.push_str(if *upper { "\\overset" } else { "\\underset" });
                 braced(lim, s, depth);
@@ -941,8 +953,8 @@ fn node(n: &MNode, s: &mut String, depth: usize) {
             braced(e, s, depth);
         }
         MNode::Boxed { e } => braced(e, s, depth),
-        MNode::GroupChr { top, e, .. } => {
-            s.push_str(if *top { "\\overbrace" } else { "\\underbrace" });
+        MNode::GroupChr { chr, top, e } => {
+            s.push_str(group_chr_tex(*chr, *top));
             braced(e, s, depth);
         }
         MNode::EqArr { rows } => {
@@ -1031,6 +1043,15 @@ mod tests {
             let tex = to_latex(&n);
             let back = parse_latex(&tex);
             assert_eq!(crate::math::to_linear(&back), crate::math::to_linear(&n), "{lin} → {tex}");
+        }
+    }
+
+    #[test]
+    fn group_character_latex_roundtrip() {
+        for cmd in ["\\overparen{a+b}", "\\underparen{a+b}", "\\overbracket{x}", "\\underbracket{x}"] {
+            let n = parse_latex(cmd);
+            let tex = to_latex(&n);
+            assert_eq!(tex, cmd);
         }
     }
 
