@@ -98,6 +98,28 @@ fn paras(d: &Document) -> Vec<&Paragraph> {
 }
 
 #[test]
+fn ref_links_keep_cached_results() {
+    let d = read_body(
+        r#"
+<w:p><w:fldSimple w:instr="REF destination \h" w:fldLock="1"><w:r><w:rPr><w:b/></w:rPr><w:t>Cached simple</w:t></w:r></w:fldSimple></w:p>
+<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve">REF destination </w:instrText></w:r><w:r><w:instrText>\w \h</w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>Cached complex</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>
+<w:p><w:bookmarkStart w:id="0" w:name="destination"/><w:r><w:t>Changed destination</w:t></w:r><w:bookmarkEnd w:id="0"/></w:p>"#,
+    );
+    let again = wordcraft_docx::read(&wordcraft_docx::write(&d).unwrap()).unwrap();
+    for doc in [&d, &again] {
+        let p = paras(doc);
+        for (index, instr, cached, locked) in
+            [(0, r"REF destination \h", "Cached simple", true), (1, r"REF destination \w \h", "Cached complex", false)]
+        {
+            assert!(matches!(&p[index].objects[0], InlineObject::Field { instr: actual, result, locked: lock, .. }
+                if actual == instr && result == cached && *lock == locked));
+        }
+        assert_eq!(p[0].props_of_char(0).bold, Some(true));
+        assert!(doc.bookmarks().iter().any(|(name, _)| name == "destination"));
+    }
+}
+
+#[test]
 fn single_entry_toc_keeps_formatted_result_and_nested_page_field() {
     let d = read_body(
         r#"
@@ -234,6 +256,19 @@ fn symbol_font_text_reads_as_unicode_and_round_trips_unchanged() {
     let q = paras(&again);
     assert_eq!(q[0].plain_text(), p[0].plain_text());
     assert_eq!(q[0].shown_text(), p[0].shown_text());
+}
+
+#[test]
+fn pcl6_symbol_roundtrip() {
+    let body = r#"<w:p><w:r><w:sym w:font="Symbol (PCL6)" w:char="F0B3"/></w:r></w:p>"#;
+    let d = wordcraft_docx::read(&docx(body, &[], &[])).unwrap();
+    let again = wordcraft_docx::read(&wordcraft_docx::write(&d).unwrap()).unwrap();
+    for doc in [&d, &again] {
+        let p = paras(doc)[0];
+        assert_eq!(p.text, "\u{F0B3}");
+        assert_eq!(p.props_of_char(0).font.as_deref(), Some("Symbol (PCL6)"));
+        assert_eq!(p.shown_text(), "≥");
+    }
 }
 
 #[test]
@@ -2829,4 +2864,48 @@ fn row_table_borders_round_trip() {
     assert!(xml.contains("<w:insideV"));
     let again = wordcraft_docx::read(&saved).unwrap();
     assert_eq!(d.body, again.body);
+}
+
+#[test]
+fn field_result_keeps_run_props() {
+    let styles = format!(
+        r#"<w:styles {W_NS}><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:rPr><w:sz w:val="8"/></w:rPr></w:style><w:style w:type="character" w:styleId="Result"><w:name w:val="Result"/><w:rPr><w:sz w:val="16"/><w:b/></w:rPr></w:style></w:styles>"#
+    );
+    for result_pr in [r#"<w:sz w:val="16"/><w:b/>"#, r#"<w:rStyle w:val="Result"/>"#, ""] {
+        for simple in [false, true] {
+            let result = format!(r#"<w:r><w:rPr>{result_pr}</w:rPr><w:t>7</w:t></w:r>"#);
+            let field = if simple {
+                format!(r#"<w:fldSimple w:instr="PAGE" w:fldLock="1" w:dirty="1">{result}</w:fldSimple>"#)
+            } else {
+                format!(
+                    r#"<w:r><w:rPr><w:sz w:val="6"/><w:i/></w:rPr><w:fldChar w:fldCharType="begin" w:fldLock="1" w:dirty="1"/></w:r><w:r><w:instrText>PAGE</w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:rPr><w:sz w:val="40"/></w:rPr><w:t/></w:r>{result}<w:r><w:rPr><w:sz w:val="50"/></w:rPr><w:fldChar w:fldCharType="end"/></w:r>"#
+                )
+            };
+            let body = format!(r#"<w:p><w:r><w:rPr><w:sz w:val="16"/></w:rPr><w:t>Counter </w:t></w:r>{field}</w:p>"#);
+            let mut d = wordcraft_docx::read(&docx(&body, &[("styles", "styles", "styles.xml")], &[("word/styles.xml", &styles)])).unwrap();
+            for _ in 0..2 {
+                let p = paras(&d)[0];
+                let props = p.props_of_char("Counter ".len());
+                assert_eq!(p.props_at(0).size, Some(8.0));
+                assert_eq!(props.size, result_pr.starts_with("<w:sz").then_some(8.0), "simple={simple}, result={result_pr}");
+                assert_eq!(props.style.as_deref(), result_pr.starts_with("<w:rStyle").then_some("Result"));
+                assert_eq!(props.italic, None);
+                assert!(
+                    matches!(&p.objects[0], InlineObject::Field { instr, result, locked: true, dirty: true, .. } if instr == "PAGE" && result == "7")
+                );
+                d = wordcraft_docx::read(&wordcraft_docx::write(&d).unwrap()).unwrap();
+            }
+        }
+    }
+}
+
+#[test]
+fn empty_field_keeps_begin_props() {
+    let d = read_body(
+        r#"<w:p><w:r><w:rPr><w:sz w:val="12"/><w:i/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText>PAGE</w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:rPr><w:sz w:val="40"/></w:rPr><w:t/></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>"#,
+    );
+    let p = paras(&d)[0];
+    assert_eq!(p.props_at(0).size, Some(6.0));
+    assert_eq!(p.props_at(0).italic, Some(true));
+    assert!(matches!(&p.objects[0], InlineObject::Field { result, .. } if result.is_empty()));
 }
