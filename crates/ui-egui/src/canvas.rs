@@ -336,9 +336,9 @@ pub struct Geometry {
 }
 
 /// Room kept above the first line and below the last line of a page when white space is hidden (points).
-const WHITE_SPACE_PAD: f32 = 6.0;
+pub(crate) const WHITE_SPACE_PAD: f32 = 6.0;
 /// The line drawn between two pages when white space is hidden (pixels).
-const SEAM: f32 = 1.0;
+pub(crate) const SEAM: f32 = 1.0;
 
 /// Hide White Space: stack single-column pages (`rects`, full pages) so that only each page's
 /// text area (`bodies`: top and bottom of the body in points, plus a little room) shows, with a

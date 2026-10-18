@@ -63,10 +63,15 @@ mod tests {
     type H = egui_kittest::Harness<'static, WordApp>;
 
     fn window(drawn: bool, dark: bool) -> H {
-        let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("Hello WordCraft")), Default::default());
+        window_at(drawn, dark, 1.0, 1440.0, "Hello WordCraft")
+    }
+
+    /// A window at `ppp` physical pixels per point showing `text`.
+    fn window_at(drawn: bool, dark: bool, ppp: f32, width: f32, text: &str) -> H {
+        let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text(text)), Default::default());
         a.canvas.drawn_ibeam = drawn;
         a.session.view.dark_mode = dark;
-        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(width, 900.0)).with_pixels_per_point(ppp).build_ui_state(
             |ui, app: &mut WordApp| {
                 let ctx = ui.ctx().clone();
                 app.logic(&ctx);
@@ -119,6 +124,70 @@ mod tests {
                 assert!((c / ppp - v).abs() <= 0.5 / ppp + 1e-3, "stays within half a pixel");
             }
         }
+    }
+
+    /// The strokes of the drawn I-beam's stem (16 pt tall, in `at`'s column) after hovering `at`,
+    /// edge first, then fill.
+    fn stem_strokes(h: &mut H, at: egui::Pos2) -> Vec<egui::Stroke> {
+        h.event(egui::Event::PointerMoved(at));
+        h.run_steps(2);
+        h.output()
+            .shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                Shape::LineSegment { points: [a, b], stroke } if a.x == b.x && (a.x - at.x).abs() < 2.0 && (b.y - a.y - 16.0).abs() < 0.01 => {
+                    Some(*stroke)
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// #1746 review: at 125% and 150% scaling the stem's edge and fill are whole physical pixels
+    /// wide (a 3 pt and a 1 pt stroke would be 3.75 and 1.25 pixels at 125%, blurring the fill).
+    #[test]
+    fn the_drawn_i_beam_is_whole_pixels_wide_at_125_and_150_percent() {
+        for ppp in [1.25f32, 1.5] {
+            let mut h = window_at(true, true, ppp, 1440.0, "Hello WordCraft");
+            let at = crate::canvas::page_to_screen(h.state_mut(), 0, 300.0, 400.0).unwrap();
+            let strokes = stem_strokes(&mut h, at);
+            assert_eq!(strokes.len(), 2, "ppp {ppp}: the stem's edge and fill");
+            for s in strokes {
+                let px = s.width * ppp;
+                assert!((px - px.round()).abs() < 1e-3, "ppp {ppp}: a stroke {px} physical pixels wide");
+            }
+        }
+    }
+
+    /// #1746 review: off the shown page (the gap between pages, the seam where Hide White Space
+    /// cuts the margins) the I-beam contrasts with the canvas, not the paper. With the dark page
+    /// the two differ: white over the page, black over the light canvas.
+    #[test]
+    fn the_drawn_i_beam_takes_the_canvas_colour_off_the_page() {
+        let text = vec!["A line of text to fill the pages."; 120].join("\n");
+        let mut h = window_at(true, true, 1.0, 800.0, &text);
+        h.state_mut().session.view.zoom = 0.5;
+        h.run_steps(3);
+        let canvas = crate::theme::Tokens::get(&h.ctx).canvas;
+        let off = crate::canvas::caret_contrast(wordcraft_doc::props::Rgb(canvas.r(), canvas.g(), canvas.b()));
+        assert_eq!(off, Color32::BLACK, "the light canvas");
+        // The fill is drawn last.
+        let fill = |h: &mut H, at: egui::Pos2| stem_strokes(h, at).last().map(|s| s.color);
+        let rects = h.state_mut().canvas.page_rects.clone();
+        assert!(rects.len() > 1, "two pages");
+        let x = rects[0].center().x;
+        let gap = egui::pos2(x, (rects[0].max.y + rects[1].min.y) / 2.0);
+        assert!(rects[0].max.y < gap.y && gap.y < rects[1].min.y, "a gap between the pages: {rects:?}");
+        assert_eq!(fill(&mut h, egui::pos2(x, rects[0].center().y)), Some(Color32::WHITE), "on the dark page");
+        assert_eq!(fill(&mut h, gap), Some(off), "between the pages");
+        // On the seam where Hide White Space cuts page 1's bottom margin and page 2's top.
+        assert!(h.state_mut().run("view.hideWhiteSpace", serde_json::json!({"value": true})).is_ok());
+        h.run_steps(3);
+        let scale = h.state_mut().canvas.scale;
+        let body_bottom = h.state_mut().session.layout().pages[0].body.bottom();
+        let band_end = crate::canvas::page_to_screen(h.state_mut(), 0, 300.0, body_bottom).unwrap().y + crate::canvas::WHITE_SPACE_PAD * scale;
+        assert_eq!(fill(&mut h, egui::pos2(x, band_end - 20.0)), Some(Color32::WHITE), "on page 1's text area");
+        assert_eq!(fill(&mut h, egui::pos2(x, band_end + crate::canvas::SEAM / 2.0)), Some(off), "on the seam over the cut margins");
     }
 
     /// Elsewhere the system's own I-beam stays.
