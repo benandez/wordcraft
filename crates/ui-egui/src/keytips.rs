@@ -605,7 +605,8 @@ pub fn handle_key(app: &mut WordApp, key: egui::Key) -> bool {
                                 app.ui.keytips = Phase::Off;
                                 let _ = app.run("tools.search", serde_json::json!({}));
                             }
-                            None if legacy().iter().any(|(k, _)| k.starts_with(name.as_str())) => {
+                            // Word 2003's menu keys: off on macOS, where F10 still shows badges.
+                            None if !cfg!(target_os = "macos") && legacy().iter().any(|(k, _)| k.starts_with(name.as_str())) => {
                                 legacy_key(app, &name);
                                 return true;
                             }
@@ -1067,6 +1068,12 @@ mod tests {
                 assert!(handle_key(a, *k));
             }
         };
+        if cfg!(target_os = "macos") {
+            // Off on macOS: F10's badges take only the ribbon's letters.
+            keys(&mut a, &[egui::Key::V]);
+            assert_eq!(a.ui.keytips, Phase::Off);
+            return;
+        }
         keys(&mut a, &[egui::Key::V]);
         assert_eq!((a.ui.keytips, a.ui.keytip_prefix.as_str()), (Phase::Legacy, "V"));
         assert!(handle_key(&mut a, egui::Key::S), "S leads nowhere after V");
