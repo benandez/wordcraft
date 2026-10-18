@@ -2804,7 +2804,7 @@ mod tests {
         assert!(h.query_by_label("Insert").is_none(), "Focus hides the ribbon");
         assert!(h.query_by_label("Search commands and help").is_none(), "and the title bar");
         // "⋯" in the Focus bar, at the top centre.
-        h.state_mut().focus_ribbon = true;
+        h.get_by_label("Show the ribbon").click();
         h.run_steps(3);
         assert!(h.query_by_label("Insert").is_some(), "the ribbon drops down");
         assert!(h.state().session.view.focus_mode, "still in Focus");
@@ -2818,7 +2818,7 @@ mod tests {
         h.event(egui::Event::PointerButton { pos: page, button: egui::PointerButton::Primary, pressed: false, modifiers: Default::default() });
         h.run_steps(3);
         assert!(!h.state().focus_ribbon && h.state().session.view.focus_mode, "a click on the page puts it away, still in Focus");
-        h.state_mut().focus_ribbon = true;
+        h.get_by_label("Show the ribbon").click();
         h.run_steps(3);
         h.key_press(egui::Key::Escape);
         h.run_steps(3);

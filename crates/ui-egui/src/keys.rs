@@ -122,16 +122,19 @@ fn ui_shortcut(key: Key, m: Modifiers) -> Option<(&'static str, Value)> {
 
 /// Find and run the command bound to this key. Returns true if handled.
 fn dispatch(app: &mut WordApp, key: Key, m: Modifiers) -> bool {
+    let reg = app.session.registry.clone();
+    let name = key_name(key);
+    // A bound key wins over an interface shortcut: Ctrl+F1 collapses the ribbon only when the
+    // user hasn't given it to a command (#1678).
+    if let Some(spec) = name.and_then(|n| app.session.keymap.resolve(&reg, &combo(m, n, true))) {
+        let _ = app.run(spec.id, json!({}));
+        return true;
+    }
     if let Some((id, params)) = ui_shortcut(key, m) {
         let _ = app.run(id, params);
         return true;
     }
-    let Some(name) = key_name(key) else { return false };
-    let reg = app.session.registry.clone();
-    if let Some(spec) = app.session.keymap.resolve(&reg, &combo(m, name, true)) {
-        let _ = app.run(spec.id, json!({}));
-        return true;
-    }
+    let Some(name) = name else { return false };
     // Shift extends caret movement; Shift+Backspace still erases (#707).
     if m.shift
         && let Some(spec) = app.session.keymap.resolve(&reg, &combo(m, name, false))
@@ -234,7 +237,8 @@ pub fn canvas_events(app: &mut WordApp, ctx: &egui::Context) {
         // Edit Document button or Escape returns to Print Layout before editing.
         for e in &events {
             match e {
-                egui::Event::Key { key: Key::Escape, pressed: true, .. } => {
+                // Not while a dialog or menu that takes Escape is open.
+                egui::Event::Key { key: Key::Escape, pressed: true, .. } if app.escape_free => {
                     // Focus or Full Screen first (#1678), then Read Mode.
                     let id = crate::chrome::Screen::of(&app.session.view).exit_command().unwrap_or("view.printLayout");
                     let _ = app.run(id, json!({"value": false}));
@@ -719,6 +723,15 @@ mod tests {
         assert_eq!(ui_shortcut(Key::F1, ctrl), expect);
         assert_eq!(ui_shortcut(Key::F1, Modifiers::NONE), None);
         assert_eq!(ui_shortcut(Key::F1, Modifiers { shift: true, ..ctrl }), None);
+    }
+
+    /// #1678: a Ctrl+F1 the user binds runs their command instead of collapsing the ribbon.
+    #[test]
+    fn a_bound_ctrl_f1_beats_the_ribbon_toggle() {
+        let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), crate::Services::default());
+        a.session.keymap = wordcraft_engine::keymap::KeyMap::from_value(&json!({"assigned": {"Mod+F1": "view.focus"}}));
+        assert!(dispatch(&mut a, Key::F1, Modifiers { ctrl: true, command: true, ..Default::default() }));
+        assert!(a.session.view.focus_mode && !a.ui.ribbon_collapsed);
     }
 
     #[test]
