@@ -717,6 +717,113 @@ mod tests {
         assert!(h.state().canvas.focused, "and the page has the keyboard");
     }
 
+    /// A harness over the whole app; kittest always runs AccessKit, so a frame that names as
+    /// focused a widget it didn't draw panics with "Focused ID … is not in the node list".
+    fn a11y_harness(a: WordApp) -> egui_kittest::Harness<'static, WordApp> {
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            a,
+        );
+        h.run_steps(4);
+        h
+    }
+
+    /// A primary click at `pos` (for chrome with no label to find it by).
+    fn click_at(h: &mut egui_kittest::Harness<'static, WordApp>, pos: egui::Pos2) {
+        h.event(egui::Event::PointerMoved(pos));
+        for pressed in [true, false] {
+            h.event(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE });
+        }
+        h.run_steps(4);
+    }
+
+    /// The macOS back chevron beside the traffic lights, in a window.
+    fn mac_chevron(a: &WordApp) -> egui::Pos2 {
+        super::back_chevron_c(0.0, a.mac_titlebar.height / 2.0, false, a.mac_titlebar.content_left)
+    }
+
+    /// #2972: on macOS the File page's back button is the chevron beside the traffic lights (the
+    /// "sidebar collapse toggle" of the report; there is no other toggle there). Blank document,
+    /// File, then the chevron ended 0.8.0 with AccessKit's "Focused ID … is not in the node
+    /// list". The same spot clicked in the editor (the title bar) must not either.
+    #[test]
+    fn mac_back_chevron_returns_to_the_page_with_accessibility_on() {
+        let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Services::default());
+        a.integrated_titlebar = true;
+        a.mac_titlebar = crate::chrome::MacTitleBar { height: 28.0, content_left: 70.0 };
+        let chevron = mac_chevron(&a);
+        let mut h = a11y_harness(a);
+        assert!(h.state().canvas.widget_id.is_some(), "the page has been drawn");
+        for _ in 0..2 {
+            h.state_mut().run("ui.backstage", json!({"value": true})).unwrap();
+            h.run_steps(4);
+            assert!(h.state().ui.backstage);
+            click_at(&mut h, chevron);
+            assert!(!h.state().ui.backstage, "the chevron closes the File page");
+            assert!(h.state().canvas.focused, "and the page has the keyboard");
+            // The same spot in the editor's title bar.
+            click_at(&mut h, chevron);
+            assert!(!h.state().ui.backstage);
+        }
+    }
+
+    /// #2931: File › New › Blank document with a document open returns to the editor without
+    /// AccessKit losing the focused node; and so does Home's Blank document tile and Escape.
+    #[test]
+    fn blank_document_from_the_file_page_with_accessibility_on() {
+        for mac in [false, true] {
+            let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("Work")), Services::default());
+            a.integrated_titlebar = mac;
+            let mut h = a11y_harness(a);
+            for page in ["new", "home"] {
+                h.state_mut().run("ui.backstage", json!({"value": true, "page": page})).unwrap();
+                h.run_steps(4);
+                h.get_by_label("Blank document").click();
+                h.run_steps(4);
+                assert!(!h.state().ui.backstage, "{page}: Blank document returns to the editor");
+                assert_eq!(h.state().session.doc.plain_text(wordcraft_doc::StoryRef::Body), "", "{page}: a new blank document");
+                assert!(h.state().dialog.is_none(), "{page}: nothing asks first");
+            }
+            h.state_mut().run("ui.backstage", json!({"value": true})).unwrap();
+            h.run_steps(4);
+            h.key_press(egui::Key::Escape);
+            h.run_steps(4);
+            assert!(!h.state().ui.backstage, "Escape closes the File page");
+        }
+    }
+
+    /// #2908: File › Options, then the back arrow (Windows/Linux layout and the macOS chevron),
+    /// with a document open and from the Start screen, without AccessKit ending the program.
+    #[test]
+    fn options_back_arrow_with_accessibility_on() {
+        for (mac, start) in [(false, false), (true, false), (false, true), (true, true)] {
+            let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Services::default());
+            a.integrated_titlebar = mac;
+            if start {
+                a.ui.start_screen = true;
+                assert!(a.start_screen());
+            }
+            let back = if mac { mac_chevron(&a) } else { egui::pos2(100.0, 32.0) };
+            let mut h = a11y_harness(a);
+            if !start {
+                h.state_mut().run("ui.backstage", json!({"value": true})).unwrap();
+                h.run_steps(4);
+            }
+            h.get_by_role_and_label(egui::accesskit::Role::Button, "Options").click();
+            h.run_steps(4);
+            assert_eq!(h.state().ui.backstage_page, "options", "mac {mac} start {start}");
+            // Into a pane, so the Options page has a focused widget of its own.
+            h.get_by_label("Display").click();
+            h.run_steps(4);
+            click_at(&mut h, back);
+            assert!(!h.state().ui.backstage || start, "mac {mac} start {start}: the arrow closes the File page");
+        }
+    }
+
     /// #260: File › Info's Title and Author fields dropped every keystroke (they edited a copy
     /// re-read each frame and only wrote it back when the field lost focus), so a save had no
     /// title or author. Typing now lands in the document as it happens, one undo step per field,
