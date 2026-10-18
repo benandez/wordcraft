@@ -1451,7 +1451,7 @@ impl Exporter<'_> {
                     _ => None,
                 })
                 .unwrap_or(c.x);
-            let (x, y) = self.lay.pages.get(c.page).map(|p| Fit::of(p).point(x, c.top)).unwrap_or((x, c.top));
+            let (x, y) = self.lay.pages.get(c.page).map(|p| Fit::of(p, self.opts.paper).point(x, c.top)).unwrap_or((x, c.top));
             return Some((*out, x, y));
         }
         self.locate(pos.story, &pos.path)
