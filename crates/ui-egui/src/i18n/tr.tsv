@@ -2660,3 +2660,9 @@ preview	Title	Örnek
 	Float	Serbest Bırak
 	Pane position	Bölme konumu
 	Drag out to float the pane	Bölmeyi serbest bırakmak için dışarı sürükleyin
+# Add Font status (#1789)
+	Added 1 font	1 yazı tipi eklendi
+	Added {n} fonts	{n} yazı tipi eklendi
+	{added}; {count} couldn't be read: {names}	{added}; {count} okunamadı: {names}
+	{names} and {n} more	{names} ve {n} tane daha
+	{added}; {n} skipped (limit {max})	{added}; {n} atlandı (sınır {max})

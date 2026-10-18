@@ -2263,3 +2263,9 @@
 	Float	Unverankert
 	Pane position	Position des Bereichs
 	Drag out to float the pane	Herausziehen, um den Bereich zu lösen
+# Add Font status (#1789)
+	Added 1 font	1 Schriftart hinzugefügt
+	Added {n} fonts	{n} Schriftarten hinzugefügt
+	{added}; {count} couldn't be read: {names}	{added}; {count} nicht lesbar: {names}
+	{names} and {n} more	{names} und {n} weitere
+	{added}; {n} skipped (limit {max})	{added}; {n} übersprungen (Limit {max})

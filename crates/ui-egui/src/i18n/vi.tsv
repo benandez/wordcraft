@@ -2703,3 +2703,9 @@ template	Letter	Thư
 	Float	Nổi
 	Pane position	Vị trí khung
 	Drag out to float the pane	Kéo ra ngoài để khung nổi
+# Add Font status (#1789)
+	Added 1 font	Đã thêm 1 phông chữ
+	Added {n} fonts	Đã thêm {n} phông chữ
+	{added}; {count} couldn't be read: {names}	{added}; không đọc được {count}: {names}
+	{names} and {n} more	{names} và {n} tệp nữa
+	{added}; {n} skipped (limit {max})	{added}; đã bỏ qua {n} (giới hạn {max})

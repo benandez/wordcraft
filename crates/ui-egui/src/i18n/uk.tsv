@@ -2276,3 +2276,9 @@
 	Float	Відкріпити
 	Pane position	Положення панелі
 	Drag out to float the pane	Перетягніть, щоб відкріпити панель
+# Add Font status (#1789)
+	Added 1 font	Додано 1 шрифт
+	Added {n} fonts	Додано шрифтів: {n}
+	{added}; {count} couldn't be read: {names}	{added}; не вдалося прочитати ({count}): {names}
+	{names} and {n} more	{names} та ще {n}
+	{added}; {n} skipped (limit {max})	{added}; пропущено: {n} (ліміт {max})

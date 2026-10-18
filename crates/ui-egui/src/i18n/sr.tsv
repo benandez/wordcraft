@@ -2278,3 +2278,9 @@
 	Float	Плутајуће
 	Pane position	Положај окна
 	Drag out to float the pane	Превуците ван да окно плута
+# Add Font status (#1789)
+	Added 1 font	Додат је 1 фонт
+	Added {n} fonts	Додато фонтова: {n}
+	{added}; {count} couldn't be read: {names}	{added}; није могуће прочитати ({count}): {names}
+	{names} and {n} more	{names} и још {n}
+	{added}; {n} skipped (limit {max})	{added}; прескочено: {n} (ограничење {max})
