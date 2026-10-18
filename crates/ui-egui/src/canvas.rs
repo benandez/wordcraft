@@ -388,6 +388,12 @@ fn on_page_gap(rects: &[Rect], bands: &[(f32, f32)], p: Pos2) -> bool {
     })
 }
 
+/// True when `p` is on the shown part of a page, not the canvas around or between pages (nor a
+/// margin Hide White Space cuts).
+fn on_visible_page(rects: &[Rect], bands: &[(f32, f32)], p: Pos2) -> bool {
+    rects.iter().zip(bands).any(|(r, &(top, bot))| Rect::from_min_max(pos2(r.min.x, r.min.y + top), pos2(r.max.x, r.min.y + bot)).contains(p))
+}
+
 /// Width of the card that floats beside a page when comments show only for the selected text (points).
 const FLOAT_WIDTH: f32 = 216.0;
 
@@ -1749,12 +1755,11 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
         && let Some(p) = ui.input(|i| i.pointer.latest_pos())
     {
         let opts = page_render_options(app, dim_body);
-        let bg = match page_at(&rects, &layout, geo.scale, p) {
-            Some(_) => opts.ink(app.session.doc.settings.page_color.unwrap_or(opts.paper)),
-            None => {
-                let c = Tokens::get(ui.ctx()).canvas;
-                wordcraft_doc::props::Rgb(c.r(), c.g(), c.b())
-            }
+        let bg = if on_visible_page(&rects, &geo.bands, p) {
+            opts.ink(app.session.doc.settings.page_color.unwrap_or(opts.paper))
+        } else {
+            let c = Tokens::get(ui.ctx()).canvas;
+            wordcraft_doc::props::Rgb(c.r(), c.g(), c.b())
         };
         crate::ibeam::replace(ui.ctx(), p, bg);
     }
@@ -6037,6 +6042,10 @@ mod tests {
         assert_eq!(nearest_page(&moved, pos2(moved[0].center().x, seam + SEAM + 2.0)), Some(1));
         assert!(on_page_gap(&moved, &bands, pos2(moved[0].center().x, seam + 0.5)));
         assert!(!on_page_gap(&moved, &bands, pos2(moved[0].center().x, seam - 40.0)));
+        // The drawn I-beam takes the canvas colour in the gap and on a cut margin (#1746).
+        assert!(on_visible_page(&moved, &bands, pos2(moved[0].center().x, seam - 40.0)));
+        assert!(!on_visible_page(&moved, &bands, pos2(moved[0].center().x, seam + 0.5)));
+        assert!(!on_visible_page(&moved, &bands, pos2(moved[0].min.x - 5.0, moved[0].center().y)));
         // Hostile numbers never panic.
         let _ = collapse_white_space(&rects, &[(f32::NAN, f32::INFINITY), (-1e9, 1e9)], f32::NAN, f32::NAN);
         let _ = collapse_white_space(&[], &[], 1.0, 1.0);
