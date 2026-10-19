@@ -9498,6 +9498,18 @@ fn early_float_wrap_stays_valid_across_page_boundaries() {
     assert_eq!(n, 1, "the picture is placed once");
 }
 
+/// #2048 (review): the same picture anchored after 4 to 18 such paragraphs, so its anchor lands
+/// on the first page, at the page break or past it: no text runs under it on any page.
+#[test]
+fn early_float_wrap_stays_valid_wherever_the_page_breaks() {
+    let text = "Earlier text must stay clear of the anchored picture while pagination moves its paragraph. ".repeat(4);
+    for count in 4..=18 {
+        let (under, n) = text_under_shapes(&lay(&picture_above_anchor(&text, count, 72.0)));
+        assert_eq!(under, None, "{count} paragraphs before the anchor");
+        assert_eq!(n, 1, "{count} paragraphs before the anchor: the picture is placed once");
+    }
+}
+
 /// #2048 (review): a pass with no passes left for floats above their anchors (here none known
 /// from the page's start) still keeps them clear of the text laid out before them: the float
 /// moves down to its paragraph rather than over that text.
