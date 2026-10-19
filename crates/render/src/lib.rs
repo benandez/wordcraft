@@ -1577,15 +1577,18 @@ mod tests {
     #[test]
     fn legacy_font_effects_are_drawn() {
         use wordcraft_doc::CharProps;
-        // Dark and grey pixel counts, and the grey pixels' mean offset from the dark ones.
-        let shot = |c: CharProps| {
+        let render = |c: CharProps| {
             let mut d = Document::from_text("x");
             let cp = CharProps { size: Some(40.0), bold: Some(true), ..c };
             d.body = vec![wordcraft_doc::para_block(wordcraft_doc::Paragraph::with_text("HHHH", cp))];
             let l = layout(&d, &mut LayoutCache::new(), &LayoutOptions::default());
-            let img = render_page(&d, &l.pages[0], 2.0, &RenderOptions::default());
-            let (mut dark, mut grey) = ((0.0, 0.0, 0.0f64), (0.0, 0.0, 0.0f64));
-            for (x, y) in (100..800).flat_map(|x| (100..300).map(move |y| (x, y))) {
+            render_page(&d, &l.pages[0], 2.0, &RenderOptions::default())
+        };
+        let region = || (100..800).flat_map(|x| (100..300).map(move |y| (x, y)));
+        // Dark and grey pixel counts, and the dark cluster's centroid.
+        let stats = |img: &Rendered| {
+            let (mut dark, mut grey) = ((0.0f64, 0.0f64, 0.0f64), (0.0, 0.0, 0.0));
+            for (x, y) in region() {
                 let v = img.pixel(x, y)[0];
                 // The copy is solid RGB 128; a wider range would count the glyph's own
                 // antialiasing, whose centroid hides the copy's offset on some fonts.
@@ -1597,20 +1600,34 @@ mod tests {
                 *acc = (acc.0 + 1.0, acc.1 + f64::from(x), acc.2 + f64::from(y));
             }
             let mean = |a: (f64, f64, f64)| (a.1 / a.0.max(1.0), a.2 / a.0.max(1.0));
-            let ((dx, dy), (gx, gy)) = (mean(dark), mean(grey));
-            (dark.0, grey.0, (gx - dx, gy - dy))
+            (dark.0, grey.0, mean(dark))
         };
-        let (plain_dark, plain_grey, _) = shot(CharProps::default());
+        let plain = render(CharProps::default());
+        let (plain_dark, plain_grey, _) = stats(&plain);
         assert!(plain_dark > 2000.0, "plain {plain_dark}");
-        let (dark, _, _) = shot(CharProps { outline: Some(true), ..Default::default() });
-        assert!(dark < plain_dark / 3.0, "outline is hollow: {dark} vs {plain_dark}");
+        let (outline_dark, _, _) = stats(&render(CharProps { outline: Some(true), ..Default::default() }));
+        assert!(outline_dark < plain_dark / 3.0, "outline is hollow: {outline_dark} vs {plain_dark}");
         for (c, sign) in [
             (CharProps { shadow: Some(true), ..Default::default() }, 1.0),
             (CharProps { emboss: Some(true), ..Default::default() }, 1.0),
             (CharProps { engrave: Some(true), ..Default::default() }, -1.0),
         ] {
-            let (_, grey, (ox, oy)) = shot(c);
+            let img = render(c);
+            let (_, grey, (dcx, dcy)) = stats(&img);
             assert!(grey > plain_grey * 2.0, "a grey copy: {grey} vs {plain_grey}");
+            // The copy's own pixels: grey where the plain run leaves the page blank. That
+            // excludes the glyphs' antialiased fringe — whose bias depends on whichever face
+            // "Aptos" resolves to — so the offset measured is the shadow's own, not the font's.
+            let (mut sx, mut sy, mut n) = (0.0f64, 0.0f64, 0.0f64);
+            for (x, y) in region() {
+                if plain.pixel(x, y)[0] > 200 && (100..=160).contains(&img.pixel(x, y)[0]) {
+                    sx += f64::from(x);
+                    sy += f64::from(y);
+                    n += 1.0;
+                }
+            }
+            assert!(n > 100.0, "a grey copy: {n} of its own pixels");
+            let (ox, oy) = (sx / n - dcx, sy / n - dcy);
             assert!(ox * sign > 1.0 && oy * sign > 1.0, "grey copy offset {ox} {oy}");
         }
     }
