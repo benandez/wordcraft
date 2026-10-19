@@ -2023,6 +2023,16 @@ mod tests {
             // The lone row doesn't widen the aligned columns.
             assert!(x0.abs() < 0.5 && m.width < lay("bbbbbbc", true).width + 1.0, "{other}: {ls:?}, width {}", m.width);
         }
+        // A lone row wider than the aligned columns sets the array's width; the aligned
+        // rows are centred under it as one block.
+        let math = Math { nodes: vec![MNode::EqArr { rows: vec![run("bbbbbbbbbb"), run("a&c")] }], ..Default::default() };
+        let m = lay_in(&math, "", true, 400.0, &MathProps::default());
+        let ls = lines(&m);
+        let xw = ls.first().and_then(|l| l.1.first()).map(|g| g.0).unwrap_or(f32::NAN);
+        let x0 = ls.get(1).and_then(|l| l.1.first()).map(|g| g.0).unwrap_or(f32::NAN);
+        assert!(xw.abs() < 0.5 && (m.width - lay("bbbbbbbbbb", true).width).abs() < 1.0, "wide lone row: {ls:?}, width {}", m.width);
+        let want = (m.width - w_a - lay("c", true).width) / 2.0;
+        assert!(want > 1.0 && (x0 - want).abs() < 1.0, "aligned row at {x0}, want {want} ({ls:?})");
     }
 
     #[test]
