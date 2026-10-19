@@ -2696,3 +2696,14 @@ preview	Title	Örnek
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Herhangi bir birimde bir boyut yazın, örneğin 5 cm veya 300 px. Diğer kenar da buna uyar, böylece resim oranlarını korur.
 
 	Import…	İçe aktar…
+
+# Personal templates (#2852)
+	Personal	Kişisel
+	Personal Templates	Kişisel şablonlar
+	Templates you save in your templates folder show up here.	Şablon klasörünüze kaydettiğiniz şablonlar burada görünür.
+	Save as Word Template…	Word şablonu olarak kaydet…
+	Saves a .dotx template in your templates folder. It shows up in File › New under Personal.	Şablon klasörünüze bir .dotx şablonu kaydeder. Dosya › Yeni altında Kişisel bölümünde görünür.
+	File locations	Dosya konumları
+	User templates:	Kullanıcı şablonları:
+	Not set	Ayarlanmadı
+	File › New lists the .dotx and .dotm templates here under Personal; Save as Word Template starts here.	Dosya › Yeni, buradaki .dotx ve .dotm şablonlarını Kişisel altında listeler; Word şablonu olarak kaydet buradan başlar.

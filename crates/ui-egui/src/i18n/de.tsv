@@ -2287,3 +2287,14 @@
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Geben Sie eine Größe in einer beliebigen Einheit ein, z. B. 5 cm oder 300 px. Die andere Seite passt sich an, sodass das Bild seine Proportionen behält.
 
 	Import…	Importieren…
+
+# Personal templates (#2852)
+	Personal	Persönlich
+	Personal Templates	Persönliche Vorlagen
+	Templates you save in your templates folder show up here.	Vorlagen, die Sie in Ihrem Vorlagenordner speichern, werden hier angezeigt.
+	Save as Word Template…	Als Word-Vorlage speichern…
+	Saves a .dotx template in your templates folder. It shows up in File › New under Personal.	Speichert eine .dotx-Vorlage in Ihrem Vorlagenordner. Sie erscheint unter Datei › Neu bei Persönlich.
+	File locations	Dateispeicherorte
+	User templates:	Benutzervorlagen:
+	Not set	Nicht festgelegt
+	File › New lists the .dotx and .dotm templates here under Personal; Save as Word Template starts here.	Datei › Neu zeigt die .dotx- und .dotm-Vorlagen von hier unter Persönlich; Als Word-Vorlage speichern beginnt hier.

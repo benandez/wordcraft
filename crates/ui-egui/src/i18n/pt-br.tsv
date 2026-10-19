@@ -2300,3 +2300,14 @@
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Digite um tamanho em qualquer unidade, como 5 cm ou 300 px. O outro lado acompanha, e a imagem mantém as proporções.
 
 	Import…	Importar…
+
+# Personal templates (#2852)
+	Personal	Pessoal
+	Personal Templates	Modelos pessoais
+	Templates you save in your templates folder show up here.	Os modelos que você salvar na sua pasta de modelos aparecem aqui.
+	Save as Word Template…	Salvar como modelo do Word…
+	Saves a .dotx template in your templates folder. It shows up in File › New under Personal.	Salva um modelo .dotx na sua pasta de modelos. Ele aparece em Arquivo › Novo, em Pessoal.
+	File locations	Locais de arquivos
+	User templates:	Modelos do usuário:
+	Not set	Não definido
+	File › New lists the .dotx and .dotm templates here under Personal; Save as Word Template starts here.	Arquivo › Novo lista os modelos .dotx e .dotm daqui em Pessoal; Salvar como modelo do Word começa aqui.

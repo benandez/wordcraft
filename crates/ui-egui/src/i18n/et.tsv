@@ -2322,3 +2322,14 @@
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Sisesta suurus mis tahes ühikus, näiteks 5 cm või 300 px. Teine külg muutub kaasa, nii et pilt säilitab oma proportsioonid.
 
 	Import…	Impordi…
+
+# Personal templates (#2852)
+	Personal	Isiklik
+	Personal Templates	Isiklikud mallid
+	Templates you save in your templates folder show up here.	Siin kuvatakse mallid, mille salvestate oma mallide kausta.
+	Save as Word Template…	Salvesta Wordi mallina…
+	Saves a .dotx template in your templates folder. It shows up in File › New under Personal.	Salvestab .dotx-malli teie mallide kausta. See kuvatakse jaotises Fail › Uus all Isiklik.
+	File locations	Failide asukohad
+	User templates:	Kasutaja mallid:
+	Not set	Määramata
+	File › New lists the .dotx and .dotm templates here under Personal; Save as Word Template starts here.	Fail › Uus loetleb siinsed .dotx- ja .dotm-mallid jaotises Isiklik; Salvesta Wordi mallina alustab siit.

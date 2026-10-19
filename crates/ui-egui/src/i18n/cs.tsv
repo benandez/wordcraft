@@ -2691,3 +2691,14 @@ preview	Title	Ukázka
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Zadejte velikost v libovolné jednotce, například 5 cm nebo 300 px. Druhá strana se přizpůsobí, takže obrázek zachová své proporce.
 
 	Import…	Importovat…
+
+# Personal templates (#2852)
+	Personal	Osobní
+	Personal Templates	Osobní šablony
+	Templates you save in your templates folder show up here.	Zde se zobrazí šablony, které uložíte do složky šablon.
+	Save as Word Template…	Uložit jako šablonu Wordu…
+	Saves a .dotx template in your templates folder. It shows up in File › New under Personal.	Uloží šablonu .dotx do vaší složky šablon. Zobrazí se v nabídce Soubor › Nový v části Osobní.
+	File locations	Umístění souborů
+	User templates:	Uživatelské šablony:
+	Not set	Nenastaveno
+	File › New lists the .dotx and .dotm templates here under Personal; Save as Word Template starts here.	Soubor › Nový zobrazuje šablony .dotx a .dotm odsud v části Osobní; Uložit jako šablonu Wordu začíná zde.

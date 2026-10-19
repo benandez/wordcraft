@@ -171,6 +171,10 @@ pub struct Services {
     /// `xdg-mime`. `None` (web, macOS) hides the button; macOS shows how to do it in Finder
     /// instead. An error means nothing changed.
     pub make_default_app: Option<Box<dyn Fn() -> Result<DefaultApp, String>>>,
+    /// Desktop: the app's own user templates folder (`Templates` in the settings folder, #2852),
+    /// used while File › Options names none. File › New lists personal templates from it and Save
+    /// as Word Template starts in it. `None` (web) hides personal templates.
+    pub templates_dir: Option<std::path::PathBuf>,
 }
 
 /// How Save in the Save Changes prompt went.
@@ -1653,6 +1657,12 @@ impl WordApp {
                 self.open_dialog();
                 json!({})
             }
+            // File › Save As › Save as Word Template (#2852): the Save dialog for a .dotx, in the
+            // user templates folder. Opens system UI, like `ui.openFileDialog`.
+            "ui.saveAsTemplate" => {
+                let dir = self.save_as_template_dialog();
+                json!({"dir": dir})
+            }
             // The built-in file browser (#576), for when the system's file dialog doesn't show up
             // (desktop only): `purpose` is document (default), picture, recipients or save. A system
             // dialog still waiting for an answer is given up as cancelled.
@@ -2584,6 +2594,8 @@ pub(crate) fn works_without_document(id: &str) -> bool {
     matches!(
         id,
         "file.new"
+            | "file.newFromTemplate"
+            | "file.listTemplates"
             | "file.open"
             | "file.close"
             | "file.options"

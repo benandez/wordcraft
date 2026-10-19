@@ -2300,3 +2300,14 @@
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Введіть розмір у будь-яких одиницях, наприклад 5 cm або 300 px. Інша сторона зміниться разом із нею, тож зображення збереже пропорції.
 
 	Import…	Імпортувати…
+
+# Personal templates (#2852)
+	Personal	Особисті
+	Personal Templates	Особисті шаблони
+	Templates you save in your templates folder show up here.	Тут з’являються шаблони, які ви зберігаєте в теці шаблонів.
+	Save as Word Template…	Зберегти як шаблон Word…
+	Saves a .dotx template in your templates folder. It shows up in File › New under Personal.	Зберігає шаблон .dotx у вашій теці шаблонів. Він з’являється в розділі Файл › Новий, у групі «Особисті».
+	File locations	Розташування файлів
+	User templates:	Шаблони користувача:
+	Not set	Не задано
+	File › New lists the .dotx and .dotm templates here under Personal; Save as Word Template starts here.	Файл › Новий показує звідси шаблони .dotx і .dotm у групі «Особисті»; «Зберегти як шаблон Word» починає тут.

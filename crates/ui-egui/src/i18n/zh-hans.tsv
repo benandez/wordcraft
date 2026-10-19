@@ -2300,3 +2300,14 @@
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	可用任意单位输入大小，例如 5 cm 或 300 px。另一边随之调整，图片保持原有比例。
 
 	Import…	导入…
+
+# Personal templates (#2852)
+	Personal	个人
+	Personal Templates	个人模板
+	Templates you save in your templates folder show up here.	保存到模板文件夹中的模板会显示在这里。
+	Save as Word Template…	另存为 Word 模板…
+	Saves a .dotx template in your templates folder. It shows up in File › New under Personal.	将 .dotx 模板保存到你的模板文件夹。它会显示在“文件 › 新建”的“个人”下。
+	File locations	文件位置
+	User templates:	用户模板：
+	Not set	未设置
+	File › New lists the .dotx and .dotm templates here under Personal; Save as Word Template starts here.	“文件 › 新建”在“个人”下列出此处的 .dotx 和 .dotm 模板；“另存为 Word 模板”从这里开始。

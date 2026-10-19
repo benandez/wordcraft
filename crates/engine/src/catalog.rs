@@ -30,6 +30,7 @@ File|Backstage|Version History|file.versions
 File|Backstage|Recover Unsaved|file.recover
 File|Backstage|New from Template|file.newFromTemplate
 File|Backstage|Save as Template|file.saveTemplate
+File|Backstage|Personal Templates|file.listTemplates
 Quick Access|Toolbar|Undo|edit.undo
 Quick Access|Toolbar|Undo List|edit.undoTo
 Quick Access|Toolbar|Redo|edit.redo

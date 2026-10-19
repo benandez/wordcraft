@@ -2700,3 +2700,14 @@ template	Letter	Lettre
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Tapez une taille dans n'importe quelle unité, par exemple 5 cm ou 300 px. L'autre côté suit, et l'image garde ses proportions.
 
 	Import…	Importer…
+
+# Personal templates (#2852)
+	Personal	Personnel
+	Personal Templates	Modèles personnels
+	Templates you save in your templates folder show up here.	Les modèles que vous enregistrez dans votre dossier de modèles apparaissent ici.
+	Save as Word Template…	Enregistrer comme modèle Word…
+	Saves a .dotx template in your templates folder. It shows up in File › New under Personal.	Enregistre un modèle .dotx dans votre dossier de modèles. Il apparaît dans Fichier › Nouveau, sous Personnel.
+	File locations	Dossiers par défaut
+	User templates:	Modèles utilisateur :
+	Not set	Non défini
+	File › New lists the .dotx and .dotm templates here under Personal; Save as Word Template starts here.	Fichier › Nouveau affiche les modèles .dotx et .dotm de ce dossier sous Personnel ; Enregistrer comme modèle Word commence ici.

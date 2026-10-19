@@ -2714,3 +2714,14 @@ preview	Title	Titel
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Skriv en storlek i valfri enhet, till exempel 5 cm eller 300 px. Den andra sidan följer med, så att bilden behåller sina proportioner.
 
 	Import…	Importera…
+
+# Personal templates (#2852)
+	Personal	Personliga
+	Personal Templates	Personliga mallar
+	Templates you save in your templates folder show up here.	Mallar som du sparar i din mallmapp visas här.
+	Save as Word Template…	Spara som Word-mall…
+	Saves a .dotx template in your templates folder. It shows up in File › New under Personal.	Sparar en .dotx-mall i din mallmapp. Den visas i Arkiv › Ny under Personliga.
+	File locations	Filplatser
+	User templates:	Användarmallar:
+	Not set	Inte angivet
+	File › New lists the .dotx and .dotm templates here under Personal; Save as Word Template starts here.	Arkiv › Ny visar .dotx- och .dotm-mallarna härifrån under Personliga; Spara som Word-mall börjar här.

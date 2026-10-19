@@ -2542,3 +2542,14 @@ preview	Title	제목
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	5 cm 또는 300 px처럼 원하는 단위로 크기를 입력하세요. 다른 쪽도 함께 바뀌어 그림의 비율이 유지됩니다.
 
 	Import…	가져오기…
+
+# Personal templates (#2852)
+	Personal	개인
+	Personal Templates	개인 서식 파일
+	Templates you save in your templates folder show up here.	서식 파일 폴더에 저장한 서식 파일이 여기에 표시됩니다.
+	Save as Word Template…	Word 서식 파일로 저장…
+	Saves a .dotx template in your templates folder. It shows up in File › New under Personal.	.dotx 서식 파일을 서식 파일 폴더에 저장합니다. 파일 › 새로 만들기의 개인 아래에 표시됩니다.
+	File locations	파일 위치
+	User templates:	사용자 서식 파일:
+	Not set	설정 안 됨
+	File › New lists the .dotx and .dotm templates here under Personal; Save as Word Template starts here.	파일 › 새로 만들기의 개인 아래에 이 폴더의 .dotx 및 .dotm 서식 파일이 표시됩니다. Word 서식 파일로 저장은 여기에서 시작합니다.

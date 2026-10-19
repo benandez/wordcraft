@@ -2695,3 +2695,14 @@
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Írj be egy méretet bármilyen mértékegységben, például 5 cm vagy 300 px. A másik oldal követi, így a kép megtartja az arányait.
 
 	Import…	Importálás…
+
+# Personal templates (#2852)
+	Personal	Saját
+	Personal Templates	Saját sablonok
+	Templates you save in your templates folder show up here.	A sablonmappájába mentett sablonok itt jelennek meg.
+	Save as Word Template…	Mentés Word-sablonként…
+	Saves a .dotx template in your templates folder. It shows up in File › New under Personal.	Egy .dotx sablont ment a sablonmappájába. A Fájl › Új lapon, a Saját csoportban jelenik meg.
+	File locations	Fájlok helye
+	User templates:	Felhasználói sablonok:
+	Not set	Nincs megadva
+	File › New lists the .dotx and .dotm templates here under Personal; Save as Word Template starts here.	A Fájl › Új a Saját csoportban sorolja fel az itteni .dotx és .dotm sablonokat; a Mentés Word-sablonként innen indul.

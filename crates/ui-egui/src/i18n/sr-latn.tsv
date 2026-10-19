@@ -2298,3 +2298,14 @@
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Unesite veličinu u bilo kojoj jedinici, na primer 5 cm ili 300 px. Druga strana se prilagođava, pa slika zadržava svoje proporcije.
 
 	Import…	Uvezi…
+
+# Personal templates (#2852)
+	Personal	Lični
+	Personal Templates	Lični šabloni
+	Templates you save in your templates folder show up here.	Ovde se prikazuju šabloni koje sačuvate u fascikli šablona.
+	Save as Word Template…	Sačuvaj kao Word šablon…
+	Saves a .dotx template in your templates folder. It shows up in File › New under Personal.	Čuva .dotx šablon u fascikli šablona. Prikazuje se u Fajl › Novo pod Lični.
+	File locations	Lokacije datoteka
+	User templates:	Korisnički šabloni:
+	Not set	Nije postavljeno
+	File › New lists the .dotx and .dotm templates here under Personal; Save as Word Template starts here.	Fajl › Novo prikazuje .dotx i .dotm šablone odavde pod Lični; Sačuvaj kao Word šablon počinje ovde.

@@ -2704,3 +2704,14 @@ preview	Title	Tytuł
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Wpisz rozmiar w dowolnej jednostce, np. 5 cm lub 300 px. Druga strona dopasuje się, więc obraz zachowa proporcje.
 
 	Import…	Importuj…
+
+# Personal templates (#2852)
+	Personal	Osobiste
+	Personal Templates	Szablony osobiste
+	Templates you save in your templates folder show up here.	Tutaj pojawiają się szablony zapisane w folderze szablonów.
+	Save as Word Template…	Zapisz jako szablon programu Word…
+	Saves a .dotx template in your templates folder. It shows up in File › New under Personal.	Zapisuje szablon .dotx w folderze szablonów. Pojawia się w Plik › Nowy w sekcji Osobiste.
+	File locations	Lokalizacje plików
+	User templates:	Szablony użytkownika:
+	Not set	Nie ustawiono
+	File › New lists the .dotx and .dotm templates here under Personal; Save as Word Template starts here.	Plik › Nowy pokazuje stąd szablony .dotx i .dotm w sekcji Osobiste; Zapisz jako szablon programu Word zaczyna tutaj.
