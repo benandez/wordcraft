@@ -775,11 +775,15 @@ mod tests {
     /// AccessKit losing the focused node; and so does Home's Blank document tile and Escape.
     #[test]
     fn blank_document_from_the_file_page_with_accessibility_on() {
-        for mac in [false, true] {
+        let work = |mac: bool| {
             let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("Work")), Services::default());
             a.integrated_titlebar = mac;
-            let mut h = a11y_harness(a);
+            a11y_harness(a)
+        };
+        for mac in [false, true] {
             for page in ["new", "home"] {
+                // A fresh "Work" document each time, so each path must really make a blank one.
+                let mut h = work(mac);
                 h.state_mut().run("ui.backstage", json!({"value": true, "page": page})).unwrap();
                 h.run_steps(4);
                 h.get_by_label("Blank document").click();
@@ -788,11 +792,13 @@ mod tests {
                 assert_eq!(h.state().session.doc.plain_text(wordcraft_doc::StoryRef::Body), "", "{page}: a new blank document");
                 assert!(h.state().dialog.is_none(), "{page}: nothing asks first");
             }
+            let mut h = work(mac);
             h.state_mut().run("ui.backstage", json!({"value": true})).unwrap();
             h.run_steps(4);
             h.key_press(egui::Key::Escape);
             h.run_steps(4);
             assert!(!h.state().ui.backstage, "Escape closes the File page");
+            assert_eq!(h.state().session.doc.plain_text(wordcraft_doc::StoryRef::Body), "Work", "Escape keeps the document");
         }
     }
 
@@ -820,7 +826,12 @@ mod tests {
             h.get_by_label("Display").click();
             h.run_steps(4);
             click_at(&mut h, back);
-            assert!(!h.state().ui.backstage || start, "mac {mac} start {start}: the arrow closes the File page");
+            assert!(!h.state().ui.backstage, "mac {mac} start {start}: the arrow closes the File page");
+            if start {
+                assert!(!h.state().has_document(), "mac {mac}: from the Start screen, an empty window");
+            } else {
+                assert!(h.state().canvas.focused, "mac {mac}: and the page has the keyboard");
+            }
         }
     }
 
