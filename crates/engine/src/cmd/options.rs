@@ -117,16 +117,13 @@ fn options(s: &mut Session, v: &Value) -> CmdResult {
     };
     let folder = match v.get("dictionariesFolder") {
         None | Some(Value::Null) => None,
-        Some(Value::String(f)) => Some(folder_setting("dictionariesFolder", f)?),
+        Some(Value::String(f)) => Some(folder_setting("dictionariesFolder", f, false)?),
         Some(_) => return Err(CmdError::Params("`dictionariesFolder` must be a folder path, or auto".into())),
     };
     let templates_folder = match v.get("userTemplatesFolder") {
         None | Some(Value::Null) => None,
         // Never a folder on another machine (#2852): listing it would make Windows authenticate there.
-        Some(Value::String(f)) if super::templates::is_network_path(f.trim()) => {
-            return Err(CmdError::Params("`userTemplatesFolder` can't be a network folder".into()));
-        }
-        Some(Value::String(f)) => Some(folder_setting("userTemplatesFolder", f)?),
+        Some(Value::String(f)) => Some(folder_setting("userTemplatesFolder", f, true)?),
         Some(_) => return Err(CmdError::Params("`userTemplatesFolder` must be a folder path, or auto".into())),
     };
     let mut flag_values = Vec::new();
@@ -243,8 +240,10 @@ pub fn current(s: &Session) -> Value {
 }
 
 /// A folder setting (`dictionariesFolder`, `userTemplatesFolder`): `auto` (or nothing) forgets
-/// it; otherwise an existing folder, given as an absolute path or one starting with `~/`.
-fn folder_setting(key: &str, f: &str) -> Result<Option<String>, CmdError> {
+/// it; otherwise an existing folder, given as an absolute path or one starting with `~/`. With
+/// `local_only`, a network folder is refused before anything looks at it (#2852): even checking
+/// that it exists would make Windows authenticate to that host.
+fn folder_setting(key: &str, f: &str, local_only: bool) -> Result<Option<String>, CmdError> {
     let f = f.trim();
     if f.is_empty() || f.eq_ignore_ascii_case("auto") {
         return Ok(None);
@@ -257,6 +256,9 @@ fn folder_setting(key: &str, f: &str) -> Result<Option<String>, CmdError> {
         (Some(rest), Some(h)) => h.join(rest),
         _ => std::path::PathBuf::from(f),
     };
+    if local_only && (super::templates::is_network_path(f) || super::templates::is_network_path(&path.to_string_lossy())) {
+        return Err(CmdError::Params(format!("`{key}` can't be a network folder")));
+    }
     if !path.is_absolute() {
         return Err(CmdError::Params(format!("`{key}`: {f:?} isn't a full path")));
     }

@@ -2652,13 +2652,13 @@ fn flushes_comment_drafts(id: &str, params: &Value) -> bool {
     ) || discards_document(id, params)
 }
 
-/// User commands that replace or close the document (`file.open` without a path only shows the
+/// User commands that replace or close the document (New, also from a template; `file.open` without a path only shows the
 /// file picker; the open that follows is checked). Envelopes, Labels and Finish & Merge make a
 /// new document in its place; a merge written to a file (`path`) and an envelope added to this
 /// document (`add`) leave it alone.
 pub(crate) fn discards_document(id: &str, params: &Value) -> bool {
     match id {
-        "file.new" | "file.close" | "mailings.labels" => true,
+        "file.new" | "file.newFromTemplate" | "file.close" | "mailings.labels" => true,
         "mailings.envelopes" => params.get("add").and_then(Value::as_bool) != Some(true),
         "file.open" => params.get("path").is_some(),
         "file.recover" => params.get("restore").is_some(),

@@ -135,10 +135,23 @@ pub fn list_templates(dir: &str) -> Result<Listing, CmdError> {
         out.truncated = true;
     }
     for (category, e) in found {
-        let stem = e.path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         let title = title_of(&e.path);
         let modified = e.modified.map(super::iso_from_unix_secs);
-        out.templates.push(PersonalTemplate { label: stem, title, path: e.path.to_string_lossy().into_owned(), category, modified });
+        out.templates.push(PersonalTemplate { label: label_of(&e.name), title, path: e.path.to_string_lossy().into_owned(), category, modified });
+    }
+    // Two templates of one category that would show the same name (`Memo.dotx`, `Memo.dotm`)
+    // show their file names instead, so they can be told apart.
+    let key = |t: &PersonalTemplate| (t.category.to_lowercase(), t.label.to_lowercase());
+    let mut seen = std::collections::HashMap::<(String, String), usize>::new();
+    for t in &out.templates {
+        *seen.entry(key(t)).or_default() += 1;
+    }
+    for t in &mut out.templates {
+        if seen.get(&key(t)).is_some_and(|n| *n > 1)
+            && let Some(name) = std::path::Path::new(&t.path).file_name()
+        {
+            t.label = name.to_string_lossy().into_owned();
+        }
     }
     // The top level first, then each category; by label within them.
     out.templates.sort_by_cached_key(|t| (!t.category.is_empty(), t.category.to_lowercase(), t.label.to_lowercase(), t.path.clone()));
@@ -168,6 +181,19 @@ fn entries(dir: &std::path::Path) -> (Vec<crate::io::DirEntry>, Vec<std::path::P
         }
     }
     (files, folders, cut)
+}
+
+/// The name a template shows: its file name without the template extension, every one of them
+/// (`Contract.dotm.dotx`, as older Save as Template made, is `Contract`); the whole name if
+/// nothing would be left.
+fn label_of(name: &str) -> String {
+    let mut label = name;
+    while is_template_name(label) {
+        let Some(stem) = label.get(..label.len().saturating_sub(5)) else { break };
+        label = stem;
+    }
+    let label = label.trim_end();
+    if label.is_empty() { name.to_string() } else { label.to_string() }
 }
 
 /// A Word template by its name: `.dotx` or `.dotm`, in any case.
@@ -323,6 +349,26 @@ mod tests {
         assert_eq!(serde_json::to_value(&s.prefs).unwrap()["userTemplatesFolder"], json!(d.to_string_lossy()));
         s.run("file.options", &json!({"userTemplatesFolder": "auto"})).unwrap();
         assert_eq!(s.prefs.user_templates_folder, None);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// .dotx and .dotm templates show their names the same way, without the extension; two that
+    /// would look alike in one category show their file names.
+    #[test]
+    fn labels_drop_the_extension_alike_and_tell_twins_apart() {
+        let d = scratch("labels");
+        template(&d.join("Service contract.dotm"), "a", "");
+        template(&d.join("Old contract.dotm.dotx"), "b", "");
+        template(&d.join("Memo.dotx"), "c", "");
+        template(&d.join("Memo.DOTM"), "d", "");
+        std::fs::create_dir_all(d.join("Other")).unwrap();
+        template(&d.join("Other/Memo.dotx"), "e", "");
+        let found = list_templates(&d.to_string_lossy()).unwrap();
+        let got: Vec<(&str, &str)> = found.templates.iter().map(|t| (t.category.as_str(), t.label.as_str())).collect();
+        assert_eq!(got, [("", "Memo.DOTM"), ("", "Memo.dotx"), ("", "Old contract"), ("", "Service contract"), ("Other", "Memo")]);
+        assert_eq!(label_of(".dotx.dotm"), ".dotx", "never empty");
+        assert_eq!(label_of(" .dotx"), " .dotx", "nothing left: the whole name");
+        assert_eq!(label_of("é.dotx"), "é");
         let _ = std::fs::remove_dir_all(&d);
     }
 

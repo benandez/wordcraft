@@ -361,8 +361,18 @@ impl WordApp {
     /// The user templates folder (#2852): the one File › Options names, else the app's own.
     /// `None` on the web, which has no folders.
     pub fn user_templates_dir(&self) -> Option<std::path::PathBuf> {
-        match self.session.prefs.user_templates_folder.as_deref().map(str::trim).filter(|f| !f.is_empty()) {
-            Some(f) => Some(std::path::PathBuf::from(f)),
+        // The saved folder is checked again (the settings file may have been edited, the folder
+        // removed): a network folder is never looked at, and one that's gone gives way to the
+        // app's own.
+        let saved = self.session.prefs.user_templates_folder.as_deref().map(str::trim).filter(|f| !f.is_empty());
+        match saved {
+            Some(f) if wordcraft_engine::cmd::user_templates::check_dir(f).is_ok() && std::path::Path::new(f).is_dir() => {
+                Some(std::path::PathBuf::from(f))
+            }
+            Some(f) => {
+                log::debug!("user templates folder {f:?} isn't usable; using the app's own");
+                self.services.templates_dir.clone()
+            }
             None => self.services.templates_dir.clone(),
         }
     }

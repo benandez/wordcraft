@@ -363,7 +363,13 @@ fn new_page(app: &mut WordApp, ui: &mut Ui) {
         return;
     }
     ui.add_space(24.0);
-    ui.label(egui::RichText::new(tl!("Personal")).font(semibold(16.0)));
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new(tl!("Personal")).font(semibold(16.0)));
+        ui.add_space(8.0);
+        if ui.small_button(tl!("Refresh")).on_hover_text(folder.to_string_lossy()).clicked() {
+            refresh_personal_templates(ui.ctx());
+        }
+    });
     ui.add_space(8.0);
     let error = ui.ctx().data(|d| d.get_temp::<String>(personal_error_id())).unwrap_or_default();
     if !error.is_empty() {
@@ -399,33 +405,64 @@ fn new_page(app: &mut WordApp, ui: &mut Ui) {
 /// A personal template: what the gallery needs of a [`PersonalTemplate`] listing entry.
 type PersonalTemplate = wordcraft_engine::cmd::user_templates::PersonalTemplate;
 
-/// How long a listing of the templates folder is reused before the folder is read again.
-const PERSONAL_REFRESH_SECS: f64 = 2.0;
+/// The templates folder setting and listing File › New shows, and the pass it was last shown in.
+#[derive(Clone)]
+struct PersonalListing {
+    key: (Option<String>, Option<std::path::PathBuf>),
+    pass: u64,
+    folder: Option<std::path::PathBuf>,
+    templates: Vec<PersonalTemplate>,
+}
 
-/// The user templates folder and its templates (#2852), read again every couple of seconds while
-/// New is shown, so a template saved meanwhile appears. A folder that isn't there lists nothing.
+fn personal_listing_id() -> egui::Id {
+    egui::Id::new("backstage_personal_templates")
+}
+
+#[cfg(test)]
+thread_local! {
+    /// How many times this thread has listed the templates folder (tests check it isn't every frame).
+    static PERSONAL_LISTINGS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// The user templates folder and its templates (#2852). The folder is read when New is shown (so
+/// a template saved meanwhile, or a folder chosen in Options, appears), when its setting changes
+/// and on Refresh; never on every frame, as reading a big or synced folder would stall the window.
+/// A folder that isn't there lists nothing.
 fn personal_templates(app: &WordApp, ui: &Ui) -> (Option<std::path::PathBuf>, Vec<PersonalTemplate>) {
-    let Some(folder) = app.user_templates_dir() else { return (None, Vec::new()) };
-    let key = folder.to_string_lossy().into_owned();
-    let id = egui::Id::new("backstage_personal_templates");
-    let now = ui.input(|i| i.time);
-    let cached = ui.ctx().data(|d| d.get_temp::<(String, f64, Vec<PersonalTemplate>)>(id));
-    if let Some((k, at, list)) = cached
-        && k == key
-        && (0.0..PERSONAL_REFRESH_SECS).contains(&(now - at))
+    let key = (app.session.prefs.user_templates_folder.clone(), app.services.templates_dir.clone());
+    let pass = ui.ctx().cumulative_pass_nr();
+    let cached = ui.ctx().data(|d| d.get_temp::<PersonalListing>(personal_listing_id()));
+    // Still on New since the last pass: the listing stands.
+    if let Some(mut l) = cached
+        && l.key == key
+        && l.pass.saturating_add(1) >= pass
     {
-        return (Some(folder), list);
+        l.pass = pass;
+        let out = (l.folder.clone(), l.templates.clone());
+        ui.ctx().data_mut(|d| d.insert_temp(personal_listing_id(), l));
+        return out;
     }
-    let list = if folder.is_dir() {
-        wordcraft_engine::cmd::user_templates::list_templates(&key).map(|l| l.templates).unwrap_or_else(|e| {
-            log::debug!("personal templates: {e}");
-            Vec::new()
-        })
-    } else {
-        Vec::new()
+    let folder = app.user_templates_dir();
+    let templates = match &folder {
+        Some(f) if f.is_dir() => {
+            #[cfg(test)]
+            PERSONAL_LISTINGS.with(|n| n.set(n.get().saturating_add(1)));
+            wordcraft_engine::cmd::user_templates::list_templates(&f.to_string_lossy()).map(|l| l.templates).unwrap_or_else(|e| {
+                log::debug!("personal templates: {e}");
+                Vec::new()
+            })
+        }
+        _ => Vec::new(),
     };
-    ui.ctx().data_mut(|d| d.insert_temp(id, (key, now, list.clone())));
-    (Some(folder), list)
+    let l = PersonalListing { key, pass, folder: folder.clone(), templates: templates.clone() };
+    ui.ctx().data_mut(|d| d.insert_temp(personal_listing_id(), l));
+    (folder, templates)
+}
+
+/// Read the templates folder again on the next pass (File › New › Personal's Refresh).
+fn refresh_personal_templates(ctx: &egui::Context) {
+    ctx.data_mut(|d| d.remove::<PersonalListing>(personal_listing_id()));
+    ctx.request_repaint();
 }
 
 /// The personal templates whose name, title or category contains `query` (case-insensitive);
@@ -925,6 +962,82 @@ mod tests {
         drop(h);
         let _ = std::fs::remove_dir_all(&own);
         let _ = std::fs::remove_dir_all(&chosen);
+    }
+
+    /// A personal template replaces the document like New does: unsaved changes are asked about
+    /// first, and nothing is replaced until that is answered.
+    #[test]
+    fn a_personal_template_asks_about_unsaved_changes_first() {
+        let dir = personal_dir("dirty");
+        let memo = dir.join("Memo.dotx");
+        write_template(&memo, "From the template");
+        let mut h = new_page_harness(Some(dir.clone()));
+        h.state_mut().run("document.setText", json!({"text": "Unsaved work"})).unwrap();
+        assert!(h.state().session.dirty);
+        h.get_by_label("Memo").click();
+        h.run_steps(3);
+        let body = |h: &egui_kittest::Harness<'static, WordApp>| h.state().session.doc.plain_text(wordcraft_doc::StoryRef::Body);
+        assert!(matches!(h.state().dialog, Some(crate::dialogs::Dialog::SaveChanges { .. })), "Save changes is asked");
+        assert_eq!(body(&h), "Unsaved work", "the document stays until the question is answered");
+        h.state_mut().run("ui.saveChanges", json!({"answer": "cancel"})).unwrap();
+        h.run_steps(2);
+        assert_eq!(body(&h), "Unsaved work", "Cancel keeps it");
+        assert_eq!(h.state().session.doc.settings.attached_template, None);
+        h.state_mut().run("ui.backstage", json!({"value": true, "page": "new"})).unwrap();
+        h.run_steps(3);
+        h.get_by_label("Memo").click();
+        h.run_steps(3);
+        h.state_mut().run("ui.saveChanges", json!({"answer": "dontSave"})).unwrap();
+        h.run_steps(2);
+        assert!(body(&h).contains("From the template"), "Don't Save makes the document from the template");
+        assert_eq!(h.state().session.doc.settings.attached_template.as_deref(), Some(memo.to_string_lossy().as_ref()));
+        drop(h);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The templates folder is read when New is shown and on Refresh, not on every frame.
+    #[test]
+    fn personal_templates_are_listed_once_per_visit_and_on_refresh() {
+        let dir = personal_dir("refresh");
+        write_template(&dir.join("First.dotx"), "x");
+        let count = || super::PERSONAL_LISTINGS.with(std::cell::Cell::get);
+        let before = count();
+        let mut h = new_page_harness(Some(dir.clone()));
+        let after_open = count();
+        assert_eq!(after_open, before + 1, "listed once when New is shown");
+        write_template(&dir.join("Second.dotx"), "y");
+        h.run_steps(20);
+        assert_eq!(count(), after_open, "not listed again while New stays open");
+        assert!(h.query_by_label("Second").is_none());
+        h.get_by_label("Refresh").click();
+        h.run_steps(3);
+        assert_eq!(count(), after_open + 1, "Refresh lists once");
+        assert!(h.query_by_label("Second").is_some(), "Refresh shows the new template");
+        // Leaving New and coming back reads the folder again.
+        h.state_mut().run("ui.backstage", json!({"value": true, "page": "open"})).unwrap();
+        h.run_steps(2);
+        write_template(&dir.join("Third.dotx"), "z");
+        h.state_mut().run("ui.backstage", json!({"value": true, "page": "new"})).unwrap();
+        h.run_steps(3);
+        assert_eq!(count(), after_open + 2);
+        assert!(h.query_by_label("Third").is_some());
+        drop(h);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A saved templates folder that is a network path, or gone, gives way to the app's own.
+    #[test]
+    fn an_unusable_saved_folder_falls_back_to_the_apps_own() {
+        let own = personal_dir("fallback");
+        let services = Services { templates_dir: Some(own.clone()), ..Default::default() };
+        let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), services);
+        for bad in [r"\\host\share".to_string(), "//host/share".into(), own.join("gone").to_string_lossy().into_owned(), "relative".into()] {
+            a.session.prefs.user_templates_folder = Some(bad.clone());
+            assert_eq!(a.user_templates_dir(), Some(own.clone()), "{bad}");
+        }
+        a.session.prefs.user_templates_folder = Some(own.to_string_lossy().into_owned());
+        assert_eq!(a.user_templates_dir(), Some(own.clone()));
+        let _ = std::fs::remove_dir_all(&own);
     }
 
     /// Home and New are different pages (#141): Home has the short template row, the link to New
