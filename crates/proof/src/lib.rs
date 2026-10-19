@@ -1305,6 +1305,41 @@ mod tests {
         assert_eq!(suggest_in("programmes", 5, us).first().map(String::as_str), Some("programs"));
     }
 
+    /// More British spellings that must stay right in en-GB and en-AU (#1281): -re, single l, ae,
+    /// with their inflections.
+    #[test]
+    fn more_british_spellings_are_right_in_en_gb() {
+        let gb = ProofLang::EnGb;
+        assert_eq!(ProofLang::from_tag(Some("en-AU")), gb);
+        for w in [
+            "goitre",
+            "goitres",
+            "reconnoitre",
+            "sceptre",
+            "sceptres",
+            "enrol",
+            "enrols",
+            "enrolled",
+            "enrolment",
+            "fulfil",
+            "fulfils",
+            "fulfilled",
+            "fulfilment",
+            "instalment",
+            "instalments",
+            "skilful",
+            "skilfully",
+            "wilful",
+            "wilfully",
+            "encyclopaedia",
+            "encyclopaedias",
+        ] {
+            assert!(is_correct_in(w, gb), "en-GB: {w}");
+        }
+        let text = "The wilful knight took the sceptre to fulfil his enrolment, paid the instalment and read the encyclopaedia.";
+        assert!(check_spelling_in(text, gb).is_empty(), "{:?}", check_spelling_in(text, gb));
+    }
+
     #[test]
     fn user_dictionary_accepts_the_other_dialects_spelling() {
         add_word("savour");
