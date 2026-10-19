@@ -201,12 +201,7 @@ fn a_word_time_field_inherits_pt_br_from_document_defaults() {
         field(CODE, "22 de setembro de 2026", false),
         field(CODE, "22 de setembro de 2026", false)
     );
-    let source = zip(&[
-        ("_rels/.rels", rels),
-        ("word/document.xml", &doc),
-        ("word/_rels/document.xml.rels", doc_rels),
-        ("word/styles.xml", styles),
-    ]);
+    let source = zip(&[("_rels/.rels", rels), ("word/document.xml", &doc), ("word/_rels/document.xml.rels", doc_rels), ("word/styles.xml", styles)]);
     let original = wordcraft_engine::io::open_bytes("pt-br-word.docx", &source).unwrap();
     let expected = wordcraft_engine::cmd::insert::format_date_in(PICTURE, Some("pt-BR"));
     let assert_correct = |document: &wordcraft_doc::Document| {
