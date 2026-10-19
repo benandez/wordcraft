@@ -462,12 +462,15 @@ impl Screen {
 /// Focus's background around the page, in both themes (our own value, #1678).
 pub const FOCUS_CANVAS: egui::Color32 = egui::Color32::BLACK;
 
+/// Height of the slim bar Focus and Full Screen View show in place of the chrome (#1678).
+pub const SCREEN_BAR_HEIGHT: f32 = 30.0;
+
 /// The slim bar across the top in Focus ("⋯" drops the ribbon down over the page) and Full
 /// Screen View (Search, which finds and runs any command).
 pub fn screen_bar(app: &mut WordApp, ui: &mut Ui, screen: Screen) {
     let t = Tokens::get(ui.ctx());
     let fill = if screen == Screen::Focus { FOCUS_CANVAS } else { t.title_bar };
-    egui::Panel::top("screen_bar").exact_size(30.0).show_separator_line(false).frame(egui::Frame::NONE.fill(fill)).show(ui, |ui| {
+    egui::Panel::top("screen_bar").exact_size(SCREEN_BAR_HEIGHT).show_separator_line(false).frame(egui::Frame::NONE.fill(fill)).show(ui, |ui| {
         let full = ui.max_rect();
         if screen == Screen::Focus {
             let r = Rect::from_center_size(full.center(), vec2(40.0, 20.0));
@@ -491,7 +494,7 @@ pub fn screen_bar(app: &mut WordApp, ui: &mut Ui, screen: Screen) {
 /// click on the page puts it away; Focus stays on.
 pub fn focus_ribbon(app: &mut WordApp, ctx: &egui::Context) {
     let width = ctx.content_rect().width();
-    egui::Area::new(egui::Id::new("focus_ribbon")).fixed_pos(pos2(0.0, 30.0)).order(egui::Order::Middle).show(ctx, |ui| {
+    egui::Area::new(egui::Id::new("focus_ribbon")).fixed_pos(pos2(0.0, SCREEN_BAR_HEIGHT)).order(egui::Order::Middle).show(ctx, |ui| {
         ui.set_width(width);
         ui.set_max_width(width);
         crate::ribbon::show(app, ui);

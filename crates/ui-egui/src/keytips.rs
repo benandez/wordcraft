@@ -833,9 +833,15 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context, ui: &mut Ui) {
     }
 }
 
+/// Where the legacy hint hangs from: the tab row, or, with no ribbon showing (Focus, Full Screen
+/// View), the top of the window under the slim bar, so Alt, V still says it's waiting.
+fn legacy_hint_anchor(tabs: Option<Rect>, window: Rect) -> Rect {
+    tabs.unwrap_or_else(|| Rect::from_min_size(window.left_top(), Vec2::new(0.0, crate::chrome::SCREEN_BAR_HEIGHT)))
+}
+
 /// The hint under the tab row while a legacy menu key sequence waits for its next letter.
 fn legacy_hint(app: &WordApp, ui: &Ui, tabs: Option<Rect>) {
-    let Some(tabs) = tabs else { return };
+    let tabs = legacy_hint_anchor(tabs, ui.ctx().content_rect());
     let t = Tokens::get(ui.ctx());
     let keys: Vec<String> = app.ui.keytip_prefix.chars().map(String::from).collect();
     let text = crate::i18n::fmt(tl!("Old menu keys: Alt, {keys}. Keep typing, or press Esc to cancel."), &[("keys", &keys.join(", "))]);
@@ -1101,6 +1107,17 @@ mod tests {
         assert_eq!((a.ui.tab.as_str(), a.ui.keytips), ("View", Phase::Commands));
     }
 
+    /// #1697 review: with no ribbon showing (Focus, Full Screen View) no tab rects are recorded,
+    /// so the hint hangs under the slim bar at the top of the window instead of not showing.
+    #[test]
+    fn the_legacy_hint_hangs_under_the_slim_bar_without_a_ribbon() {
+        let window = Rect::from_min_size(egui::pos2(0.0, 0.0), Vec2::new(1440.0, 900.0));
+        let anchor = legacy_hint_anchor(None, window);
+        assert_eq!(anchor.left_bottom(), egui::pos2(0.0, crate::chrome::SCREEN_BAR_HEIGHT));
+        let tabs = Rect::from_min_max(egui::pos2(10.0, 40.0), egui::pos2(600.0, 64.0));
+        assert_eq!(legacy_hint_anchor(Some(tabs), window), tabs, "under the tab row when the ribbon shows");
+    }
+
     /// #1697: legacy sequences never start on a tab keytip (table tabs included) or Search, and
     /// every one reaches a command or dialog that exists.
     #[test]
@@ -1303,6 +1320,42 @@ mod tests {
             assert_eq!(h.state_mut().session.run("format.state", &serde_json::json!({})).unwrap()["bold"], false);
             assert_eq!(h.state().session.doc.plain_text(wordcraft_doc::StoryRef::Body).trim(), "hello");
         }
+    }
+
+    /// #1697 review: Alt, V, U through the whole app (the canvas has the keyboard), not only
+    /// `handle_key`: Full Screen View turns on and neither letter types into the document.
+    #[test]
+    fn legacy_menu_keys_through_the_app_never_type() {
+        if cfg!(target_os = "macos") {
+            return;
+        }
+        let mut a = app();
+        a.canvas.focused = true;
+        a.canvas.want_focus = true;
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            a,
+        );
+        h.run_steps(4);
+        let alt = egui::Modifiers { alt: true, ..Default::default() };
+        h.input_mut().events.extend([key_event(egui::Key::AltLeft, true, egui::Modifiers::NONE), egui::Event::ModifiersChanged(alt)]);
+        h.step();
+        h.input_mut().events.extend([key_event(egui::Key::AltLeft, false, alt), egui::Event::ModifiersChanged(egui::Modifiers::NONE)]);
+        h.step();
+        assert_eq!(h.state().ui.keytips, Phase::Tabs);
+        let key = |key| key_event(key, true, egui::Modifiers::NONE);
+        h.input_mut().events.extend([key(egui::Key::V), egui::Event::Text("v".into())]);
+        h.step();
+        assert_eq!((h.state().ui.keytips, h.state().ui.keytip_prefix.as_str()), (Phase::Legacy, "V"));
+        h.input_mut().events.extend([key(egui::Key::U), egui::Event::Text("u".into())]);
+        h.run_steps(3);
+        assert_eq!(h.state().ui.keytips, Phase::Off);
+        assert!(h.state().session.view.full_screen_view, "Alt, V, U: Full Screen View");
+        assert!(h.state().session.doc.plain_text(wordcraft_doc::StoryRef::Body).is_empty(), "no letter typed");
     }
 
     #[test]
