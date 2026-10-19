@@ -8318,6 +8318,24 @@ fn row_borders_stay_on_row() {
     assert_eq!(rules.iter().filter(|w| **w == 1.0).count(), 7);
 }
 
+/// #1740: a triple table border is drawn as a triple line, not a double one.
+#[test]
+fn triple_table_borders_draw_triple_lines() {
+    let mut d = Document::from_text("before\nafter");
+    let mut t = Table::new(1, 1, 200.0);
+    t.props.style = None;
+    let triple = Border { style: BorderStyle::Triple, width: 0.5, color: None, space: 0.0 };
+    let double = Border { style: BorderStyle::Double, width: 0.5, color: None, space: 0.0 };
+    t.props.borders =
+        Some(Borders { top: Some(triple), bottom: Some(double), left: Some(triple), right: Some(Border::single(0.5)), ..Default::default() });
+    d.insert_block(StoryRef::Body, &Path::top(1), wordcraft_doc::Block::Table(t)).unwrap();
+    let l = lay(&d);
+    let items = display::page_display(&d, &l.pages[0], &display::DisplayOptions::default());
+    let mut strokes: Vec<_> = items.iter().filter_map(|i| if let display::Draw::Line { stroke, .. } = i { Some(*stroke) } else { None }).collect();
+    strokes.sort_by_key(|s| format!("{s:?}"));
+    assert_eq!(strokes, vec![display::Stroke::Double, display::Stroke::Solid, display::Stroke::Triple, display::Stroke::Triple]);
+}
+
 #[test]
 fn row_nil_overrides_style() {
     let mut d = Document::from_text("before\nafter");

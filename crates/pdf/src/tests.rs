@@ -721,6 +721,22 @@ fn flat_lines_in_a_group_are_drawn() {
     assert_eq!(flat, empty + 2, "the horizontal and the vertical line, not the one without length");
 }
 
+/// #1740: a triple border is three lines in the PDF (it was drawn as a double one).
+#[test]
+fn triple_borders_export_three_lines() {
+    use wordcraft_doc::props::{Border, BorderStyle, Borders};
+    let paths = |style: BorderStyle| {
+        let mut p = Paragraph::with_text("Ruled", CharProps::default());
+        p.props.borders = Some(Borders { bottom: Some(Border { style, width: 0.75, color: None, space: 1.0 }), ..Default::default() });
+        let mut d = Document::new();
+        d.body = vec![para_block(p)];
+        count_glyphs_and_paths(&export(&d, &PdfOptions { tagged: false, ..Default::default() }).unwrap()).1
+    };
+    let single = paths(BorderStyle::Single);
+    assert_eq!(paths(BorderStyle::Double), single + 1);
+    assert_eq!(paths(BorderStyle::Triple), single + 2);
+}
+
 #[test]
 fn field_results_are_extractable_text() {
     // Issue #97 (test from #112 by @LloydNicholson): a REF field's result, not the U+FFFC
