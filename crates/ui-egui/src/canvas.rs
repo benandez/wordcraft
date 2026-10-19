@@ -2437,6 +2437,13 @@ fn mouse(app: &mut WordApp, ui: &Ui, resp: &egui::Response, rects: &[Rect], layo
                 _ => story,
             }
         };
+        // A press in the header/footer area from the body leaves the caret where it is, as in
+        // Word (#2103): moving it to the nearest body text scrolled the view there, away from the
+        // footer the double-click was aiming at.
+        if hf_switch && !mods.shift && hf_zone.is_some() && story == StoryRef::Body && app.session.sel.focus.story == StoryRef::Body {
+            app.canvas.column_drag = None;
+            return;
+        }
         if !mods.shift
             && let Some((at, inner)) = layout.equation_hit(page, x, y, story)
         {

@@ -4393,6 +4393,77 @@ mod tests {
         assert!(!a.canvas.focused);
     }
 
+    /// #2103: double-clicking the page number in a later page's footer opens the footer there;
+    /// the view stays on that page instead of jumping to the top of the document.
+    #[test]
+    fn double_clicking_a_later_pages_footer_does_not_scroll_to_the_top() {
+        let ctx = egui::Context::default();
+        let mut a = app();
+        a.run("insert.pageNumber", json!({"position": "bottom"})).unwrap();
+        for _ in 0..4 {
+            a.run("text.insert", json!({"text": "Some body text on this page."})).unwrap();
+            a.run("insert.pageBreak", json!({})).unwrap();
+        }
+        a.run("text.insert", json!({"text": "The last page."})).unwrap();
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 800.0));
+        let mut t = 0.0;
+        let mut frame = |a: &mut WordApp, events: Vec<egui::Event>| {
+            t += 1.0 / 60.0;
+            let input = egui::RawInput { events, time: Some(t), screen_rect: Some(screen), ..Default::default() };
+            ctx.run_ui(input, |ui| {
+                a.logic(ui.ctx());
+                a.ui(ui);
+            })
+            .drop_without_applying_deltas();
+        };
+        let btn = |pos, pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+        for _ in 0..30 {
+            frame(&mut a, Vec::new());
+        }
+        let last = a.session.layout().pages.len() - 1;
+        assert!(last >= 3, "several pages");
+        let page = a.session.layout().pages[last].clone();
+        let (x, y) = (page.body.x + page.body.w / 2.0, (page.body.bottom() + page.h) / 2.0);
+        // Scroll the reader to the last page's footer, as with the wheel.
+        let at = canvas::page_to_screen(&mut a, last, x, y).expect("footer laid out");
+        let vp = a.canvas.viewport.expect("the canvas laid out");
+        let wheel = egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(0.0, vp.center().y - at.y),
+            phase: egui::TouchPhase::Move,
+            modifiers: Default::default(),
+        };
+        frame(&mut a, vec![egui::Event::PointerMoved(vp.center()), wheel]);
+        for _ in 0..30 {
+            frame(&mut a, Vec::new());
+        }
+        let at = canvas::page_to_screen(&mut a, last, x, y).expect("footer laid out");
+        assert!(vp.contains(at), "the last page's footer is on screen");
+        let before = a.canvas.scroll_offset;
+        assert!(before.y > 1000.0, "scrolled down to the last page: {before:?}");
+        frame(&mut a, vec![egui::Event::PointerMoved(at)]);
+        // A single click there leaves the caret and the view alone (it used to scroll up to the
+        // body text above).
+        let caret = a.session.sel.clone();
+        frame(&mut a, vec![btn(at, true)]);
+        frame(&mut a, vec![btn(at, false)]);
+        for _ in 0..40 {
+            frame(&mut a, Vec::new());
+        }
+        assert_eq!(a.session.sel, caret, "a single click in the footer area doesn't move the caret");
+        assert!((a.canvas.scroll_offset.y - before.y).abs() < 1.0, "a single click doesn't scroll: {before:?} -> {:?}", a.canvas.scroll_offset);
+        for _ in 0..2 {
+            frame(&mut a, vec![btn(at, true)]);
+            frame(&mut a, vec![btn(at, false)]);
+        }
+        for _ in 0..30 {
+            frame(&mut a, Vec::new());
+        }
+        assert!(matches!(a.session.sel.focus.story, wordcraft_doc::StoryRef::Part(_)), "editing the footer");
+        assert_eq!(a.session.page_hint, last, "on the clicked page");
+        assert!((a.canvas.scroll_offset.y - before.y).abs() < 1.0, "the view stays put: {before:?} -> {:?}", a.canvas.scroll_offset);
+    }
+
     /// The control channel's `ui.wheel` scrolls the canvas like a mouse wheel over it.
     #[test]
     fn control_wheel_scrolls_the_canvas() {
