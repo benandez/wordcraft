@@ -129,7 +129,7 @@ files it was given rather than guarding against other software on the computer.
 | `render_page` | a page as PNG |
 | `parity` | feature coverage |
 | `screenshot`, `click`, `key`, `ui_inspect` | app only (`--connect`) |
-| `say_to_user` | app only: a message (or a question with up to 3 `choices`) for the person at the keyboard, shown by Nib, the Assistant, labelled with your client's name (`clientInfo` from `initialize`); read the answer with `execute ui.assistantReply {id}`; once the user mutes agent messages, `ui.assistantMute` refuses to unmute them (a request, not a lock: `click` and `key` drive the window like a person and could still untick Mute in Nib's menu, so don't) (#959) |
+| `say_to_user` | app only: a message of at most 280 characters (or a question with up to 3 `choices` of at most 40; the input schema carries these limits) for the person at the keyboard, shown by Nib, the Assistant, labelled with your client's name (`clientInfo` from `initialize`; "an agent" without one); read the answer with `execute ui.assistantReply {id}`; once the user mutes agent messages, `ui.assistantMute` refuses to unmute them (a request, not a lock: `click` and `key` drive the window like a person and could still untick Mute in Nib's menu, so don't) (#959) |
 
 ### Several documents
 
