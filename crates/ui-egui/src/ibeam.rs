@@ -104,9 +104,13 @@ mod tests {
     #[test]
     fn a_drawn_i_beam_shows_on_white_and_dark_paper() {
         let mut h = window(true, false);
+        let sel = h.state().session.sel.clone();
         assert_eq!(hover_page(&mut h), (CursorIcon::None, Some(Color32::BLACK)), "white paper");
+        assert_eq!(h.state().session.sel, sel, "hovering leaves the selection alone");
         let mut h = window(true, true);
+        let sel = h.state().session.sel.clone();
         assert_eq!(hover_page(&mut h), (CursorIcon::None, Some(Color32::WHITE)), "dark page");
+        assert_eq!(h.state().session.sel, sel, "hovering leaves the selection alone");
     }
 
     /// #1746 review: at 100%, 125%, 150% and 200% scaling the fill and the edge of a stroke centred
