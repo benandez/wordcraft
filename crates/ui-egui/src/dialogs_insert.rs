@@ -13,9 +13,19 @@ use crate::theme::{Tokens, regular, semibold};
 
 /// Word-style Insert > Date & Time dialog.
 const PT_DATE_FORMATS: &[&str] = &[
-    "dd/MM/yyyy", "dddd, d 'de' MMMM 'de' yyyy", "d 'de' MMMM 'de' yyyy",
-    "dd/MM/yy", "yyyy-MM-dd", "d-MMM-yy", "dd.MM.yyyy", "d MMMM yyyy",
-    "MMM-yy", "dd/MM/yyyy HH:mm", "dd/MM/yyyy HH:mm:ss", "HH:mm", "HH:mm:ss",
+    "dd/MM/yyyy",
+    "dddd, d 'de' MMMM 'de' yyyy",
+    "d 'de' MMMM 'de' yyyy",
+    "dd/MM/yy",
+    "yyyy-MM-dd",
+    "d-MMM-yy",
+    "dd.MM.yyyy",
+    "d MMMM yyyy",
+    "MMM-yy",
+    "dd/MM/yyyy HH:mm",
+    "dd/MM/yyyy HH:mm:ss",
+    "HH:mm",
+    "HH:mm:ss",
 ];
 
 #[derive(Clone, Debug, Serialize)]
@@ -29,11 +39,12 @@ impl DateTimeForm {
     pub fn new(app: &WordApp) -> Self {
         let language = if app.ui.date_time_language.is_empty() {
             if crate::i18n::current().code().starts_with("pt") { "pt-BR" } else { "en-US" }.to_string()
-        } else { app.ui.date_time_language.clone() };
+        } else {
+            app.ui.date_time_language.clone()
+        };
         let language = if language == "pt-BR" { language } else { "en-US".into() };
         let list = if language == "pt-BR" { PT_DATE_FORMATS } else { DATE_FORMATS };
-        let format = if list.contains(&app.ui.date_time_format.as_str()) { app.ui.date_time_format.clone() }
-            else { list[0].to_string() };
+        let format = if list.contains(&app.ui.date_time_format.as_str()) { app.ui.date_time_format.clone() } else { list[0].to_string() };
         Self { format, language, update: app.ui.date_time_update }
     }
     fn formats(&self) -> &'static [&'static str] {
@@ -51,15 +62,14 @@ fn date_time_ui(app: &mut WordApp, ui: &mut Ui, f: &mut DateTimeForm) -> bool {
             ui.set_width(350.0);
             ui.label(tl!("Available formats:"));
             egui::Frame::new().stroke(Stroke::new(1.0, tokens.border)).inner_margin(2.0).show(ui, |ui| {
-                egui::ScrollArea::vertical().id_salt("date_time_formats").max_height(245.0)
-                    .auto_shrink([false, false]).show(ui, |ui| {
-                        for picture in f.formats() {
-                            let sample = wordcraft_engine::cmd::insert::format_date_in(picture, Some(&f.language));
-                            if ui.selectable_label(f.format == *picture, sample).on_hover_text(*picture).clicked() {
-                                f.format = (*picture).to_string();
-                            }
+                egui::ScrollArea::vertical().id_salt("date_time_formats").max_height(245.0).auto_shrink([false, false]).show(ui, |ui| {
+                    for picture in f.formats() {
+                        let sample = wordcraft_engine::cmd::insert::format_date_in(picture, Some(&f.language));
+                        if ui.selectable_label(f.format == *picture, sample).on_hover_text(*picture).clicked() {
+                            f.format = (*picture).to_string();
                         }
-                    });
+                    }
+                });
             });
         });
         ui.add_space(12.0);
@@ -88,7 +98,9 @@ fn date_time_ui(app: &mut WordApp, ui: &mut Ui, f: &mut DateTimeForm) -> bool {
         app.ui.date_time_update = f.update;
     }
     let (ok, cancel) = buttons(ui, "OK", "Cancel", true);
-    if ok { let _ = app.run("insert.dateTime", f.params()); }
+    if ok {
+        let _ = app.run("insert.dateTime", f.params());
+    }
     ok || cancel
 }
 
