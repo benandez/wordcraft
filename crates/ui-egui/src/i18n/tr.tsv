@@ -2696,3 +2696,8 @@ preview	Title	Örnek
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Herhangi bir birimde bir boyut yazın, örneğin 5 cm veya 300 px. Diğer kenar da buna uyar, böylece resim oranlarını korur.
 
 	Import…	İçe aktar…
+
+	Item Color	Öğe rengi
+	Shape color	Şekil rengi
+	Style Color	Stil rengi
+	Set the colors in the Text Pane to use custom colors.	Özel renkleri kullanmak için renkleri Metin Bölmesi'nde ayarlayın.

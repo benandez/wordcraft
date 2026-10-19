@@ -2700,3 +2700,8 @@ template	Letter	Lettre
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Tapez une taille dans n'importe quelle unité, par exemple 5 cm ou 300 px. L'autre côté suit, et l'image garde ses proportions.
 
 	Import…	Importer…
+
+	Item Color	Couleur de l'élément
+	Shape color	Couleur de la forme
+	Style Color	Couleur du style
+	Set the colors in the Text Pane to use custom colors.	Définissez les couleurs dans le volet Texte pour utiliser des couleurs personnalisées.

@@ -2688,3 +2688,8 @@
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Въведете размер в произволна единица, например 5 cm или 300 px. Другата страна се променя съответно, така че картината запазва пропорциите си.
 
 	Import…	Импортиране…
+
+	Item Color	Цвят на елемента
+	Shape color	Цвят на фигурата
+	Style Color	Цвят на стила
+	Set the colors in the Text Pane to use custom colors.	Задайте цветовете в текстовия панел, за да използвате персонализирани цветове.

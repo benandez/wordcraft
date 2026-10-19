@@ -2654,3 +2654,8 @@ preview	Title	Título
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Escribe un tamaño en cualquier unidad, como 5 cm o 300 px. El otro lado se ajusta, así que la imagen conserva sus proporciones.
 
 	Import…	Importar…
+
+	Item Color	Color del elemento
+	Shape color	Color de la forma
+	Style Color	Color del estilo
+	Set the colors in the Text Pane to use custom colors.	Defina los colores en el panel de texto para usar colores personalizados.

@@ -2699,3 +2699,8 @@ preview	Title	Naslov
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Upišite veličinu u bilo kojoj jedinici, npr. 5 cm ili 300 px. Druga se strana prilagođava pa slika zadržava svoje proporcije.
 
 	Import…	Uvezi…
+
+	Item Color	Boja stavke
+	Shape color	Boja oblika
+	Style Color	Boja stila
+	Set the colors in the Text Pane to use custom colors.	Postavite boje u oknu teksta da biste koristili prilagođene boje.

@@ -2300,3 +2300,8 @@
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	可用任意单位输入大小，例如 5 cm 或 300 px。另一边随之调整，图片保持原有比例。
 
 	Import…	导入…
+
+	Item Color	项目颜色
+	Shape color	形状颜色
+	Style Color	样式颜色
+	Set the colors in the Text Pane to use custom colors.	要使用自定义颜色，请在文本窗格中设置颜色。

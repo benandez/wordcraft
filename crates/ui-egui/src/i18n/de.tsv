@@ -2287,3 +2287,8 @@
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Geben Sie eine Größe in einer beliebigen Einheit ein, z. B. 5 cm oder 300 px. Die andere Seite passt sich an, sodass das Bild seine Proportionen behält.
 
 	Import…	Importieren…
+
+	Item Color	Elementfarbe
+	Shape color	Formfarbe
+	Style Color	Stilfarbe
+	Set the colors in the Text Pane to use custom colors.	Legen Sie die Farben im Textbereich fest, um benutzerdefinierte Farben zu verwenden.

@@ -2542,3 +2542,8 @@ preview	Title	제목
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	5 cm 또는 300 px처럼 원하는 단위로 크기를 입력하세요. 다른 쪽도 함께 바뀌어 그림의 비율이 유지됩니다.
 
 	Import…	가져오기…
+
+	Item Color	항목 색
+	Shape color	도형 색
+	Style Color	스타일 색
+	Set the colors in the Text Pane to use custom colors.	사용자 지정 색을 사용하려면 텍스트 창에서 색을 설정하세요.

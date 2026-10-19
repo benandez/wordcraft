@@ -2739,3 +2739,8 @@ template	Letter	Thư
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Nhập kích thước theo đơn vị bất kỳ, ví dụ 5 cm hoặc 300 px. Cạnh còn lại thay đổi theo, nên ảnh giữ nguyên tỷ lệ.
 
 	Import…	Nhập…
+
+	Item Color	Màu mục
+	Shape color	Màu hình
+	Style Color	Màu kiểu
+	Set the colors in the Text Pane to use custom colors.	Đặt màu trong ngăn văn bản để dùng màu tùy chỉnh.

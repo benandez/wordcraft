@@ -2288,3 +2288,8 @@
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	5 cm や 300 px など、任意の単位でサイズを入力します。もう一方の辺も合わせて変わるため、図の縦横比は保たれます。
 
 	Import…	インポート…
+
+	Item Color	項目の色
+	Shape color	図形の色
+	Style Color	スタイルの色
+	Set the colors in the Text Pane to use custom colors.	ユーザー設定の色を使うには、テキスト ウィンドウで色を設定してください。
