@@ -60,7 +60,7 @@ fn date_time_ui(app: &mut WordApp, ui: &mut Ui, f: &mut DateTimeForm) -> bool {
     ui.horizontal_top(|ui| {
         ui.vertical(|ui| {
             ui.set_width(350.0);
-            ui.label(tl!("Available formats:"));
+            ui.label(tl!("Date formats:"));
             egui::Frame::new().stroke(Stroke::new(1.0, tokens.border)).inner_margin(2.0).show(ui, |ui| {
                 egui::ScrollArea::vertical().id_salt("date_time_formats").max_height(245.0).auto_shrink([false, false]).show(ui, |ui| {
                     for picture in f.formats() {
@@ -74,7 +74,7 @@ fn date_time_ui(app: &mut WordApp, ui: &mut Ui, f: &mut DateTimeForm) -> bool {
         });
         ui.add_space(12.0);
         ui.vertical(|ui| {
-            ui.label(tl!("Language:"));
+            ui.label(tl!("Language"));
             egui::ComboBox::from_id_salt("date_time_lang")
                 .selected_text(if f.language == "pt-BR" { "Português (Brasil)" } else { "English (United States)" })
                 .show_ui(ui, |ui| {
