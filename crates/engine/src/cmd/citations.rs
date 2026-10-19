@@ -856,6 +856,7 @@ pub fn update_generated(s: &mut Session) -> Result<(), CmdError> {
             s.doc.remove_block(StoryRef::Body, &Path::top(i + 1))?;
         }
         let lines = entries_for(s, &kind);
+        let empty = lines.is_empty();
         let width = super::page::sect(s).text_width();
         for (k, (text, hanging)) in lines.into_iter().enumerate() {
             let mut para = Paragraph::with_text(&text, CharProps::default()).styled(ENTRY_STYLE);
@@ -867,6 +868,12 @@ pub fn update_generated(s: &mut Session) -> Result<(), CmdError> {
                 para.props.tabs = Some(vec![TabStop { pos: width - 0.5, align: TabAlign::Right, leader: leader.unwrap_or(TabLeader::Dot) }]);
             }
             s.doc.insert_block(StoryRef::Body, &Path::top(i + 1 + k), Block::Para(para))?;
+        }
+        // No entries yet: an empty stand-in keeps the leader for when captions are added.
+        if empty && let Some(leader) = leader {
+            let mut seed = Paragraph::new().styled(ENTRY_STYLE);
+            seed.props.tabs = Some(vec![TabStop { pos: 0.0, align: TabAlign::Right, leader }]);
+            s.doc.insert_block(StoryRef::Body, &Path::top(i + 1), Block::Para(seed))?;
         }
         i += 1;
     }
@@ -908,12 +915,15 @@ fn entries_for(s: &mut Session, kind: &str) -> Vec<(String, bool)> {
     }
     // Collect marks with positions.
     let mut marks: Vec<(String, Pos)> = Vec::new();
-    let caption_label = kind.split('"').nth(1).unwrap_or("Figure").to_string();
+    let want_label = kind.split('"').nth(1).unwrap_or("Figure").to_string();
     let figures = kind.starts_with("TOC \\c") || kind.starts_with("TOC \\a");
+    // A caption whose label is exactly the list's: a list of `Photo` leaves out `Photo Plate`.
+    let is_listed =
+        |p: &Paragraph| p.props.style.as_deref() == Some("Caption") && caption_label(p, &p.plain_text()).as_deref() == Some(want_label.as_str());
     for path in s.doc.para_paths(StoryRef::Body) {
         let Some(p) = s.doc.para(StoryRef::Body, &path) else { continue };
         if figures {
-            if p.props.style.as_deref() == Some("Caption") && p.plain_text().starts_with(&caption_label) {
+            if is_listed(p) {
                 marks.push((p.plain_text(), Pos { story: StoryRef::Body, path: path.clone(), off: 0 }));
             }
             continue;
@@ -936,7 +946,7 @@ fn entries_for(s: &mut Session, kind: &str) -> Vec<(String, bool)> {
         for path in s.doc.para_paths(StoryRef::Body) {
             let Some(p) = s.doc.para(StoryRef::Body, &path) else { continue };
             if figures {
-                if p.props.style.as_deref() == Some("Caption") && p.plain_text().starts_with(&caption_label) {
+                if is_listed(p) {
                     v.push(Pos { story: StoryRef::Body, path: path.clone(), off: 0 });
                 }
                 continue;
@@ -964,7 +974,7 @@ fn entries_for(s: &mut Session, kind: &str) -> Vec<(String, bool)> {
         return with_pages
             .into_iter()
             .map(|(t, p)| {
-                let t = if f.has('a') { caption_body(&t, &caption_label) } else { &t };
+                let t = if f.has('a') { caption_body(&t, &want_label) } else { &t };
                 (sep.as_ref().map_or_else(|| t.to_string(), |sep| format!("{t}{sep}{p}")), false)
             })
             .collect();
@@ -1335,6 +1345,47 @@ mod tests {
         s.run("text.newParagraph", &json!({})).unwrap();
         s.run("references.tableOfFigures", &json!({"label": "Fig\"ure\\", "rightAlign": false})).unwrap();
         assert!(s.doc.plain_text(StoryRef::Body).contains("\nFigure 1: The kiln 1"), "label cleaned, page after a space");
+    }
+
+    /// #3013 review: a list of `Photo` captions leaves out `Photo Plate` ones (whole label, not a
+    /// text prefix), with or without the label in the entries.
+    #[test]
+    fn table_of_figures_matches_the_whole_label() {
+        let mut s = Session::new(wordcraft_doc::Document::from_text("Cat\nMap\nEnd"));
+        s.run("select.text", &json!({"text": "Cat"})).unwrap();
+        s.run("references.caption", &json!({"label": "Photo", "text": "A cat"})).unwrap();
+        s.run("select.text", &json!({"text": "Map"})).unwrap();
+        s.run("references.caption", &json!({"label": "Photo Plate", "text": "A map"})).unwrap();
+        s.run("caret.docEnd", &json!({})).unwrap();
+        s.run("references.tableOfFigures", &json!({"label": "Photo", "includeLabel": false})).unwrap();
+        let t = s.doc.plain_text(StoryRef::Body);
+        assert!(t.contains("\nA cat\t1") && !t.contains("A map\t"), "{t}");
+        s.run("text.newParagraph", &json!({})).unwrap();
+        s.run("references.tableOfFigures", &json!({"label": "Photo Plate"})).unwrap();
+        let t = s.doc.plain_text(StoryRef::Body);
+        assert!(t.contains("\nPhoto Plate 1: A map\t1") && !t.contains("\nPhoto 1: A cat\t1\nPhoto Plate"), "{t}");
+    }
+
+    /// #3013 review: a list inserted before any caption with its label keeps the chosen leader
+    /// for when captions are added and the list is updated.
+    #[test]
+    fn an_empty_table_of_figures_keeps_its_leader() {
+        let mut s = Session::new(wordcraft_doc::Document::from_text("Press\nEnd"));
+        s.run("caret.docEnd", &json!({})).unwrap();
+        s.run("references.tableOfFigures", &json!({"label": "Table", "tabLeader": "hyphen"})).unwrap();
+        s.run("references.updateFigures", &json!({})).unwrap();
+        s.run("select.text", &json!({"text": "Press"})).unwrap();
+        s.run("references.caption", &json!({"label": "Table", "text": "Press sizes"})).unwrap();
+        s.run("references.updateFigures", &json!({})).unwrap();
+        let entry = s
+            .doc
+            .body
+            .iter()
+            .filter_map(|b| b.as_para())
+            .find(|p| p.props.style.as_deref() == Some(ENTRY_STYLE) && p.plain_text().starts_with("Table 1"))
+            .cloned()
+            .unwrap();
+        assert_eq!(entry.props.tabs.unwrap()[0].leader, TabLeader::Hyphen);
     }
 
     /// #2940: a caption with a label of the person's own (Insert Caption › New Label) is a
