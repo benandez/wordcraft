@@ -801,7 +801,9 @@ fn date_time(s: &mut Session, v: &Value) -> CmdResult {
     let text = format_date_in(fmt, language);
     if p::bool(v, "update").unwrap_or(false) {
         let mut props = s.typing_props();
-        if let Some(l) = language { props.lang = Some(l.to_string()); }
+        if let Some(l) = language {
+            props.lang = Some(l.to_string());
+        }
         let at = delete_selection(s)?;
         let end = s.doc.insert_object(
             &at,
