@@ -2,7 +2,7 @@
 //! any other product; see CLAUDE.md's asset rule.
 //!
 //! Drawn in a unit box (x, y in 0–1) mapped onto the rect, so it scales with the interface. Each
-//! pose is a small, time-based variation: `clock` (seconds, for the idle bob and blink) and
+//! pose is a small, time-based variation: `clock` (seconds, for the bob and the idle blink) and
 //! `since` (seconds in this pose). With animations off the caller passes `clock` 0 and a large
 //! `since`, which draws every pose settled and still.
 
@@ -14,7 +14,8 @@ use crate::theme::Tokens;
 /// What Nib is doing.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Pose {
-    /// Bobbing gently, blinking now and then.
+    /// Standing still, blinking now and then. Still, so an idle window needs no animation
+    /// frames: only one at each blink (see [`idle_wait`]).
     #[default]
     Idle,
     /// Waving hello (the Introduction, being turned on).
@@ -55,13 +56,30 @@ impl Frame {
     }
 }
 
+/// Seconds between blinks, and how long a blink lasts.
+const BLINK_EVERY: f32 = 4.2;
+const BLINK_FOR: f32 = 0.13;
+
+fn blinking(clock: f32) -> bool {
+    clock > 0.0 && clock.rem_euclid(BLINK_EVERY) < BLINK_FOR
+}
+
+/// Seconds until the idle drawing next changes (a blink starts or ends) at `clock`.
+pub fn idle_wait(clock: f32) -> f32 {
+    if !clock.is_finite() || clock <= 0.0 {
+        return BLINK_FOR;
+    }
+    let phase = clock.rem_euclid(BLINK_EVERY);
+    if phase < BLINK_FOR { BLINK_FOR - phase } else { BLINK_EVERY - phase }
+}
+
 /// Paint Nib in `rect`.
 pub fn paint(p: &Painter, rect: Rect, pose: Pose, clock: f32, since: f32, t: &Tokens) {
     let settle = |d: f32| (since / d).clamp(0.0, 1.0);
     let bob = (clock * 2.0).sin() * 1.5;
     let (angle, lift) = match pose {
-        Pose::Idle | Pose::Doze => (0.0, bob),
-        Pose::Wave => (0.0, bob),
+        Pose::Idle => (0.0, 0.0),
+        Pose::Doze | Pose::Wave => (0.0, bob),
         Pose::Write => (-0.32 * (1.0 - settle(2.0)).min(settle(0.25)), 0.0),
         Pose::Startled => (0.0, 6.0 * (1.0 - settle(0.45)) * (since * 14.0).sin().abs()),
         Pose::Bow => (0.45 * (since * 2.0).sin().max(0.0) * (1.0 - settle(1.6)), 0.0),
@@ -104,7 +122,7 @@ pub fn paint(p: &Painter, rect: Rect, pose: Pose, clock: f32, since: f32, t: &To
     p.line_segment([f.pt(0.5, 0.60), f.pt(0.5, 0.81)], Stroke::new(1.4, OUTLINE));
 
     // Eyes: open, blinking, wide (startled) or shut (dozing).
-    let blink = pose == Pose::Idle && clock > 0.0 && clock.rem_euclid(4.2) < 0.13;
+    let blink = pose == Pose::Idle && blinking(clock);
     let wide = pose == Pose::Startled && since < 1.6;
     for x in [0.40, 0.60] {
         let c = f.pt(x, 0.33);

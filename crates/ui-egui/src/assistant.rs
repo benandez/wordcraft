@@ -388,9 +388,20 @@ pub(crate) fn show(app: &mut WordApp, ctx: &egui::Context) {
         return;
     }
     draw(app, ctx);
-    let animate = app.animations_on();
-    // Timers (fading, idling) need a frame now and then; animation needs them often.
-    ctx.request_repaint_after(std::time::Duration::from_millis(if animate { 33 } else { 1000 }));
+    ctx.request_repaint_after(std::time::Duration::from_secs_f32(repaint_after(&app.assistant, app.animations_on())));
+}
+
+/// Seconds until Nib needs another frame. A pose that moves (settling, dozing) needs frames often;
+/// idle Nib stands still, so only the next blink; timers (fading, idling) need one now and then.
+fn repaint_after(a: &Assistant, animate: bool) -> f32 {
+    const TIMERS: f32 = 1.0;
+    if !animate {
+        return TIMERS;
+    }
+    if a.pose != Pose::Idle {
+        return 1.0 / 30.0;
+    }
+    nib::idle_wait(a.now as f32).clamp(1.0 / 30.0, TIMERS)
 }
 
 /// Close a Balloon whose time is up.
@@ -453,14 +464,15 @@ fn next_balloon(app: &mut WordApp) {
     a.checked = a.recorded;
     a.last_idle_check = now;
     a.unsaved_since = if app.session.dirty { Some(a.unsaved_since.unwrap_or(now)) } else { None };
-    // Word count at most once per command (it walks the document).
-    let words_before = if fresh {
-        let words = app.session.word_count();
-        let before = a.words_before.unwrap_or(words);
-        a.words_before = Some(words);
-        before
-    } else {
-        a.words_before.unwrap_or(0)
+    // Word count at most once per command (it walks the document), handed to the Sayings so they
+    // don't count again. Between commands the document hasn't changed: the last count stands.
+    let (words_before, words) = match a.words_before {
+        Some(w) if !fresh => (w, w),
+        last => {
+            let words = app.session.word_count();
+            a.words_before = Some(words);
+            (last.unwrap_or(words), words)
+        }
     };
     let o = Observation {
         recent: a.log.iter().cloned().collect(),
@@ -469,6 +481,7 @@ fn next_balloon(app: &mut WordApp) {
         deleted: std::mem::take(&mut a.deleted),
         unsaved_for: a.unsaved_since.map_or(0.0, |t| now - t),
         words_before,
+        words: Some(words),
         seed: a.recorded,
     };
     let dismissed = &app.ui.assistant.dismissed_tips;
