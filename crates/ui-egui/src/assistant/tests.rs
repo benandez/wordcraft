@@ -456,3 +456,31 @@ fn nib_draws_nothing_untranslated() {
     let bad: Vec<_> = found.into_iter().filter(|(_, t)| english(t)).collect();
     assert!(bad.is_empty(), "drawn without translation: {bad:#?}");
 }
+
+#[test]
+fn idle_nib_doesnt_keep_the_window_busy() {
+    let mut a = chatty();
+    let fast = 1.0 / 30.0;
+    // Idle: no frames until the next blink starts or ends, and never more than a second apart.
+    for now in [0.5, 1.0, 2.0, 4.0, 4.25, 100.0] {
+        a.assistant.now = now;
+        let wait = repaint_after(&a.assistant, true);
+        assert!(wait > fast && wait <= 1.0, "idle at {now}: {wait}");
+    }
+    // Just before a blink: a frame for it, not a second late.
+    a.assistant.now = 4.1;
+    assert!((repaint_after(&a.assistant, true) - 0.1).abs() < 0.01);
+    // A pose that moves needs frames often until it settles; animations off never do.
+    a.assistant.set_pose(Pose::Wave);
+    assert_eq!(repaint_after(&a.assistant, true), fast);
+    assert_eq!(repaint_after(&a.assistant, false), 1.0);
+    a.assistant.set_pose(Pose::Doze);
+    assert_eq!(repaint_after(&a.assistant, true), fast);
+    // Hostile clocks still give a sane wait.
+    a.assistant.set_pose(Pose::Idle);
+    for now in [f64::NAN, f64::INFINITY, -5.0] {
+        a.assistant.now = now;
+        let wait = repaint_after(&a.assistant, true);
+        assert!(wait.is_finite() && (fast..=1.0).contains(&wait), "{now}: {wait}");
+    }
+}

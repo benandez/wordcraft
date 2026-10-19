@@ -48,6 +48,8 @@ pub struct Observation {
     pub unsaved_for: f64,
     /// The word count when the caller last asked (for milestones).
     pub words_before: usize,
+    /// The word count now, when the caller already has it; `None` counts (it walks the document).
+    pub words: Option<usize>,
     /// Picks between equally good lines, so Sayings vary.
     pub seed: u64,
 }
@@ -179,14 +181,15 @@ pub fn tips(s: &Session, o: &Observation) -> Vec<Offer> {
         out.push(Offer::tip("listStarted", LIST_STARTED).button(RESTART_AT_1, "para.restartNumbering"));
     }
 
-    // Shortcut: the same command from the ribbon or a menu three times, when it has a shortcut.
+    // Shortcut: the same command from the ribbon or a menu three times, when it has a key. The key
+    // comes from the user's key map (Customize Keyboard), so a removed key is never suggested.
     if let Some(u) = recent(o).last()
         && matches!(u.source, Source::Ribbon | Source::Menu)
         && recent(o).iter().filter(|r| r.id == u.id && matches!(r.source, Source::Ribbon | Source::Menu)).count() >= 3
         && let Some(spec) = s.registry.get(&u.id)
-        && !spec.shortcut.is_empty()
+        && let Some(first) = s.keymap.keys_for(&s.registry, &u.id).first()
     {
-        let key = spec.shortcut.split(" / ").next().unwrap_or(spec.shortcut).replace("Mod+", if cfg!(target_os = "macos") { "⌘" } else { "Ctrl+" });
+        let key = key_text(first);
         out.push(Offer::tip("shortcut", SHORTCUT).arg("command", spec.label.to_string()).arg("key", key));
     }
 
@@ -195,6 +198,15 @@ pub fn tips(s: &Session, o: &Observation) -> Vec<Offer> {
         out.push(Offer::tip("saveReminder", SAVE_REMINDER).button(SAVE, "file.save"));
     }
     out
+}
+
+/// A key as the platform writes it (`⌘⇧K` on macOS, `Ctrl+Shift+K` elsewhere).
+fn key_text(key: &str) -> String {
+    if cfg!(target_os = "macos") {
+        key.replace("Mod+", "⌘").replace("Shift+", "⇧").replace("Alt+", "⌥").replace("Ctrl+", "⌃")
+    } else {
+        key.replace("Mod+", "Ctrl+")
+    }
 }
 
 /// General Tips, one at a time ("tip of the day").
@@ -279,7 +291,7 @@ pub fn sayings(s: &Session, o: &Observation) -> Vec<Offer> {
     if matches!(last_id(o), Some("text.insert")) && caret_text(s).to_lowercase().contains("lorem ipsum") {
         out.push(Offer::saying("lorem", pick(&LOREM, o.seed)));
     }
-    let words = s.word_count();
+    let words = o.words.unwrap_or_else(|| s.word_count());
     if let Some(m) = MILESTONES.iter().rev().find(|&&m| o.words_before < m && words >= m) {
         out.push(Offer::saying("milestone", pick(&MILESTONE, o.seed)).arg("words", m.to_string()));
     }
@@ -363,6 +375,24 @@ mod tests {
     }
 
     #[test]
+    fn the_shortcut_tip_follows_customize_keyboard() {
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        let used = |source| Used { id: "format.bold".into(), source, at: 0.0 };
+        let o = Observation { recent: vec![used(Source::Ribbon), used(Source::Ribbon), used(Source::Ribbon)], ..Default::default() };
+        let reg = s.registry.clone();
+        // Bold moved to F2: the Tip names F2, not the built-in key it no longer has.
+        s.keymap.remove(&reg, "format.bold", "Mod+B").unwrap();
+        s.keymap.assign(&reg, "format.bold", "F2").unwrap();
+        let t = tips(&s, &o);
+        assert_eq!(ids(&t), ["shortcut"]);
+        assert!(t[0].english().contains("F2") && !t[0].english().contains("+B"), "{}", t[0].english());
+        // No key left at all: no Tip.
+        s.keymap.remove(&reg, "format.bold", "F2").unwrap();
+        assert!(s.keymap.keys_for(&reg, "format.bold").is_empty());
+        assert!(tips(&s, &o).is_empty());
+    }
+
+    #[test]
     fn long_unsaved_work_without_autosave_gets_a_reminder() {
         let mut s = Session::new(wordcraft_doc::Document::new());
         s.run("text.insert", &json!({"text": "Draft"})).unwrap();
@@ -402,6 +432,10 @@ mod tests {
         assert_eq!(ids(&said), ["milestone"]);
         assert!(said[0].english().contains("500"), "{}", said[0].english());
         assert!(sayings(&s, &Observation { words_before: 500, ..Default::default() }).is_empty());
+        // A count the caller already made is used as is, not made again.
+        let empty = Session::new(wordcraft_doc::Document::new());
+        assert_eq!(ids(&sayings(&empty, &Observation { words_before: 499, words: Some(500), ..Default::default() })), ["milestone"]);
+        assert!(sayings(&s, &Observation { words_before: 499, words: Some(499), ..Default::default() }).is_empty());
     }
 
     #[test]
@@ -458,6 +492,7 @@ mod tests {
                 unsaved_for: x,
                 deleted: usize::MAX,
                 words_before: usize::MAX,
+                words: Some(usize::MAX),
                 seed: u64::MAX,
                 recent: (0..10_000).map(|_| Used { id: "file.save".into(), source: Source::Agent, at: x }).collect(),
             };
