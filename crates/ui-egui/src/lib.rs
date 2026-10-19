@@ -2813,8 +2813,10 @@ mod tests {
         let mut h = harness(a);
         h.run_steps(4);
         assert!(h.query_by_label("Insert").is_some(), "the ribbon's tabs show in the usual window");
-        h.state_mut().run("view.focus", json!({})).unwrap();
+        // Focus on the status bar, as a user turns it on.
+        h.get_by_label("Focus").click();
         h.run_steps(3);
+        assert!(h.state().session.view.focus_mode, "the status bar's Focus turns Focus on");
         assert!(h.query_by_label("Insert").is_none(), "Focus hides the ribbon");
         assert!(h.query_by_label("Search commands and help").is_none(), "and the title bar");
         // "⋯" in the Focus bar, at the top centre.
