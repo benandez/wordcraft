@@ -1525,6 +1525,18 @@ impl WordApp {
                 self.ui.ribbon_collapsed = !self.ui.ribbon_collapsed;
                 json!({"collapsed": self.ui.ribbon_collapsed})
             }
+            "ui.focusRibbon" => {
+                // Focus's "⋯" (#1678): `value` true drops the ribbon down over the page, false
+                // puts it away; no value toggles it. Outside Focus there is no ribbon to drop:
+                // it stays put away.
+                let focus = chrome::Screen::of(&self.session.view) == chrome::Screen::Focus;
+                match p.get("value") {
+                    None => self.focus_ribbon = focus && !self.focus_ribbon,
+                    Some(Value::Bool(on)) => self.focus_ribbon = focus && *on,
+                    Some(_) => return Some(Err("`value` must be true or false".into())),
+                }
+                json!({"focusRibbon": self.focus_ribbon})
+            }
             "ui.quickAccessToolbar" => {
                 // Hide Quick Access Toolbar (its menu) and Show Quick Access Toolbar (the ribbon's
                 // right-click menu, Customize Ribbon), #1945: `value` true shows the toolbar in
@@ -2844,6 +2856,29 @@ mod tests {
         h.state_mut().run("view.fullScreen", json!({})).unwrap();
         h.run_steps(3);
         assert!(h.query_by_label("Insert").is_some(), "Full Screen keeps the ribbon");
+    }
+
+    /// #1678: Focus's dropped ribbon is a command, `ui.focusRibbon`, which "⋯" and a click on the
+    /// page run; outside Focus it does nothing and never fails.
+    #[test]
+    fn focus_ribbon_is_a_command() {
+        let mut a = app();
+        let off = json!({"focusRibbon": false});
+        assert_eq!(a.run("ui.focusRibbon", json!({})).unwrap(), off, "outside Focus there is no ribbon to drop");
+        assert_eq!(a.run("ui.focusRibbon", json!({"value": true})).unwrap(), off);
+        assert!(!a.focus_ribbon);
+        a.run("view.focus", json!({})).unwrap();
+        assert_eq!(a.run("ui.focusRibbon", json!({})).unwrap(), json!({"focusRibbon": true}), "no value toggles it");
+        assert!(a.focus_ribbon && a.session.view.focus_mode);
+        assert_eq!(a.run("ui.focusRibbon", json!({})).unwrap(), off);
+        assert_eq!(a.run("ui.focusRibbon", json!({"value": true})).unwrap()["focusRibbon"], true);
+        assert_eq!(a.run("ui.focusRibbon", json!({"value": true})).unwrap()["focusRibbon"], true, "true keeps it down");
+        for junk in [json!({"value": "yes"}), json!({"value": 1}), json!({"value": null}), json!({"value": [true]})] {
+            assert!(a.run("ui.focusRibbon", junk).is_err());
+        }
+        assert!(a.focus_ribbon, "a refused value leaves it as it was");
+        assert_eq!(a.run("ui.focusRibbon", json!({"value": false})).unwrap(), off);
+        assert!(a.session.view.focus_mode, "putting the ribbon away stays in Focus");
     }
 
     /// A harness on a document with text whose page has the keyboard.
