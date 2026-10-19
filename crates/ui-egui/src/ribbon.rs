@@ -140,8 +140,8 @@ const MORE_TABS_W: f32 = 24.0;
 
 /// How long a contextual tab takes to settle into place after it appears, seconds.
 const TAB_ENTRY_SECS: f64 = 0.35;
-/// How far, in points, a new contextual tab starts to the right of its place.
-const TAB_ENTRY_SLIDE: f32 = 28.0;
+/// How far, in points, a new contextual tab starts to the left of its place.
+const TAB_ENTRY_SLIDE: f32 = 18.0;
 
 /// Fast at first, then slowing to rest: 0 → 1.
 fn ease_out_cubic(p: f32) -> f32 {
@@ -447,12 +447,12 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                             if resp.hovered() && !active {
                                 ui.painter().rect_filled(r.shrink2(vec2(0.0, 4.0)), 4.0, t.hover);
                             }
-                            // A contextual tab that just appeared glides in from the right, fast at
+                            // A contextual tab that just appeared glides in from the left, fast at
                             // first and then slowing, over a glow that fades: the eye is drawn to it.
                             let entry = if contextual { tab_entry(ui.ctx(), tab, now, animate) } else { 1.0 };
-                            let shift = vec2((1.0 - entry) * TAB_ENTRY_SLIDE, 0.0);
+                            let shift = vec2(-(1.0 - entry) * TAB_ENTRY_SLIDE, 0.0);
                             if entry < 1.0 {
-                                ui.painter().rect_filled(r.shrink2(vec2(0.0, 4.0)), 4.0, t.accent.gamma_multiply((1.0 - entry) * 0.35));
+                                ui.painter().rect_filled(r.shrink2(vec2(0.0, 4.0)), 4.0, t.accent.gamma_multiply((1.0 - entry) * 0.12));
                             }
                             let color = if contextual || active { t.accent_text } else { t.text }.gamma_multiply(entry);
                             if cut {
