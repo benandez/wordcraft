@@ -321,7 +321,15 @@ pub fn specs() -> Vec<CommandSpec> {
             r#"{"label"?: caption label (Figure, Table, Equation or one of your own; default Figure), "includeLabel"?: bool, "pageNumbers"?: bool, "rightAlign"?: bool, "tabLeader"?: "dot|hyphen|underscore|none"}"#,
         ),
         CommandSpec::new("references.updateFigures", "Update Table", "References › Captions", |s, _| {
-            update_generated(s)?;
+            // The table of figures the caret is in, like Word; elsewhere every generated list.
+            match figures_list_at_caret(s) {
+                Some((i, kind)) => {
+                    add_entry_style(s);
+                    rebuild_list(s, i, &kind)?;
+                    s.touch();
+                }
+                None => update_generated(s)?,
+            }
             sel_result(s)
         }),
         CommandSpec::new("references.markCitation", "Mark Citation", "References › Table of Authorities", |s, v| {
@@ -838,46 +846,67 @@ const ENTRY_STYLE: &str = "ListEntry";
 pub fn update_generated(s: &mut Session) -> Result<(), CmdError> {
     let mut i = 0;
     while i < s.doc.body.len() {
-        let kind = s.doc.body.get(i).and_then(|b| b.as_para()).and_then(list_kind);
-        let Some(kind) = kind else {
-            i += 1;
-            continue;
-        };
-        add_entry_style(s);
-        if kind.starts_with("INDEX") {
-            super::index::rebuild(s, i, None)?;
-            i += 1;
-            continue;
-        }
-        // Remove old entries, keeping their leader.
-        let mut leader = None;
-        while let Some(p) = s.doc.body.get(i + 1).and_then(|b| b.as_para()).filter(|p| p.props.style.as_deref() == Some(ENTRY_STYLE)) {
-            leader = leader.or_else(|| p.props.tabs.as_ref()?.last().map(|t| t.leader));
-            s.doc.remove_block(StoryRef::Body, &Path::top(i + 1))?;
-        }
-        let lines = entries_for(s, &kind);
-        let empty = lines.is_empty();
-        let width = super::page::sect(s).text_width();
-        for (k, (text, hanging)) in lines.into_iter().enumerate() {
-            let mut para = Paragraph::with_text(&text, CharProps::default()).styled(ENTRY_STYLE);
-            if hanging {
-                para.props.indent_left = Some(36.0);
-                para.props.indent_first = Some(-36.0);
-            }
-            if text.contains('\t') {
-                para.props.tabs = Some(vec![TabStop { pos: width - 0.5, align: TabAlign::Right, leader: leader.unwrap_or(TabLeader::Dot) }]);
-            }
-            s.doc.insert_block(StoryRef::Body, &Path::top(i + 1 + k), Block::Para(para))?;
-        }
-        // No entries yet: an empty stand-in keeps the leader for when captions are added.
-        if empty && let Some(leader) = leader {
-            let mut seed = Paragraph::new().styled(ENTRY_STYLE);
-            seed.props.tabs = Some(vec![TabStop { pos: 0.0, align: TabAlign::Right, leader }]);
-            s.doc.insert_block(StoryRef::Body, &Path::top(i + 1), Block::Para(seed))?;
+        if let Some(kind) = s.doc.body.get(i).and_then(|b| b.as_para()).and_then(list_kind) {
+            add_entry_style(s);
+            rebuild_list(s, i, &kind)?;
         }
         i += 1;
     }
     s.touch();
+    Ok(())
+}
+
+/// The table of figures (body index of its field paragraph, field instruction) the caret is in:
+/// on its field paragraph or one of the entry paragraphs right after it.
+fn figures_list_at_caret(s: &Session) -> Option<(usize, String)> {
+    let at = &s.sel.focus;
+    if at.story != StoryRef::Body || at.path.depth() > 0 {
+        return None;
+    }
+    let mut i = at.path.last();
+    loop {
+        let p = s.doc.body.get(i)?.as_para()?;
+        if let Some(kind) = list_kind(p) {
+            return (kind.starts_with("TOC \\c") || kind.starts_with("TOC \\a")).then_some((i, kind));
+        }
+        if p.props.style.as_deref() != Some(ENTRY_STYLE) {
+            return None;
+        }
+        i = i.checked_sub(1)?;
+    }
+}
+
+/// Rebuild the generated list whose field paragraph is body block `i`.
+fn rebuild_list(s: &mut Session, i: usize, kind: &str) -> Result<(), CmdError> {
+    if kind.starts_with("INDEX") {
+        return super::index::rebuild(s, i, None);
+    }
+    // Remove old entries, keeping their leader.
+    let mut leader = None;
+    while let Some(p) = s.doc.body.get(i + 1).and_then(|b| b.as_para()).filter(|p| p.props.style.as_deref() == Some(ENTRY_STYLE)) {
+        leader = leader.or_else(|| p.props.tabs.as_ref()?.last().map(|t| t.leader));
+        s.doc.remove_block(StoryRef::Body, &Path::top(i + 1))?;
+    }
+    let lines = entries_for(s, kind);
+    let empty = lines.is_empty();
+    let width = super::page::sect(s).text_width();
+    for (k, (text, hanging)) in lines.into_iter().enumerate() {
+        let mut para = Paragraph::with_text(&text, CharProps::default()).styled(ENTRY_STYLE);
+        if hanging {
+            para.props.indent_left = Some(36.0);
+            para.props.indent_first = Some(-36.0);
+        }
+        if text.contains('\t') {
+            para.props.tabs = Some(vec![TabStop { pos: width - 0.5, align: TabAlign::Right, leader: leader.unwrap_or(TabLeader::Dot) }]);
+        }
+        s.doc.insert_block(StoryRef::Body, &Path::top(i + 1 + k), Block::Para(para))?;
+    }
+    // No entries yet: an empty stand-in keeps the leader for when captions are added.
+    if empty && let Some(leader) = leader {
+        let mut seed = Paragraph::new().styled(ENTRY_STYLE);
+        seed.props.tabs = Some(vec![TabStop { pos: 0.0, align: TabAlign::Right, leader }]);
+        s.doc.insert_block(StoryRef::Body, &Path::top(i + 1), Block::Para(seed))?;
+    }
     Ok(())
 }
 
@@ -1386,6 +1415,40 @@ mod tests {
             .cloned()
             .unwrap();
         assert_eq!(entry.props.tabs.unwrap()[0].leader, TabLeader::Hyphen);
+    }
+
+    /// #3013 review: Update Table rebuilds only the table of figures the caret is in, as Word
+    /// does; a list of tables next to it stays as it was until the caret is in it.
+    #[test]
+    fn update_table_rebuilds_the_list_at_the_caret() {
+        let mut s = Session::new(wordcraft_doc::Document::from_text("Kiln\nPress\nVat\nEnd"));
+        s.run("select.text", &json!({"text": "Kiln"})).unwrap();
+        s.run("references.caption", &json!({"label": "Figure", "text": "The kiln"})).unwrap();
+        s.run("select.text", &json!({"text": "Press"})).unwrap();
+        s.run("references.caption", &json!({"label": "Table", "text": "Press sizes"})).unwrap();
+        s.run("caret.docEnd", &json!({})).unwrap();
+        s.run("references.tableOfFigures", &json!({"label": "Figure"})).unwrap();
+        s.run("text.newParagraph", &json!({})).unwrap();
+        s.run("references.tableOfFigures", &json!({"label": "Table"})).unwrap();
+        s.run("select.text", &json!({"text": "Vat"})).unwrap();
+        s.run("references.caption", &json!({"label": "Table", "text": "Vat sizes"})).unwrap();
+        let entry_at = |s: &Session, text: &str| {
+            s.doc
+                .body
+                .iter()
+                .position(|b| b.as_para().is_some_and(|p| p.props.style.as_deref() == Some(ENTRY_STYLE) && p.plain_text().starts_with(text)))
+                .unwrap()
+        };
+        let listed = |s: &Session| s.doc.plain_text(StoryRef::Body).contains("Table 2: Vat sizes\t");
+        // In the list of figures: the list of tables stays stale.
+        s.sel = crate::Selection::caret(Pos::body(entry_at(&s, "Figure 1"), 0));
+        s.run("references.updateFigures", &json!({})).unwrap();
+        assert!(!listed(&s), "{}", s.doc.plain_text(StoryRef::Body));
+        // On the list of tables' entry: it now lists the new table.
+        s.sel = crate::Selection::caret(Pos::body(entry_at(&s, "Table 1"), 0));
+        s.run("references.updateFigures", &json!({})).unwrap();
+        assert!(listed(&s), "{}", s.doc.plain_text(StoryRef::Body));
+        assert_eq!(s.doc.plain_text(StoryRef::Body).matches("Figure 1: The kiln\t").count(), 1, "the list of figures is rebuilt once");
     }
 
     /// #2940: a caption with a label of the person's own (Insert Caption › New Label) is a
