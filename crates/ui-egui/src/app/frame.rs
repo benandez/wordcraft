@@ -86,6 +86,7 @@ impl WordApp {
         colors::show(self, ctx);
         zotero::show_alert(self, ctx);
         read_aloud::show(self, ctx);
+        assistant::show(self, ctx);
         crate::keytips::show(self, ctx, ui);
         if moved(self) {
             return;
