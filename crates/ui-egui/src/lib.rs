@@ -4399,6 +4399,9 @@ mod tests {
     fn double_clicking_a_later_pages_footer_does_not_scroll_to_the_top() {
         let ctx = egui::Context::default();
         let mut a = app();
+        // A header too, so opening the header instead of the footer can't pass.
+        a.run("insert.header", json!({"text": "Head"})).unwrap();
+        a.run("insert.closeHeader", json!({})).unwrap();
         a.run("insert.pageNumber", json!({"position": "bottom"})).unwrap();
         for _ in 0..4 {
             a.run("text.insert", json!({"text": "Some body text on this page."})).unwrap();
@@ -4462,7 +4465,9 @@ mod tests {
         for _ in 0..30 {
             frame(&mut a, Vec::new());
         }
-        assert!(matches!(a.session.sel.focus.story, wordcraft_doc::StoryRef::Part(_)), "editing the footer");
+        let footer = page.footer_story.expect("the clicked page has a footer");
+        assert!(page.header_story.is_some_and(|h| h != footer), "the page has a separate header: {:?}", page.header_story);
+        assert_eq!(a.session.sel.focus.story, wordcraft_doc::StoryRef::Part(footer), "editing the clicked page's footer");
         assert_eq!(a.session.page_hint, last, "on the clicked page");
         assert!((a.canvas.scroll_offset.y - before.y).abs() < 1.0, "the view stays put: {before:?} -> {:?}", a.canvas.scroll_offset);
     }
