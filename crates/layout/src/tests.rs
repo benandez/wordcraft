@@ -9525,3 +9525,74 @@ fn last_rewrap_pass_keeps_early_floats_clear_of_text() {
         assert_eq!(n, 1);
     }
 }
+
+/// Two unequal columns (260 and 172 pt): `before` paragraphs of earlier text, a paragraph
+/// ending in a column break first when `skip_first_column`, then an anchor paragraph holding a
+/// 100 x 200 picture (wrapped `wrap`) fixed on the page at the column's top, and a column break
+/// into the other column (#2048 review).
+fn early_float_with_column_break(skip_first_column: bool, wrap: wordcraft_doc::para::Wrap) -> Document {
+    use wordcraft_doc::para::{Anchor, Float};
+    let brk = wordcraft_doc::para::COLUMN_BREAK;
+    let earlier = "Earlier text in this column flows beside the picture above its anchor. ".repeat(2);
+    let after = "Text after the column break is broken for the width of its own column. ".repeat(4);
+    let mut paras = Vec::new();
+    if skip_first_column {
+        paras.push(format!("The first column.{brk}"));
+    }
+    paras.extend(std::iter::repeat_n(earlier, 3));
+    paras.push(format!("The anchor paragraph.{brk}{after}"));
+    let anchor = paras.len() - 1;
+    let mut d = Document::from_text(&paras.join("\n"));
+    d.last_section.columns = wordcraft_doc::section::Columns { count: 2, space: 36.0, separator: false, widths: vec![(260.0, 36.0), (172.0, 0.0)] };
+    let f = Float { wrap, h_rel: Anchor::Column, v_rel: Anchor::Page, x: 0.0, y: 72.0, dist: 9.0, ..Default::default() };
+    d.insert_object(&Pos::body(anchor, 0), rect_shape(100.0, 200.0, f), &Default::default()).unwrap();
+    d
+}
+
+/// Where each body line on page `page` of `l` right of `min_x` goes: its left, top and length.
+fn line_spots(l: &DocLayout, page: usize, min_x: f32) -> Vec<(i32, i32, usize)> {
+    let mut v = Vec::new();
+    for it in &l.pages[page].items {
+        let Placed::Lines { story: StoryRef::Body, para, l0, l1, x, y, .. } = it else { continue };
+        for ln in &para.lines[*l0..*l1] {
+            if x + ln.left >= min_x {
+                v.push(((x + ln.left).round() as i32, (y + ln.top).round() as i32, ln.c1 - ln.c0));
+            }
+        }
+    }
+    v
+}
+
+/// #2048 (review): an anchor paragraph whose picture sits above it and that breaks into a column
+/// of another width (on its page, or from the last column onto the next page) keeps the earlier
+/// text on the picture's page clear of it, and wraps nothing around it where it isn't drawn.
+#[test]
+fn early_float_survives_a_column_break_into_another_width() {
+    use wordcraft_doc::para::Wrap;
+    // (anchor in the second column, so the break goes onto the next page; where the text after the
+    // break goes: page and the left of its column)
+    for (skip, page, min_x) in [(false, 0, 72.0 + 260.0 + 36.0), (true, 1, 72.0)] {
+        let l = lay(&early_float_with_column_break(skip, Wrap::Square));
+        let drawn: Vec<Rect> = l.pages.iter().flat_map(|pg| shapes(&pg.items)).collect();
+        let [r] = drawn[..] else { panic!("second column first: {skip}: the picture is placed once: {drawn:?}") };
+        assert_eq!(shapes(&l.pages[0].items), vec![r], "second column first: {skip}: on the first page");
+        // The lines in the picture's column (they start right of the other one) beside it start
+        // right of it.
+        let mut beside = 0;
+        for it in &l.pages[0].items {
+            let Placed::Lines { story: StoryRef::Body, path, para, l0, l1, x, y, .. } = it else { continue };
+            for ln in &para.lines[*l0..*l1] {
+                let (lt, lb) = (y + ln.top, y + ln.top + ln.height);
+                if lb > r.y + 0.5 && lt < r.bottom() - 0.5 && ln.c1 > ln.c0 && x + ln.left > r.x - 1.0 {
+                    beside += 1;
+                    assert!(x + ln.left >= r.right() - 0.5, "second column first: {skip}: {path:?}, line at {lt}, runs under the picture {r:?}");
+                }
+            }
+        }
+        assert!(beside >= 6, "second column first: {skip}: {beside} lines beside the picture");
+        let plain = lay(&early_float_with_column_break(skip, Wrap::InFrontOfText));
+        let (got, want) = (line_spots(&l, page, min_x), line_spots(&plain, page, min_x));
+        assert!(!want.is_empty(), "second column first: {skip}: text after the break");
+        assert_eq!(got, want, "second column first: {skip}: the text after the break wraps around nothing");
+    }
+}
