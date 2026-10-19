@@ -2695,3 +2695,16 @@
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Írj be egy méretet bármilyen mértékegységben, például 5 cm vagy 300 px. A másik oldal követi, így a kép megtartja az arányait.
 
 	Import…	Importálás…
+# The Assistant, Nib (#959)
+	Assistant	Asszisztens
+	Assistant Suggestions	Asszisztens javaslatai
+	Agents connected to WordCraft can show you messages through the Assistant. Muted, they're told you'd rather not.	A WordCrafthoz kapcsolódó ügynökök az asszisztensen keresztül üzeneteket mutathatnak. Némítás esetén jelezzük nekik, hogy ezt nem kéri.
+	Annoying	Idegesítően
+	Mute agent messages	Ügynöküzenetek némítása
+	Nib floats over the window with tips and the occasional remark.	Nib tippekkel és néha egy-egy megjegyzéssel lebeg az ablak felett.
+	Nib, your assistant. Drag to move; right-click for options.	Nib, az asszisztense. Húzza az áthelyezéshez; kattintson jobb gombbal a beállításokhoz.
+	Reset tips	Tippek visszaállítása
+	Sayings:	Megjegyzések:
+	Show the Assistant	Az asszisztens megjelenítése
+	Show the tips you asked not to see again.	Újra megjeleníti az elrejtett tippeket.
+	Sometimes	Néha

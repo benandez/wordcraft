@@ -2288,3 +2288,16 @@
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	5 cm や 300 px など、任意の単位でサイズを入力します。もう一方の辺も合わせて変わるため、図の縦横比は保たれます。
 
 	Import…	インポート…
+# The Assistant, Nib (#959)
+	Assistant	アシスタント
+	Assistant Suggestions	アシスタントの提案
+	Agents connected to WordCraft can show you messages through the Assistant. Muted, they're told you'd rather not.	WordCraft に接続したエージェントは、アシスタントを通じてメッセージを表示できます。ミュートすると、エージェントには受け取りたくないことが伝えられます。
+	Annoying	しつこく
+	Mute agent messages	エージェントのメッセージをミュート
+	Nib floats over the window with tips and the occasional remark.	Nib はヒントや時々ひと言を添えて、ウィンドウの上に浮かんでいます。
+	Nib, your assistant. Drag to move; right-click for options.	アシスタントの Nib です。ドラッグで移動、右クリックでオプション。
+	Reset tips	ヒントをリセット
+	Sayings:	ひと言:
+	Show the Assistant	アシスタントを表示
+	Show the tips you asked not to see again.	非表示にしたヒントをもう一度表示します。
+	Sometimes	ときどき
