@@ -11,9 +11,91 @@ use crate::WordApp;
 use crate::options::MeasureExt;
 use crate::theme::{Tokens, regular, semibold};
 
+/// Word-style Insert > Date & Time dialog.
+const PT_DATE_FORMATS: &[&str] = &[
+    "dd/MM/yyyy", "dddd, d 'de' MMMM 'de' yyyy", "d 'de' MMMM 'de' yyyy",
+    "dd/MM/yy", "yyyy-MM-dd", "d-MMM-yy", "dd.MM.yyyy", "d MMMM yyyy",
+    "MMM-yy", "dd/MM/yyyy HH:mm", "dd/MM/yyyy HH:mm:ss", "HH:mm", "HH:mm:ss",
+];
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DateTimeForm {
+    pub format: String,
+    pub language: String,
+    pub update: bool,
+}
+impl DateTimeForm {
+    pub fn new(app: &WordApp) -> Self {
+        let language = if app.ui.date_time_language.is_empty() {
+            if crate::i18n::current().code().starts_with("pt") { "pt-BR" } else { "en-US" }.to_string()
+        } else { app.ui.date_time_language.clone() };
+        let language = if language == "pt-BR" { language } else { "en-US".into() };
+        let list = if language == "pt-BR" { PT_DATE_FORMATS } else { DATE_FORMATS };
+        let format = if list.contains(&app.ui.date_time_format.as_str()) { app.ui.date_time_format.clone() }
+            else { list[0].to_string() };
+        Self { format, language, update: app.ui.date_time_update }
+    }
+    fn formats(&self) -> &'static [&'static str] {
+        if self.language == "pt-BR" { PT_DATE_FORMATS } else { DATE_FORMATS }
+    }
+    pub fn params(&self) -> Value {
+        json!({"format": self.format, "language": self.language, "update": self.update})
+    }
+}
+fn date_time_ui(app: &mut WordApp, ui: &mut Ui, f: &mut DateTimeForm) -> bool {
+    let tokens = Tokens::get(ui.ctx());
+    ui.set_width(520.0);
+    ui.horizontal_top(|ui| {
+        ui.vertical(|ui| {
+            ui.set_width(350.0);
+            ui.label(tl!("Available formats:"));
+            egui::Frame::new().stroke(Stroke::new(1.0, tokens.border)).inner_margin(2.0).show(ui, |ui| {
+                egui::ScrollArea::vertical().id_salt("date_time_formats").max_height(245.0)
+                    .auto_shrink([false, false]).show(ui, |ui| {
+                        for picture in f.formats() {
+                            let sample = wordcraft_engine::cmd::insert::format_date_in(picture, Some(&f.language));
+                            if ui.selectable_label(f.format == *picture, sample).on_hover_text(*picture).clicked() {
+                                f.format = (*picture).to_string();
+                            }
+                        }
+                    });
+            });
+        });
+        ui.add_space(12.0);
+        ui.vertical(|ui| {
+            ui.label(tl!("Language:"));
+            egui::ComboBox::from_id_salt("date_time_lang")
+                .selected_text(if f.language == "pt-BR" { "Português (Brasil)" } else { "English (United States)" })
+                .show_ui(ui, |ui| {
+                    if ui.selectable_label(f.language == "pt-BR", "Português (Brasil)").clicked() {
+                        f.language = "pt-BR".into();
+                        f.format = PT_DATE_FORMATS[0].into();
+                    }
+                    if ui.selectable_label(f.language == "en-US", "English (United States)").clicked() {
+                        f.language = "en-US".into();
+                        f.format = DATE_FORMATS[0].into();
+                    }
+                });
+        });
+    });
+    ui.add_space(8.0);
+    ui.checkbox(&mut f.update, tl!("Update automatically"));
+    ui.add_space(6.0);
+    if ui.button(tl!("Set as Default")).clicked() {
+        app.ui.date_time_format = f.format.clone();
+        app.ui.date_time_language = f.language.clone();
+        app.ui.date_time_update = f.update;
+    }
+    let (ok, cancel) = buttons(ui, "OK", "Cancel", true);
+    if ok { let _ = app.run("insert.dateTime", f.params()); }
+    ok || cancel
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "form", rename_all = "camelCase")]
 pub enum InsertDialog {
+    DateTime(DateTimeForm),
     Columns(ColumnsForm),
     Symbol(SymbolForm),
     Field(FieldForm),
@@ -26,6 +108,7 @@ pub enum InsertDialog {
 impl InsertDialog {
     pub fn name(&self) -> &'static str {
         match self {
+            InsertDialog::DateTime(_) => "dateTime",
             InsertDialog::Columns(_) => "columns",
             InsertDialog::Symbol(_) => "symbol",
             InsertDialog::Field(_) => "field",
@@ -40,6 +123,7 @@ impl InsertDialog {
     /// The window title (English; the caller translates it).
     pub fn title(&self) -> &'static str {
         match self {
+            InsertDialog::DateTime(_) => "Date and Time",
             InsertDialog::Columns(_) => "Columns",
             InsertDialog::Symbol(_) => "Symbol",
             InsertDialog::Field(_) => "Field",
@@ -57,6 +141,7 @@ impl InsertDialog {
 /// `insertSmartArt`, or `dropCap` (Drop Cap Options…, where the paragraph can take one).
 pub fn open(name: &str, app: &WordApp) -> Option<InsertDialog> {
     Some(match name {
+        "dateTime" => InsertDialog::DateTime(DateTimeForm::new(app)),
         "columns" => InsertDialog::Columns(ColumnsForm::read(app)),
         "symbol" => InsertDialog::Symbol(SymbolForm::new(app, 0)),
         "specialCharacters" => InsertDialog::Symbol(SymbolForm::new(app, 1)),
@@ -73,6 +158,7 @@ pub fn open(name: &str, app: &WordApp) -> Option<InsertDialog> {
 /// Draws the dialog; returns true to close it.
 pub fn body(app: &mut WordApp, ui: &mut Ui, d: &mut InsertDialog) -> bool {
     match d {
+        InsertDialog::DateTime(f) => date_time_ui(app, ui, f),
         InsertDialog::Columns(f) => columns_ui(app, ui, f),
         InsertDialog::Symbol(f) => symbol_ui(app, ui, f),
         InsertDialog::Field(f) => field_ui(app, ui, f),
@@ -1425,6 +1511,16 @@ fn field_options(ui: &mut Ui, f: &mut FieldForm, t: &Tokens) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn date_time_dialog_uses_saved_pt_br_language() {
+        let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
+        a.ui.date_time_language = "pt-BR".into();
+        let InsertDialog::DateTime(mut f) = open("dateTime", &a).expect("dialog") else { panic!("not DateTime") };
+        assert_eq!(f.format, "dd/MM/yyyy");
+        assert_eq!(f.params()["language"], "pt-BR");
+        f.update = false;
+        assert_eq!(f.params()["update"], false);
+    }
 
     fn app() -> WordApp {
         WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("one\ntwo")), Default::default())
