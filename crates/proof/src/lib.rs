@@ -1259,6 +1259,52 @@ mod tests {
         assert!(grammar.iter().any(|i| i.kind == IssueKind::Grammar && i.lang == gb), "{grammar:?}");
     }
 
+    /// The words #40 (folded into #1281) reported as flagged in British English, with their
+    /// inflections: right in en-GB, and in en-US flagged or not as `en-variants.txt` decides.
+    #[test]
+    fn british_words_reported_in_issue_40_are_right_in_en_gb() {
+        let (us, gb, ca) = (ProofLang::En, ProofLang::EnGb, ProofLang::EnCa);
+        // (word, right in en-US, right in en-CA, right in en-GB)
+        let cases = [
+            // Both spellings are right everywhere: `judgment` is also British legal usage, and
+            // American dictionaries list `judgement` as a variant.
+            ("judgement", true, true, true),
+            ("judgements", true, true, true),
+            ("judgment", true, true, true),
+            ("judgments", true, true, true),
+            ("defence", false, true, true),
+            ("defences", false, true, true),
+            ("defense", true, false, false),
+            // `license` is the British verb, so only American English flags `licence`.
+            ("licence", false, true, true),
+            ("licences", false, true, true),
+            ("license", true, true, true),
+            ("licensed", true, true, true),
+            ("licenses", true, true, true),
+            // `program` is British for computing.
+            ("programme", false, true, true),
+            ("programmes", false, true, true),
+            ("program", true, true, true),
+            ("programs", true, true, true),
+            // American English accepts both.
+            ("catalogue", true, true, true),
+            ("catalogues", true, true, true),
+            ("catalogued", true, true, true),
+            ("cataloguing", true, true, true),
+            ("catalog", true, false, false),
+            ("catalogs", true, false, false),
+        ];
+        for (w, in_us, in_ca, in_gb) in cases {
+            assert_eq!(is_correct_in(w, us), in_us, "en-US: {w}");
+            assert_eq!(is_correct_in(w, ca), in_ca, "en-CA: {w}");
+            assert_eq!(is_correct_in(w, gb), in_gb, "en-GB: {w}");
+        }
+        let text = "The judgement on the defence licence put the programme in the catalogue.";
+        assert!(check_spelling_in(text, gb).is_empty(), "{:?}", check_spelling_in(text, gb));
+        assert_eq!(suggest_in("licences", 5, us).first().map(String::as_str), Some("licenses"));
+        assert_eq!(suggest_in("programmes", 5, us).first().map(String::as_str), Some("programs"));
+    }
+
     #[test]
     fn user_dictionary_accepts_the_other_dialects_spelling() {
         add_word("savour");
