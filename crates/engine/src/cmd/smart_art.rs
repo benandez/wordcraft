@@ -29,7 +29,7 @@ const ITEMS: &str = r#"[string | {"text": string, "level"?: 0-7, "color"?: RRGGB
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec::new("insert.smartArt", "SmartArt", "Insert › Illustrations", insert).params(
-            r#"{"layout"?: "basicList|process|cycle|hierarchy|pyramid|radial|matrix|venn", "items"?: [string | {"text": string, "level"?: 0-7}], "colors"?: "accent1…accent6|colorful", "width"?: pt, "height"?: pt} (no items: sample items for the layout)"#,
+            r#"{"layout"?: "basicList|process|cycle|hierarchy|pyramid|radial|matrix|venn", "items"?: [string | {"text": string, "level"?: 0-7, "color"?: RRGGBB}], "colors"?: "accent1…accent6|colorful", "width"?: pt, "height"?: pt} (no items: sample items for the layout)"#,
         ),
         CommandSpec::new("smartArt.items", "Edit Items", "SmartArt Design › Create Graphic", |s, v| {
             let items = items_of(v.get("items").ok_or_else(|| CmdError::Params(format!("`items` is required: {ITEMS}")))?)?;
@@ -38,7 +38,7 @@ pub fn specs() -> Vec<CommandSpec> {
                 Ok(())
             })
         })
-        .params(r#"{"items": [string | {"text": string, "level"?: 0-7}]} (replaces the outline)"#)
+        .params(r#"{"items": [string | {"text": string, "level"?: 0-7, "color"?: RRGGBB}]} (replaces the outline)"#)
         .when(has_smart_art),
         CommandSpec::new("smartArt.textPane", "Text Pane", "SmartArt Design › Create Graphic", |s, v| {
             let on = p::bool(v, "value").unwrap_or(!s.view.smart_art_pane);
