@@ -133,15 +133,17 @@ impl ThemeFills {
         let list = |n: &str| fmt.and_then(|f| f.child(n)).map(|l| l.els().take(MAX_THEME_FILLS).cloned().collect()).unwrap_or_default();
         ThemeFills { fill: list("a:fillStyleLst"), bg: list("a:bgFillStyleLst") }
     }
-    /// Style `idx` (1-based; 1001+ the background styles).
+    /// Style `idx` (1-based; 1001+ the background styles; 1000 names none).
     fn get(&self, idx: i64) -> Option<&El> {
         let (list, i) = if idx > 1000 { (&self.bg, idx - 1001) } else { (&self.fill, idx - 1) };
         list.get(usize::try_from(i).ok()?)
     }
 }
 
-/// Most fill styles kept per theme list (hostile files; Word's themes have three).
-const MAX_THEME_FILLS: usize = 16;
+/// Most fill styles kept per theme list: every one a `a:fillRef` can reach (1–999 into
+/// `a:fillStyleLst`, 1001–1999 into `a:bgFillStyleLst`, ECMA-376 Part 1 §20.1.4.2.10), and no
+/// more, so a hostile theme with millions of entries keeps a bounded list.
+const MAX_THEME_FILLS: usize = 999;
 
 /// The fill a `…spPr` element states itself: `Some(None)` for none (`a:noFill`, picture fills),
 /// `group` for `a:grpFill`, `None` when it leaves the fill to the shape's style.
@@ -391,6 +393,54 @@ mod tests {
         assert_eq!(shape_paint(None, Some(&st(2)), &THEME_COLORS, &styles, None).fill, Some(Fill::solid(Rgb(0x11, 0x22, 0x33))));
         // An explicit theme `a:noFill` stays none.
         assert_eq!(shape_paint(None, Some(&st(1)), &THEME_COLORS, &styles, None).fill, None);
+    }
+
+    #[test]
+    fn every_reachable_theme_fill_style_is_kept() {
+        // 20 fill styles and 20 background styles: the 17th of each a gradient / none, the rest
+        // solid, so a reference past Word's usual three still finds its style.
+        let entries = |odd: &str| {
+            (1..=20)
+                .map(|i| if i == 17 { odd.to_string() } else { r#"<a:solidFill><a:schemeClr val="phClr"/></a:solidFill>"#.to_string() })
+                .collect::<String>()
+        };
+        let grad = r#"<a:gradFill><a:gsLst><a:gs pos="0"><a:schemeClr val="phClr"/></a:gs><a:gs pos="100000"><a:srgbClr val="FFFFFF"/></a:gs></a:gsLst><a:lin ang="0"/></a:gradFill>"#;
+        let fmt = el(&format!(
+            r#"<a:fmtScheme xmlns:wps="w" xmlns:a="a"><a:fillStyleLst>{}</a:fillStyleLst><a:bgFillStyleLst>{}</a:bgFillStyleLst></a:fmtScheme>"#,
+            entries(grad),
+            entries("<a:noFill/>")
+        ));
+        let styles = ThemeFills::read(Some(&fmt));
+        let st = |idx: u32| {
+            el(&format!(r#"<wps:style xmlns:wps="w" xmlns:a="a"><a:fillRef idx="{idx}"><a:srgbClr val="112233"/></a:fillRef></wps:style>"#))
+        };
+        let fill = |idx| shape_paint(None, Some(&st(idx)), &THEME_COLORS, &styles, None).fill;
+        assert!(matches!(fill(17), Some(Fill::Gradient(_))), "{:?}", fill(17));
+        assert_eq!(fill(1017), None);
+        assert_eq!(fill(16), Some(Fill::solid(Rgb(0x11, 0x22, 0x33))));
+    }
+
+    #[test]
+    fn a_theme_with_absurdly_many_fill_styles_stays_bounded() {
+        let many = "<a:noFill/>".repeat(100_000);
+        let fmt = el(&format!(
+            r#"<a:fmtScheme xmlns:wps="w" xmlns:a="a"><a:fillStyleLst>{many}</a:fillStyleLst><a:bgFillStyleLst>{many}</a:bgFillStyleLst></a:fmtScheme>"#
+        ));
+        let styles = ThemeFills::read(Some(&fmt));
+        assert_eq!((styles.fill.len(), styles.bg.len()), (MAX_THEME_FILLS, MAX_THEME_FILLS));
+        let st = |idx: &str| {
+            el(&format!(r#"<wps:style xmlns:wps="w" xmlns:a="a"><a:fillRef idx="{idx}"><a:srgbClr val="112233"/></a:fillRef></wps:style>"#))
+        };
+        // The last reachable style of each list is kept; past them (and 1000) the reference colour.
+        for (idx, want) in [
+            ("999", None),
+            ("1999", None),
+            ("1000", Some(Fill::solid(Rgb(0x11, 0x22, 0x33)))),
+            ("2000", Some(Fill::solid(Rgb(0x11, 0x22, 0x33)))),
+            ("99999999999", Some(Fill::solid(Rgb(0x11, 0x22, 0x33)))),
+        ] {
+            assert_eq!(shape_paint(None, Some(&st(idx)), &THEME_COLORS, &styles, None).fill, want, "idx {idx}");
+        }
     }
 
     #[test]
