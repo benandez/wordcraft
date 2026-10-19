@@ -448,12 +448,9 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                                 ui.painter().rect_filled(r.shrink2(vec2(0.0, 4.0)), 4.0, t.hover);
                             }
                             // A contextual tab that just appeared glides in from the left, fast at
-                            // first and then slowing, over a glow that fades: the eye is drawn to it.
+                            // first and then slowing: the eye is drawn to the motion.
                             let entry = if contextual { tab_entry(ui.ctx(), tab, now, animate) } else { 1.0 };
                             let shift = vec2(-(1.0 - entry) * TAB_ENTRY_SLIDE, 0.0);
-                            if entry < 1.0 {
-                                ui.painter().rect_filled(r.shrink2(vec2(0.0, 4.0)), 4.0, t.accent.gamma_multiply((1.0 - entry) * 0.12));
-                            }
                             let color = if contextual || active { t.accent_text } else { t.text }.gamma_multiply(entry);
                             if cut {
                                 let mut job = egui::text::LayoutJob::single_section(
