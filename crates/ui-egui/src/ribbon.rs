@@ -138,6 +138,41 @@ pub fn resolve_tab<'a>(current: &'a str, available: &[&str]) -> &'a str {
 /// Width of the » button that holds the tabs the strip has no room for.
 const MORE_TABS_W: f32 = 24.0;
 
+/// How long a contextual tab takes to settle into place after it appears, seconds.
+const TAB_ENTRY_SECS: f64 = 0.35;
+/// How far, in points, a new contextual tab starts to the right of its place.
+const TAB_ENTRY_SLIDE: f32 = 28.0;
+
+/// Fast at first, then slowing to rest: 0 → 1.
+fn ease_out_cubic(p: f32) -> f32 {
+    1.0 - (1.0 - p.clamp(0.0, 1.0)).powi(3)
+}
+
+/// Notes the contextual tabs shown this frame and starts the entry of those that were not
+/// shown the frame before. The first frame starts nothing: tabs already there do not slide.
+fn note_contextual_tabs(ctx: &egui::Context, shown: &[&str], now: f64) {
+    let id = egui::Id::new("contextual_tabs_shown");
+    let prev: Option<Vec<String>> = ctx.data(|d| d.get_temp(id));
+    if let Some(prev) = prev {
+        for tab in shown.iter().filter(|t| !prev.iter().any(|p| p == **t)) {
+            ctx.data_mut(|d| d.insert_temp(egui::Id::new(("contextual_tab_entry", *tab)), now));
+        }
+    }
+    ctx.data_mut(|d| d.insert_temp(id, shown.iter().map(|t| t.to_string()).collect::<Vec<_>>()));
+}
+
+/// How far a contextual tab's entry has come: 0 as it appears, 1 once settled (always 1 with
+/// animations off). Asks for repaints while it moves.
+fn tab_entry(ctx: &egui::Context, tab: &str, now: f64, animate: bool) -> f32 {
+    let start: Option<f64> = ctx.data(|d| d.get_temp(egui::Id::new(("contextual_tab_entry", tab))));
+    let Some(start) = start.filter(|_| animate) else { return 1.0 };
+    let p = ((now - start) / TAB_ENTRY_SECS).clamp(0.0, 1.0) as f32;
+    if p < 1.0 {
+        ctx.request_repaint();
+    }
+    ease_out_cubic(p)
+}
+
 /// Which tabs fit on a strip `avail` points wide (#897), from each tab's width and whether it must
 /// stay. The others give way from the end, leaving `more` points for the » menu that holds them
 /// (pure, tested).
@@ -295,6 +330,16 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
             app.ui.tab = next.to_string();
         }
     }
+    let (now, animate) = (ui.input(|i| i.time), app.animations_on());
+    {
+        let user_names: Vec<&str> = user_tabs.iter().filter(|e| e.custom).map(|e| e.name.as_str()).collect();
+        let contextual: Vec<&str> = tabs
+            .iter()
+            .map(|(n, _)| n.as_str())
+            .filter(|n| wordcraft_engine::ribbon::CONTEXTUAL_TABS.contains(n) && !user_names.contains(n))
+            .collect();
+        note_contextual_tabs(ui.ctx(), &contextual, now);
+    }
     // Tab strip.
     egui::Panel::top("tabs")
         .exact_size(30.0)
@@ -402,7 +447,14 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                             if resp.hovered() && !active {
                                 ui.painter().rect_filled(r.shrink2(vec2(0.0, 4.0)), 4.0, t.hover);
                             }
-                            let color = if contextual || active { t.accent_text } else { t.text };
+                            // A contextual tab that just appeared glides in from the right, fast at
+                            // first and then slowing, over a glow that fades: the eye is drawn to it.
+                            let entry = if contextual { tab_entry(ui.ctx(), tab, now, animate) } else { 1.0 };
+                            let shift = vec2((1.0 - entry) * TAB_ENTRY_SLIDE, 0.0);
+                            if entry < 1.0 {
+                                ui.painter().rect_filled(r.shrink2(vec2(0.0, 4.0)), 4.0, t.accent.gamma_multiply((1.0 - entry) * 0.35));
+                            }
+                            let color = if contextual || active { t.accent_text } else { t.text }.gamma_multiply(entry);
                             if cut {
                                 let mut job = egui::text::LayoutJob::single_section(
                                     shown.to_string(),
@@ -415,10 +467,10 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                                     overflow_character: Some('…'),
                                 };
                                 let galley = ui.painter().layout_job(job);
-                                ui.painter().galley(r.center() - galley.size() / 2.0, galley, color);
+                                ui.painter().galley(r.center() + shift - galley.size() / 2.0, galley, color);
                             } else {
                                 ui.painter().text(
-                                    r.center(),
+                                    r.center() + shift,
                                     Align2::CENTER_CENTER,
                                     shown,
                                     if active { semibold(12.5) } else { medium(12.5) },
@@ -427,8 +479,8 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                             }
                             let resp = if cut { resp.on_hover_text(shown) } else { resp };
                             if active {
-                                let u = Rect::from_center_size(pos2(r.center().x, r.max.y - 2.0), vec2(w - 16.0, 3.0));
-                                ui.painter().rect_filled(u, 2.0, t.accent);
+                                let u = Rect::from_center_size(pos2(r.center().x + shift.x, r.max.y - 2.0), vec2(w - 16.0, 3.0));
+                                ui.painter().rect_filled(u, 2.0, t.accent.gamma_multiply(entry));
                             }
                             if resp.clicked() {
                                 let _ = app.run("ui.tab", json!({"tab": tab}));
@@ -3314,6 +3366,25 @@ mod tests {
         assert!(h.state().ui.backstage, "File › Options opened");
         assert_eq!(h.state().ui.options_pane, "language");
         assert_eq!(language_name(Some("de-DE")), "German (Germany)");
+    }
+
+    /// A contextual tab that appears eases in (quick, then slowing); tabs shown from the first frame, or
+    /// still shown later, do not move; with animations off it is in place at once.
+    #[test]
+    fn a_new_contextual_tab_eases_in() {
+        let ctx = egui::Context::default();
+        note_contextual_tabs(&ctx, &["Table Design"], 1.0);
+        assert_eq!(tab_entry(&ctx, "Table Design", 1.0, true), 1.0, "tabs already there do not slide");
+        note_contextual_tabs(&ctx, &["Table Design", "Picture Format"], 2.0);
+        let at = |secs: f64| tab_entry(&ctx, "Picture Format", 2.0 + secs, true);
+        assert_eq!(at(0.0), 0.0);
+        let (a, b, c) = (at(0.1), at(0.2), at(TAB_ENTRY_SECS));
+        assert!(0.0 < a && a < b && b < c && c == 1.0, "{a} {b} {c}");
+        assert!(a > 0.1 / TAB_ENTRY_SECS as f32, "faster than linear at the start: {a}");
+        assert!(c - b < b - a, "slower at the end: {a} {b} {c}");
+        assert_eq!(tab_entry(&ctx, "Picture Format", 2.0, false), 1.0, "animations off");
+        note_contextual_tabs(&ctx, &["Table Design", "Picture Format"], 3.0);
+        assert_eq!(tab_entry(&ctx, "Picture Format", 3.0, true), 1.0, "staying shown does not restart it");
     }
 
     #[test]
