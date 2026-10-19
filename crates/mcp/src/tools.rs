@@ -151,7 +151,15 @@ pub fn tool_definitions() -> Value {
              Plain text, at most 280 characters; up to 3 `choices` (each ≤ 40 characters) make it a question. Returns an `id`: ask \
              `execute ui.assistantReply {id}` later for the answer (`choice`, or null while `open`). One message every 3 seconds, at most 3 waiting; \
              the user can mute agent messages.",
-            obj(json!({"text": s("The message"), "choices": {"type": "array", "items": {"type": "string"}, "maxItems": 3}}), &["text"]),
+            // The limits `ui.assistantSay` enforces (`TEXT_MAX`, `CHOICE_MAX`, `CHOICES_MAX` in
+            // crates/ui-egui/src/assistant.rs), so clients can check a message before sending it.
+            obj(
+                json!({
+                    "text": {"type": "string", "description": "The message", "minLength": 1, "maxLength": 280},
+                    "choices": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 40}, "maxItems": 3}
+                }),
+                &["text"]
+            ),
             false
         ),
         tool(
