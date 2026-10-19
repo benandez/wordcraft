@@ -780,7 +780,7 @@ mod tests {
             };
             if frame == 5 {
                 // A screen reader asks to focus a text run deep in the document description.
-                let doc = app.canvas.widget_id.expect("the canvas widget");
+                let (doc, _) = app.canvas.widget_id.expect("the canvas widget");
                 input.events.push(egui::Event::AccessKitActionRequest(accesskit::ActionRequest {
                     action: accesskit::Action::Focus,
                     target_node: doc.with(("para", [0u32])).with(("run", 0usize, 0usize)).accesskit_id(),
