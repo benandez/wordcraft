@@ -430,6 +430,16 @@ fn czech_covers_the_entire_existing_interface_catalog() {
         let words = count.to_string();
         assert_eq!(fmt(tr(cs, "{words} words"), &[("words", &words)]), format!("Počet slov: {count}"));
         assert_eq!(fmt(tr(cs, "{selected} of {words} words"), &[("selected", "1"), ("words", &words)]), format!("Počet slov: {words}; vybráno: 1"));
+        assert_eq!(fmt(tr(cs, "{chars} characters"), &[("chars", &words)]), format!("Počet znaků: {count}"));
+        assert_eq!(
+            fmt(tr(cs, "{selected} of {chars} characters"), &[("selected", "1"), ("chars", &words)]),
+            format!("Počet znaků: {words}; vybráno: 1")
+        );
+        assert_eq!(fmt(tr(cs, "{chars} characters (no spaces)"), &[("chars", &words)]), format!("Počet znaků (bez mezer): {count}"));
+        assert_eq!(
+            fmt(tr(cs, "{selected} of {chars} characters (no spaces)"), &[("selected", "1"), ("chars", &words)]),
+            format!("Počet znaků (bez mezer): {words}; vybráno: 1")
+        );
     }
     set_current(cs);
     // Built-in names and numbered style families use Czech; user-defined names stay as written.
@@ -576,6 +586,13 @@ fn russian_covers_the_entire_existing_interface_catalog() {
         let words = count.to_string();
         assert_eq!(fmt(tr(ru, "{words} words"), &[("words", &words)]), format!("Слов: {count}"));
         assert_eq!(fmt(tr(ru, "{selected} of {words} words"), &[("selected", "1"), ("words", &words)]), format!("Слов: 1 из {count}"));
+        assert_eq!(fmt(tr(ru, "{chars} characters"), &[("chars", &words)]), format!("Знаков: {count}"));
+        assert_eq!(fmt(tr(ru, "{selected} of {chars} characters"), &[("selected", "1"), ("chars", &words)]), format!("Знаков: 1 из {count}"));
+        assert_eq!(fmt(tr(ru, "{chars} characters (no spaces)"), &[("chars", &words)]), format!("Знаков (без пробелов): {count}"));
+        assert_eq!(
+            fmt(tr(ru, "{selected} of {chars} characters (no spaces)"), &[("selected", "1"), ("chars", &words)]),
+            format!("Знаков (без пробелов): 1 из {count}")
+        );
     }
 }
 
@@ -800,6 +817,16 @@ fn turkish_covers_the_entire_existing_interface_catalog_and_preserves_templates(
         let words = count.to_string();
         assert_eq!(fmt(super::tr(tr, "{words} words"), &[("words", &words)]), format!("{count} sözcük"));
         assert_eq!(fmt(super::tr(tr, "{selected} of {words} words"), &[("selected", "1"), ("words", &words)]), format!("{count} sözcükten 1 seçili"));
+        assert_eq!(fmt(super::tr(tr, "{chars} characters"), &[("chars", &words)]), format!("{count} karakter"));
+        assert_eq!(
+            fmt(super::tr(tr, "{selected} of {chars} characters"), &[("selected", "1"), ("chars", &words)]),
+            format!("{count} karakterden 1 seçili")
+        );
+        assert_eq!(fmt(super::tr(tr, "{chars} characters (no spaces)"), &[("chars", &words)]), format!("{count} boşluksuz karakter"));
+        assert_eq!(
+            fmt(super::tr(tr, "{selected} of {chars} characters (no spaces)"), &[("selected", "1"), ("chars", &words)]),
+            format!("{count} boşluksuz karakterden 1 seçili")
+        );
     }
     set_current(tr);
     assert_eq!(location("Home › Font"), "Giriş › Yazı Tipi");
@@ -875,6 +902,13 @@ fn hungarian_covers_the_entire_existing_interface_catalog() {
     for count in [0, 1, 2, 21, 1000] {
         let words = count.to_string();
         assert_eq!(fmt(super::tr(hu, "{words} words"), &[("words", &words)]), format!("{count} szó"));
+        assert_eq!(fmt(super::tr(hu, "{chars} characters"), &[("chars", &words)]), format!("{count} karakter"));
+        assert_eq!(fmt(super::tr(hu, "{selected} of {chars} characters"), &[("selected", "1"), ("chars", &words)]), format!("1/{count} karakter"));
+        assert_eq!(fmt(super::tr(hu, "{chars} characters (no spaces)"), &[("chars", &words)]), format!("{count} karakter (szóközök nélkül)"));
+        assert_eq!(
+            fmt(super::tr(hu, "{selected} of {chars} characters (no spaces)"), &[("selected", "1"), ("chars", &words)]),
+            format!("1/{count} karakter (szóközök nélkül)")
+        );
     }
     // The Font dialog uppercases its preview sample for All Caps.
     assert_eq!(super::tr(hu, "AaBbYyZz").to_uppercase(), "AABBYYZZ ŐŐŰŰ");
@@ -1019,6 +1053,13 @@ fn polish_covers_every_key_of_every_other_catalog() {
         let words = count.to_string();
         assert_eq!(fmt(tr(pl, "{words} words"), &[("words", &words)]), format!("Słowa: {count}"));
         assert_eq!(fmt(tr(pl, "{selected} of {words} words"), &[("selected", "1"), ("words", &words)]), format!("Słowa: 1 z {count}"));
+        assert_eq!(fmt(tr(pl, "{chars} characters"), &[("chars", &words)]), format!("Znaki: {count}"));
+        assert_eq!(fmt(tr(pl, "{selected} of {chars} characters"), &[("selected", "1"), ("chars", &words)]), format!("Znaki: 1 z {count}"));
+        assert_eq!(fmt(tr(pl, "{chars} characters (no spaces)"), &[("chars", &words)]), format!("Znaki (bez spacji): {count}"));
+        assert_eq!(
+            fmt(tr(pl, "{selected} of {chars} characters (no spaces)"), &[("selected", "1"), ("chars", &words)]),
+            format!("Znaki (bez spacji): 1 z {count}")
+        );
     }
     set_current(pl);
     assert_eq!(location("Review › Proofing"), "Recenzja › Sprawdzanie");
@@ -1217,6 +1258,16 @@ fn italian_covers_the_entire_existing_interface_catalog_and_keeps_count_labels_n
         let n = count.to_string();
         assert_eq!(fmt(tr(it, "{words} words"), &[("words", &n)]), format!("Parole: {count}"));
         assert_eq!(fmt(tr(it, "{selected} of {words} words"), &[("selected", "1"), ("words", &n)]), format!("Parole: {count}; selezionate: 1"));
+        assert_eq!(fmt(tr(it, "{chars} characters"), &[("chars", &n)]), format!("Caratteri: {count}"));
+        assert_eq!(
+            fmt(tr(it, "{selected} of {chars} characters"), &[("selected", "1"), ("chars", &n)]),
+            format!("Caratteri: {count}; selezionati: 1")
+        );
+        assert_eq!(fmt(tr(it, "{chars} characters (no spaces)"), &[("chars", &n)]), format!("Caratteri (spazi esclusi): {count}"));
+        assert_eq!(
+            fmt(tr(it, "{selected} of {chars} characters (no spaces)"), &[("selected", "1"), ("chars", &n)]),
+            format!("Caratteri (spazi esclusi): {count}; selezionati: 1")
+        );
         assert_eq!(fmt(tr(it, "{n} lines"), &[("n", &n)]), format!("Righe: {count}"));
         assert_eq!(fmt(tr(it, "{count} items highlighted"), &[("count", &n)]), format!("Elementi evidenziati: {count}"));
     }
@@ -1286,6 +1337,13 @@ fn bulgarian_covers_the_entire_existing_interface_catalog() {
         let words = count.to_string();
         assert_eq!(fmt(tr(bg, "{words} words"), &[("words", &words)]), format!("Думи: {count}"));
         assert_eq!(fmt(tr(bg, "{selected} of {words} words"), &[("selected", "1"), ("words", &words)]), format!("Думи: 1 от {count}"));
+        assert_eq!(fmt(tr(bg, "{chars} characters"), &[("chars", &words)]), format!("Знаци: {count}"));
+        assert_eq!(fmt(tr(bg, "{selected} of {chars} characters"), &[("selected", "1"), ("chars", &words)]), format!("Знаци: 1 от {count}"));
+        assert_eq!(fmt(tr(bg, "{chars} characters (no spaces)"), &[("chars", &words)]), format!("Знаци (без интервали): {count}"));
+        assert_eq!(
+            fmt(tr(bg, "{selected} of {chars} characters (no spaces)"), &[("selected", "1"), ("chars", &words)]),
+            format!("Знаци (без интервали): 1 от {count}")
+        );
     }
 }
 
@@ -1368,6 +1426,13 @@ fn croatian_covers_the_entire_existing_interface_catalog_and_keeps_count_labels_
         let words = count.to_string();
         assert_eq!(fmt(tr(hr, "{words} words"), &[("words", &words)]), format!("Riječi: {count}"));
         assert_eq!(fmt(tr(hr, "{selected} of {words} words"), &[("selected", "1"), ("words", &words)]), format!("Riječi: 1 od {count}"));
+        assert_eq!(fmt(tr(hr, "{chars} characters"), &[("chars", &words)]), format!("Znakova: {count}"));
+        assert_eq!(fmt(tr(hr, "{selected} of {chars} characters"), &[("selected", "1"), ("chars", &words)]), format!("Znakova: 1 od {count}"));
+        assert_eq!(fmt(tr(hr, "{chars} characters (no spaces)"), &[("chars", &words)]), format!("Znakova (bez razmaka): {count}"));
+        assert_eq!(
+            fmt(tr(hr, "{selected} of {chars} characters (no spaces)"), &[("selected", "1"), ("chars", &words)]),
+            format!("Znakova (bez razmaka): 1 od {count}")
+        );
     }
     set_current(hr);
     assert_eq!(location("Review › Proofing"), "Pregled › Jezična provjera");
@@ -1449,6 +1514,13 @@ fn swedish_covers_the_entire_existing_interface_catalog() {
         let words = count.to_string();
         assert_eq!(fmt(tr(sv, "{words} words"), &[("words", &words)]), format!("{count} ord"));
         assert_eq!(fmt(tr(sv, "{selected} of {words} words"), &[("selected", "1"), ("words", &words)]), format!("1 av {count} ord"));
+        assert_eq!(fmt(tr(sv, "{chars} characters"), &[("chars", &words)]), format!("{count} tecken"));
+        assert_eq!(fmt(tr(sv, "{selected} of {chars} characters"), &[("selected", "1"), ("chars", &words)]), format!("1 av {count} tecken"));
+        assert_eq!(fmt(tr(sv, "{chars} characters (no spaces)"), &[("chars", &words)]), format!("{count} tecken (utan blanksteg)"));
+        assert_eq!(
+            fmt(tr(sv, "{selected} of {chars} characters (no spaces)"), &[("selected", "1"), ("chars", &words)]),
+            format!("1 av {count} tecken (utan blanksteg)")
+        );
     }
 }
 
@@ -1532,6 +1604,13 @@ fn vietnamese_translations_preserve_templates_and_count_labels() {
         let words = count.to_string();
         assert_eq!(fmt(tr(vi, "{words} words"), &[("words", &words)]), format!("Từ: {count}"));
         assert_eq!(fmt(tr(vi, "{selected} of {words} words"), &[("selected", "1"), ("words", &words)]), format!("Từ: 1 trên {count}"));
+        assert_eq!(fmt(tr(vi, "{chars} characters"), &[("chars", &words)]), format!("Ký tự: {count}"));
+        assert_eq!(fmt(tr(vi, "{selected} of {chars} characters"), &[("selected", "1"), ("chars", &words)]), format!("Ký tự: 1 trên {count}"));
+        assert_eq!(fmt(tr(vi, "{chars} characters (no spaces)"), &[("chars", &words)]), format!("Ký tự (không tính khoảng trắng): {count}"));
+        assert_eq!(
+            fmt(tr(vi, "{selected} of {chars} characters (no spaces)"), &[("selected", "1"), ("chars", &words)]),
+            format!("Ký tự (không tính khoảng trắng): 1 trên {count}")
+        );
     }
 }
 

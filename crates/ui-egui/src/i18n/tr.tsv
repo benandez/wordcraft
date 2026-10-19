@@ -856,6 +856,13 @@ preview	Title	Örnek
 	{key}+Click to follow link	Bağlantıyı açmak için {key} tuşunu basılı tutup tıklayın
 	{selected} of {words} words	{words} sözcükten {selected} seçili
 	{words} words	{words} sözcük
+	Status bar	Durum çubuğu
+	{chars} characters	{chars} karakter
+	{selected} of {chars} characters	{chars} karakterden {selected} seçili
+	{chars} characters (no spaces)	{chars} boşluksuz karakter
+	{selected} of {chars} characters (no spaces)	{chars} boşluksuz karakterden {selected} seçili
+	Status bar count:	Durum çubuğu sayacı:
+	You can also right-click the count in the status bar to change it.	Durum çubuğundaki sayacı sağ tıklayarak da değiştirebilirsiniz.
 	Dark page (white text on black)	Koyu sayfa (siyah üzerine beyaz metin)
 	Show documents with their colours inverted, like View › Switch Modes. Saving, printing and PDFs are unchanged.	Belgeleri, Görünüm › Mod Değiştir'deki gibi ters renklerle gösterir. Kaydetme, yazdırma ve PDF'ler değişmez.
 	Only web (http, https) and email (mailto) links can be followed	Yalnızca web (http, https) ve e-posta (mailto) bağlantıları açılabilir

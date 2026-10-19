@@ -931,6 +931,13 @@
 	{key}+Click to follow link	{key}+clic per seguire il collegamento
 	{selected} of {words} words	Parole: {words}; selezionate: {selected}
 	{words} words	Parole: {words}
+	Status bar	Barra di stato
+	{chars} characters	Caratteri: {chars}
+	{selected} of {chars} characters	Caratteri: {chars}; selezionati: {selected}
+	{chars} characters (no spaces)	Caratteri (spazi esclusi): {chars}
+	{selected} of {chars} characters (no spaces)	Caratteri (spazi esclusi): {chars}; selezionati: {selected}
+	Status bar count:	Conteggio nella barra di stato:
+	You can also right-click the count in the status bar to change it.	Il conteggio nella barra di stato si cambia anche con il tasto destro.
 	Browse…	Sfoglia…
 	Equation	Equazione
 	Review	Revisione

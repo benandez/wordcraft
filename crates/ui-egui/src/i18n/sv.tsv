@@ -1025,6 +1025,13 @@
 	{key}+Click to follow link	{key}+klicka för att följa länken
 	{selected} of {words} words	{selected} av {words} ord
 	{words} words	{words} ord
+	Status bar	Statusfält
+	{chars} characters	{chars} tecken
+	{selected} of {chars} characters	{selected} av {chars} tecken
+	{chars} characters (no spaces)	{chars} tecken (utan blanksteg)
+	{selected} of {chars} characters (no spaces)	{selected} av {chars} tecken (utan blanksteg)
+	Status bar count:	Räknare i statusfältet:
+	You can also right-click the count in the status bar to change it.	Räknaren i statusfältet kan också ändras genom att högerklicka på den.
 	Browse…	Bläddra…
 	Equation	Ekvation
 	Review	Granska

@@ -849,6 +849,13 @@ preview	Title	Пример
 	{key}+Click to follow link	{key}+щелчок — перейти по ссылке
 	{selected} of {words} words	Слов: {selected} из {words}
 	{words} words	Слов: {words}
+	Status bar	Строка состояния
+	{chars} characters	Знаков: {chars}
+	{selected} of {chars} characters	Знаков: {selected} из {chars}
+	{chars} characters (no spaces)	Знаков (без пробелов): {chars}
+	{selected} of {chars} characters (no spaces)	Знаков (без пробелов): {selected} из {chars}
+	Status bar count:	Счётчик строки состояния:
+	You can also right-click the count in the status bar to change it.	Счётчик в строке состояния тоже можно изменить, щёлкнув по нему правой кнопкой.
 	Dark page (white text on black)	Тёмная страница (белый текст на чёрном)
 	Show documents with their colours inverted, like View › Switch Modes. Saving, printing and PDFs are unchanged.	Показывать документы с инвертированными цветами, как «Вид › Сменить режим». Сохранение, печать и PDF не меняются.
 	Only web (http, https) and email (mailto) links can be followed	Переходить можно только по веб-ссылкам (http, https) и ссылкам на электронную почту (mailto)

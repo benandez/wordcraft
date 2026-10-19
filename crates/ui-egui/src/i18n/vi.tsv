@@ -936,6 +936,13 @@
 	{key}+Click to follow link	{key}+Nhấp để mở liên kết
 	{selected} of {words} words	Từ: {selected} trên {words}
 	{words} words	Từ: {words}
+	Status bar	Thanh trạng thái
+	{chars} characters	Ký tự: {chars}
+	{selected} of {chars} characters	Ký tự: {selected} trên {chars}
+	{chars} characters (no spaces)	Ký tự (không tính khoảng trắng): {chars}
+	{selected} of {chars} characters (no spaces)	Ký tự (không tính khoảng trắng): {selected} trên {chars}
+	Status bar count:	Bộ đếm trên thanh trạng thái:
+	You can also right-click the count in the status bar to change it.	Bạn cũng có thể nhấp chuột phải vào bộ đếm trên thanh trạng thái để thay đổi.
 	Browse…	Duyệt…
 	Equation	Phương trình
 	Review	Xem lại

@@ -2504,6 +2504,13 @@ preview	Title	Naslov
 	{selected} of {words} words	Riječi: {selected} od {words}
 	{size} pt	{size} pt
 	{words} words	Riječi: {words}
+	Status bar	Statusna traka
+	{chars} characters	Znakova: {chars}
+	{selected} of {chars} characters	Znakova: {selected} od {chars}
+	{chars} characters (no spaces)	Znakova (bez razmaka): {chars}
+	{selected} of {chars} characters (no spaces)	Znakova (bez razmaka): {selected} od {chars}
+	Status bar count:	Brojač trake stanja:
+	You can also right-click the count in the status bar to change it.	Brojač u traci stanja također se može promijeniti desnim klikom.
 	“{text}” ({row}, {series}) isn't a number.	„{text}” ({row}, {series}) nije broj.
 	✓ None	✓ Nema
 	➕ New comment	➕ Novi komentar

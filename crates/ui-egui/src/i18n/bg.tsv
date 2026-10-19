@@ -944,6 +944,13 @@
 	{key}+Click to follow link	{key}+щракване за отваряне на връзката
 	{selected} of {words} words	Думи: {selected} от {words}
 	{words} words	Думи: {words}
+	Status bar	Лента за състояние
+	{chars} characters	Знаци: {chars}
+	{selected} of {chars} characters	Знаци: {selected} от {chars}
+	{chars} characters (no spaces)	Знаци (без интервали): {chars}
+	{selected} of {chars} characters (no spaces)	Знаци (без интервали): {selected} от {chars}
+	Status bar count:	Брояч на лентата за състояние:
+	You can also right-click the count in the status bar to change it.	Броячът в лентата за състояние също може да се промени с щракване с десния бутон.
 	Browse…	Преглед…
 	Equation	Уравнение
 	Review	Преглед

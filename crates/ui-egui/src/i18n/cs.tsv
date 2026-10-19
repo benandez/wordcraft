@@ -1359,6 +1359,13 @@
 	{selected} of {words} words	Počet slov: {words}; vybráno: {selected}
 	{size} pt	{size} b.
 	{words} words	Počet slov: {words}
+	Status bar	Stavový řádek
+	{chars} characters	Počet znaků: {chars}
+	{selected} of {chars} characters	Počet znaků: {chars}; vybráno: {selected}
+	{chars} characters (no spaces)	Počet znaků (bez mezer): {chars}
+	{selected} of {chars} characters (no spaces)	Počet znaků (bez mezer): {chars}; vybráno: {selected}
+	Status bar count:	Počítadlo ve stavovém řádku:
+	You can also right-click the count in the status bar to change it.	Počítadlo ve stavovém řádku změníte i pravým kliknutím.
 	Base text:	Základní text:
 	Distribute letters	Rozmístit písmena
 	Distribute spacing	Rozmístit mezery

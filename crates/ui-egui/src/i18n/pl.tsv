@@ -838,6 +838,13 @@
 	{key}+Click to follow link	{key}+kliknięcie otwiera link
 	{selected} of {words} words	Słowa: {selected} z {words}
 	{words} words	Słowa: {words}
+	Status bar	Pasek stanu
+	{chars} characters	Znaki: {chars}
+	{selected} of {chars} characters	Znaki: {selected} z {chars}
+	{chars} characters (no spaces)	Znaki (bez spacji): {chars}
+	{selected} of {chars} characters (no spaces)	Znaki (bez spacji): {selected} z {chars}
+	Status bar count:	Licznik paska stanu:
+	You can also right-click the count in the status bar to change it.	Licznik na pasku stanu można też zmienić, klikając go prawym przyciskiem.
 	➕ New comment	➕ Nowy komentarz
 	📂  Browse…	📂  Przeglądaj…
 	Equation	Równanie

@@ -842,6 +842,13 @@
 	{key}+Click to follow link	{key}+kattintás: link megnyitása
 	{selected} of {words} words	{selected}/{words} szó
 	{words} words	{words} szó
+	Status bar	Állapotssáv
+	{chars} characters	{chars} karakter
+	{selected} of {chars} characters	{selected}/{chars} karakter
+	{chars} characters (no spaces)	{chars} karakter (szóközök nélkül)
+	{selected} of {chars} characters (no spaces)	{selected}/{chars} karakter (szóközök nélkül)
+	Status bar count:	Állapotsor számlálója:
+	You can also right-click the count in the status bar to change it.	Az állapotsor számlálóját a jobb gombos kattintással is módosíthatja.
 	Dark page (white text on black)	Sötét oldal (fehér szöveg feketén)
 	Show documents with their colours inverted, like View › Switch Modes. Saving, printing and PDFs are unchanged.	A dokumentumok fordított színekkel jelennek meg, mint a Nézet › Módváltás esetén. A mentés, a nyomtatás és a PDF változatlan marad.
 	Only web (http, https) and email (mailto) links can be followed	Csak webes (http, https) és e-mail (mailto) link nyitható meg
