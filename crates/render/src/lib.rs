@@ -765,15 +765,12 @@ fn draw(ctx: &mut RenderContext, doc: &Document, it: &Draw, view: Affine, visibl
             if *stroke == Stroke::Triple {
                 // Three thin lines, spaced as a double's, across the line's direction (so a
                 // vertical border's lines stand side by side).
-                let (dx, dy) = ((*x1 - *x0) as f64, (*y1 - *y0) as f64);
+                let (dx, dy) = (x1 - x0, y1 - y0);
                 let len = (dx * dx + dy * dy).sqrt().max(1e-3);
                 let (nx, ny) = (-dy / len * w * 1.8, dx / len * w * 1.8);
                 ctx.set_stroke(kurbo::Stroke::new(w * 0.6));
                 for k in [-1.0, 0.0, 1.0] {
-                    let mut p = BezPath::new();
-                    p.move_to((*x0 as f64 + nx * k, *y0 as f64 + ny * k));
-                    p.line_to((*x1 as f64 + nx * k, *y1 as f64 + ny * k));
-                    ctx.stroke_path(&p);
+                    line(ctx, nx * k, ny * k);
                 }
                 return;
             }
