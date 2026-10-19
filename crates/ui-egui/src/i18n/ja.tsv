@@ -934,6 +934,7 @@
 	Undo {n} Actions	{n} 件の操作を元に戻す
 	Ungroup	グループ解除
 	Up	上
+	Update automatically	自動的に更新する
 	Update Field	フィールドの更新
 	Update Index	索引の更新
 	Update Style to Match Selection	選択箇所と一致するようにスタイルを更新

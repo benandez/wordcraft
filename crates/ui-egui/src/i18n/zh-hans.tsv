@@ -946,6 +946,7 @@
 	Undo {n} Actions	撤消 {n} 项操作
 	Ungroup	取消组合
 	Up	上
+	Update automatically	自动更新
 	Update Field	更新域
 	Update Index	更新索引
 	Update Style to Match Selection	更新样式以匹配所选内容

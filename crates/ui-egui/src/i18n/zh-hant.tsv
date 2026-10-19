@@ -935,6 +935,7 @@
 	Undo {n} Actions	復原 {n} 項動作
 	Ungroup	取消群組
 	Up	上
+	Update automatically	自動更新
 	Update Field	更新功能變數
 	Update Index	更新索引
 	Update Style to Match Selection	更新樣式以符合選取範圍

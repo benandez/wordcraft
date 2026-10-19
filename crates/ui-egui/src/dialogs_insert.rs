@@ -28,6 +28,16 @@ const PT_DATE_FORMATS: &[&str] = &[
     "HH:mm:ss",
 ];
 
+/// The date preview list consists of document values (not interface strings).
+/// The i18n audit recognizes these dynamic values instead of treating month names as UI labels.
+#[cfg(test)]
+pub(crate) fn date_time_preview_matches(value: &str) -> bool {
+    PT_DATE_FORMATS.iter().chain(DATE_FORMATS.iter()).any(|picture| {
+        wordcraft_engine::cmd::insert::format_date_in(picture, Some("pt-BR")) == value
+            || wordcraft_engine::cmd::insert::format_date_in(picture, Some("en-US")) == value
+    })
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DateTimeForm {
@@ -76,13 +86,13 @@ fn date_time_ui(app: &mut WordApp, ui: &mut Ui, f: &mut DateTimeForm) -> bool {
         ui.vertical(|ui| {
             ui.label(tl!("Language"));
             egui::ComboBox::from_id_salt("date_time_lang")
-                .selected_text(if f.language == "pt-BR" { "Português (Brasil)" } else { "English (United States)" })
+                .selected_text(if f.language == "pt-BR" { tl!("Portuguese (Brazil)") } else { tl!("English (United States)") })
                 .show_ui(ui, |ui| {
-                    if ui.selectable_label(f.language == "pt-BR", "Português (Brasil)").clicked() {
+                    if ui.selectable_label(f.language == "pt-BR", tl!("Portuguese (Brazil)")).clicked() {
                         f.language = "pt-BR".into();
                         f.format = PT_DATE_FORMATS[0].into();
                     }
-                    if ui.selectable_label(f.language == "en-US", "English (United States)").clicked() {
+                    if ui.selectable_label(f.language == "en-US", tl!("English (United States)")).clicked() {
                         f.language = "en-US".into();
                         f.format = DATE_FORMATS[0].into();
                     }

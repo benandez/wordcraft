@@ -801,6 +801,7 @@ preview	Title	Пример
 	Undo 1 Action	Отменить действие
 	Undo {n} Actions	Отменить действий: {n}
 	Up	Вверх
+	Update automatically	Обновлять автоматически
 	Update Field	Обновить поле
 	Update Index	Обновить указатель
 	Update Style to Match Selection	Обновить стиль по выделенному фрагменту
