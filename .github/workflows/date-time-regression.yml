@@ -1,0 +1,69 @@
+# Temporary focused validation for the date/time contribution.
+# Remove this workflow from the upstream-facing PR after the branch has passed CI.
+name: Date and Time regression
+
+on:
+  push:
+    branches: [feat/date-time-dialog-current]
+  pull_request:
+    paths:
+      - 'crates/engine/**'
+      - 'crates/ui-egui/**'
+      - '.github/workflows/date-time-regression.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  date-time:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Native Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxrandr-dev \
+            libxi-dev libgtk-3-dev libfontconfig1-dev libfreetype-dev libvulkan1 mesa-vulkan-drivers
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Format code in CI workspace
+        run: cargo fmt --all
+
+      - name: Test real-world pt-BR TIME field import and round-trip
+        run: cargo test -p wordcraft-engine --test date_fields a_word_time_field_inherits_pt_br_from_document_defaults --locked -- --exact
+
+      - name: Test engine Insert Date Time command
+        run: cargo test -p wordcraft-engine --lib pt_br_date_time_dialog_inserts_dynamic_field --locked
+
+      - name: Test dialog preferences and parameters
+        run: cargo test -p wordcraft-ui-egui --lib date_time_dialog_uses_saved_pt_br_language --locked
+
+      - name: Check UI and engine
+        run: cargo check -p wordcraft-ui-egui --locked
+
+      - name: Export formatting patch
+        if: always()
+        run: git diff > date-time-rustfmt.patch
+
+      - name: Upload formatting changes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: date-time-rustfmt
+          path: date-time-rustfmt.patch
+          if-no-files-found: ignore
+
+      - name: Confirm PR is rustfmt clean
+        run: git diff --exit-code
