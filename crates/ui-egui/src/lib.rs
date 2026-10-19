@@ -2312,11 +2312,13 @@ impl WordApp {
             return;
         }
         let Some(pos) = ctx.input(|i| if i.pointer.any_click() { i.pointer.interact_pos() } else { None }) else { return };
+        // The ribbon dropped over the page in Focus (#1678) is chrome, though it lies over the page.
+        let on_focus_ribbon = self.focus_ribbon && ctx.layer_id_at(pos).is_some_and(|l| l.id == egui::Id::new("focus_ribbon"));
         // The page handles its own clicks (comment balloons there take the keyboard themselves).
-        if self.canvas.balloon.is_some() || self.canvas.viewport.is_some_and(|v| v.contains(pos)) {
+        if !on_focus_ribbon && (self.canvas.balloon.is_some() || self.canvas.viewport.is_some_and(|v| v.contains(pos))) {
             return;
         }
-        let on_chrome = ctx.layer_id_at(pos).is_none_or(|l| l.order == egui::Order::Background);
+        let on_chrome = on_focus_ribbon || ctx.layer_id_at(pos).is_none_or(|l| l.order == egui::Order::Background);
         if on_chrome && ctx.memory(|m| m.focused().is_none()) && !egui::Popup::is_any_open(ctx) {
             self.canvas.want_focus = true;
             // The page has already been drawn, so it only sees `want_focus` next frame, and its own
@@ -2812,6 +2814,13 @@ mod tests {
         h.get_by_label("Insert").click();
         h.run_steps(3);
         assert!(h.state().focus_ribbon && h.state().ui.tab == "Insert", "a click on the ribbon keeps it down");
+        // The dropped ribbon lies over the page but is chrome: its click hands the keyboard back
+        // to the page, as a ribbon click does in the usual window (#1093).
+        assert!(h.state().canvas.focused, "a click on the dropped ribbon gives the page the keyboard");
+        h.event(egui::Event::Text("x".into()));
+        h.run_steps(2);
+        assert!(h.state().session.doc.plain_text(wordcraft_doc::StoryRef::Body).contains("Hellox"), "typing after it reaches the page");
+        assert!(h.state().focus_ribbon, "typing leaves the dropped ribbon down");
         let page = crate::canvas::page_to_screen(h.state_mut(), 0, 300.0, 600.0).unwrap();
         h.event(egui::Event::PointerMoved(page));
         h.event(egui::Event::PointerButton { pos: page, button: egui::PointerButton::Primary, pressed: true, modifiers: Default::default() });

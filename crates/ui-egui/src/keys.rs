@@ -124,14 +124,15 @@ fn ui_shortcut(key: Key, m: Modifiers) -> Option<(&'static str, Value)> {
 fn dispatch(app: &mut WordApp, key: Key, m: Modifiers) -> bool {
     let reg = app.session.registry.clone();
     let name = key_name(key);
-    // A bound key wins over an interface shortcut: Ctrl+F1 collapses the ribbon only when the
-    // user hasn't given it to a command (#1678).
-    if let Some(spec) = name.and_then(|n| app.session.keymap.resolve(&reg, &combo(m, n, true))) {
-        let _ = app.run(spec.id, json!({}));
+    let bound = name.and_then(|n| app.session.keymap.resolve(&reg, &combo(m, n, true)));
+    // Ctrl+F1 collapses the ribbon only when the user hasn't given it to a command (#1678); the
+    // other interface shortcuts (Alt+Q, ⌘⌥R) keep their place ahead of the keymap.
+    if let Some((id, params)) = ui_shortcut(key, m).filter(|_| key != Key::F1 || bound.is_none()) {
+        let _ = app.run(id, params);
         return true;
     }
-    if let Some((id, params)) = ui_shortcut(key, m) {
-        let _ = app.run(id, params);
+    if let Some(spec) = bound {
+        let _ = app.run(spec.id, json!({}));
         return true;
     }
     let Some(name) = name else { return false };
@@ -732,6 +733,22 @@ mod tests {
         a.session.keymap = wordcraft_engine::keymap::KeyMap::from_value(&json!({"assigned": {"Mod+F1": "view.focus"}}));
         assert!(dispatch(&mut a, Key::F1, Modifiers { ctrl: true, command: true, ..Default::default() }));
         assert!(a.session.view.focus_mode && !a.ui.ribbon_collapsed);
+    }
+
+    /// #1678 review: only Ctrl+F1 gives way to a binding; a user's Alt+Q binding leaves Alt+Q
+    /// opening the command search.
+    #[test]
+    fn a_bound_alt_q_still_opens_command_search() {
+        let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), crate::Services::default());
+        a.session.keymap = wordcraft_engine::keymap::KeyMap::from_value(&json!({"assigned": {"Alt+Q": "view.focus"}}));
+        assert!(dispatch(&mut a, Key::Q, Modifiers { alt: true, ..Default::default() }));
+        if cfg!(target_os = "macos") {
+            // Option+Q is no interface shortcut on macOS, so the binding runs.
+            assert!(a.session.view.focus_mode);
+        } else {
+            assert!(!a.session.view.focus_mode, "the binding doesn't run");
+            assert!(matches!(a.dialog, Some(crate::dialogs::Dialog::Commands { .. })), "Alt+Q opens the command search");
+        }
     }
 
     #[test]
