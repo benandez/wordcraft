@@ -96,7 +96,7 @@ pub fn specs() -> Vec<CommandSpec> {
             s.doc.last_section.footers = Default::default();
             sel_result(s)
         }),
-        CommandSpec::new("insert.dateTime", "Date & Time", "Insert › Text", date_time).params(r#"{"format"?: "M/d/yyyy", "update"?: bool}"#),
+        CommandSpec::new("insert.dateTime", "Date & Time", "Insert › Text", date_time).params(r#"{"format"?: "M/d/yyyy", "update"?: bool, "language"?: "en-US|pt-BR"}"#),
         CommandSpec::new("insert.symbol", "Symbol", "Insert › Symbols", symbol).params(r#"{"char": string, "font"?: family (the symbol's own font)}"#),
         CommandSpec::new("insert.field", "Field", "Insert › Text › Quick Parts", field).key("Mod+F9").params(r#"{"instr": string, "result"?: string}"#),
         // Word's Alt+Shift+D / T / P (Control+Shift+… in Word for Mac): DATE, TIME and PAGE fields.
@@ -791,9 +791,17 @@ fn page_number(s: &mut Session, v: &Value) -> CmdResult {
 
 fn date_time(s: &mut Session, v: &Value) -> CmdResult {
     let fmt = p::str(v, "format").unwrap_or("M/d/yyyy");
-    let text = format_date(fmt);
+    let language = p::str(v, "language");
+    if language.is_some_and(|l| !matches!(l, "en-US" | "pt-BR")) {
+        return Err(CmdError::Params("language must be en-US or pt-BR".into()));
+    }
+    if fmt.is_empty() || fmt.len() > 120 || fmt.contains('"') || fmt.contains('\\') {
+        return Err(CmdError::Params("invalid date picture".into()));
+    }
+    let text = format_date_in(fmt, language);
     if p::bool(v, "update").unwrap_or(false) {
-        let props = s.typing_props();
+        let mut props = s.typing_props();
+        if let Some(l) = language { props.lang = Some(l.to_string()); }
         let at = delete_selection(s)?;
         let end = s.doc.insert_object(
             &at,
@@ -807,8 +815,15 @@ fn date_time(s: &mut Session, v: &Value) -> CmdResult {
     sel_result(s)
 }
 
-/// Format today's date with a Word picture (`M/d/yyyy`, `MMMM d, yyyy`, `yyyy-MM-dd`, `dddd`…).
+/// Format today's date with a Word picture (`M/d/yyyy`, `MMMM d, yyyy`, `yyyy-MM-dd`, `dddd`…),
+/// in English.
 pub fn format_date(fmt: &str) -> String {
+    format_date_in(fmt, None)
+}
+
+/// Format today's date with a Word picture, month and weekday names in the language `lang` (a
+/// tag such as `pt-BR`; English when `None` or a language without names here).
+pub fn format_date_in(fmt: &str, lang: Option<&str>) -> String {
     let iso = super::now_iso();
     let y: i64 = iso.get(0..4).and_then(|x| x.parse().ok()).unwrap_or(2026);
     let m: usize = iso.get(5..7).and_then(|x| x.parse().ok()).unwrap_or(1);
@@ -816,21 +831,79 @@ pub fn format_date(fmt: &str) -> String {
     let hh: u32 = iso.get(11..13).and_then(|x| x.parse().ok()).unwrap_or(0);
     let mm: u32 = iso.get(14..16).and_then(|x| x.parse().ok()).unwrap_or(0);
     let ss: u32 = iso.get(17..19).and_then(|x| x.parse().ok()).unwrap_or(0);
-    format_date_parts(fmt, y, m, d, (hh, mm, ss), (super::now_unix() / 86_400) as i64)
+    format_date_parts_in(fmt, lang, y, m, d, (hh, mm, ss), (super::now_unix() / 86_400) as i64)
+}
+
+/// Month and weekday names of a language, as Word writes them in date fields: full names, the
+/// three-letter forms (`MMM`, `ddd`) being their first three letters, without a full stop.
+/// Weekdays start on Thursday (1970-01-01).
+struct DateNames {
+    months: [&'static str; 12],
+    days: [&'static str; 7],
+    /// The picture of a `DATE` field without `\@`.
+    default: &'static str,
+}
+
+const ENGLISH: DateNames = DateNames {
+    months: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+    days: ["Thursday", "Friday", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesday"],
+    default: "M/d/yyyy",
+};
+
+/// Portuguese (observed in Word for Mac with a pt-BR document): lower-case names, `MMM` = `out`,
+/// `ddd` = `qui`, and `dd/MM/yyyy` for a field without a picture.
+const PORTUGUESE: DateNames = DateNames {
+    months: ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"],
+    days: ["quinta-feira", "sexta-feira", "sábado", "domingo", "segunda-feira", "terça-feira", "quarta-feira"],
+    default: "dd/MM/yyyy",
+};
+
+fn date_names(lang: Option<&str>) -> &'static DateNames {
+    let primary = lang.and_then(|l| l.trim().split(['-', '_']).next()).unwrap_or("");
+    if primary.eq_ignore_ascii_case("pt") { &PORTUGUESE } else { &ENGLISH }
+}
+
+/// The picture Word gives a `DATE` field that has no `\@` switch, in the field's language.
+pub fn default_date_picture(lang: Option<&str>) -> &'static str {
+    date_names(lang).default
 }
 
 /// Format a date and time with a Word picture; `days_since` (days since 1970-01-01) gives the weekday.
-pub fn format_date_parts(fmt: &str, y: i64, m: usize, d: u32, (hh, mm, ss): (u32, u32, u32), days_since: i64) -> String {
-    const MONTHS: [&str; 12] =
-        ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    const DAYS: [&str; 7] = ["Thursday", "Friday", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesday"];
-    let month = MONTHS.get(m.saturating_sub(1)).copied().unwrap_or("January");
-    let day = DAYS.get(days_since.rem_euclid(7) as usize).copied().unwrap_or("Monday");
+pub fn format_date_parts(fmt: &str, y: i64, m: usize, d: u32, hms: (u32, u32, u32), days_since: i64) -> String {
+    format_date_parts_in(fmt, None, y, m, d, hms, days_since)
+}
+
+/// [`format_date_parts`] with month and weekday names in `lang`. Text between single quotes is
+/// copied as it is (`'de'`), and two single quotes there are one.
+#[allow(clippy::too_many_arguments)]
+pub fn format_date_parts_in(fmt: &str, lang: Option<&str>, y: i64, m: usize, d: u32, (hh, mm, ss): (u32, u32, u32), days_since: i64) -> String {
+    let names = date_names(lang);
+    let month = names.months.get(m.saturating_sub(1)).copied().unwrap_or(names.months[0]);
+    let day = names.days.get(days_since.rem_euclid(7) as usize).copied().unwrap_or(names.days[0]);
+    let three = |s: &str| -> String { s.chars().take(3).collect() };
     let mut out = String::new();
     let chars: Vec<char> = fmt.chars().collect();
     let mut i = 0;
     while i < chars.len() {
         let c = chars.get(i).copied().unwrap_or(' ');
+        // A quoted literal: copied up to the closing quote (or the end), `''` inside is one quote.
+        if c == '\'' {
+            i += 1;
+            while let Some(&q) = chars.get(i) {
+                if q == '\'' {
+                    if chars.get(i + 1) == Some(&'\'') {
+                        out.push('\'');
+                        i += 2;
+                        continue;
+                    }
+                    i += 1;
+                    break;
+                }
+                out.push(q);
+                i += 1;
+            }
+            continue;
+        }
         // `am/pm` (any case) is one token: AM or PM.
         if chars.get(i..i + 5).is_some_and(|w| w.iter().collect::<String>().eq_ignore_ascii_case("am/pm")) {
             out.push_str(if hh < 12 { "AM" } else { "PM" });
@@ -845,11 +918,11 @@ pub fn format_date_parts(fmt: &str, y: i64, m: usize, d: u32, (hh, mm, ss): (u32
             ('y', 4..) => out.push_str(&format!("{y:04}")),
             ('y', _) => out.push_str(&format!("{:02}", y % 100)),
             ('M', 4..) => out.push_str(month),
-            ('M', 3) => out.push_str(month.get(..3).unwrap_or(month)),
+            ('M', 3) => out.push_str(&three(month)),
             ('M', 2) => out.push_str(&format!("{m:02}")),
             ('M', 1) => out.push_str(&m.to_string()),
             ('d', 4..) => out.push_str(day),
-            ('d', 3) => out.push_str(day.get(..3).unwrap_or(day)),
+            ('d', 3) => out.push_str(&three(day)),
             ('d', 2) => out.push_str(&format!("{d:02}")),
             ('d', 1) => out.push_str(&d.to_string()),
             ('H', 2..) => out.push_str(&format!("{hh:02}")),
@@ -966,6 +1039,18 @@ fn cover_page(s: &mut Session, v: &Value) -> CmdResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn pt_br_date_time_dialog_inserts_dynamic_field() {
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        s.run("insert.dateTime", &json!({"format": "d 'de' MMMM 'de' yyyy", "language": "pt-BR", "update": true})).unwrap();
+        let bytes = wordcraft_docx::write(&s.doc).unwrap();
+        let mut doc = wordcraft_docx::read(&bytes).unwrap();
+        crate::cmd::references::refresh_date_fields(&mut doc);
+        let paths = doc.para_paths(StoryRef::Body);
+        let p = doc.para(StoryRef::Body, &paths[0]).unwrap();
+        let InlineObject::Field { result, .. } = &p.objects[0] else { panic!("expected field") };
+        assert_eq!(result, &format_date_in("d 'de' MMMM 'de' yyyy", Some("pt-BR")));
+    }
 
     /// #960: editing the header of a page that has none creates the one that page shows (first
     /// page, even page or default); typing goes into it, and closing an unwritten one takes it
