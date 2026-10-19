@@ -12,9 +12,11 @@
 //! thread first checks that one of them is there and otherwise answers with an error, and the app
 //! shows its built-in file browser. `WORDCRAFT_FILE_DIALOG=builtin` always uses the built-in one.
 //!
-//! rfd reports a portal that failed to show its dialog as a cancel (#2999). A cancel quicker than
-//! anyone could dismiss a dialog is taken as that failure: the dialog is asked for once more
-//! without a parent window, and if that also comes back at once the built-in browser shows.
+//! On Linux and the BSDs, rfd reports a portal that failed to show its dialog as a cancel (#2999).
+//! There a cancel quicker than anyone could dismiss a dialog is taken as that failure: the dialog
+//! is asked for once more without a parent window, and if that also comes back at once the
+//! built-in browser shows. Windows and macOS always show their dialog, so a quick cancel there is
+//! the person's and is answered as one.
 //!
 //! [`Services::file_dialog`]: wordcraft_ui_egui::Services::file_dialog
 
@@ -59,13 +61,21 @@ impl Launcher {
         while let Ok((req, answer)) = self.queue.try_recv() {
             // Built here, on the UI thread: macOS shows the panel as a sheet on the window now.
             let picking = picker(rfd::AsyncFileDialog::new().set_parent(parent), &req);
+            #[cfg(all(unix, not(target_os = "macos")))]
             let unparented = picker(rfd::AsyncFileDialog::new(), &req);
             let ctx = self.ctx.clone();
             let waiting = std::thread::Builder::new().name("file dialog".into()).spawn(move || {
                 // The pickers only start when first polled: without a system dialog they never do.
                 let picked = match no_system_dialog() {
                     Some(reason) => Err(reason),
-                    None => pick(picking, unparented, TOO_QUICK).map(|f| f.iter().map(|f| f.path().to_string_lossy().to_string()).collect()),
+                    None => {
+                        // Only the portal folds a failure into "cancelled" (#2999).
+                        #[cfg(all(unix, not(target_os = "macos")))]
+                        let picked = pick(picking, unparented, TOO_QUICK);
+                        #[cfg(not(all(unix, not(target_os = "macos"))))]
+                        let picked: Result<_, String> = Ok(pollster::block_on(picking));
+                        picked.map(|f| f.iter().map(|f| f.path().to_string_lossy().to_string()).collect())
+                    }
                 };
                 let _ = answer.send(picked);
                 ctx.request_repaint();
@@ -96,11 +106,14 @@ fn picker(dialog: rfd::AsyncFileDialog, req: &FileDialogRequest) -> Picking {
 /// Quicker than anyone can see a dialog and dismiss it.
 // ponytail: a timing heuristic, as rfd folds the portal's failure code into "cancelled". A portal
 // failing slower than this still reads as a cancel; ask rfd for the response code if it matters.
+#[cfg(all(unix, not(target_os = "macos")))]
 const TOO_QUICK: std::time::Duration = std::time::Duration::from_millis(300);
 
 /// Wait for `picking`. Nothing picked within `too_quick` is a portal that failed to show its
 /// dialog (#2999), not a person cancelling: try `unparented`, as a portal may fail on the parent
 /// window; if that too comes back at once, an error, so the app shows its built-in browser.
+/// Linux and the BSDs only (built everywhere for its test).
+#[cfg(any(test, all(unix, not(target_os = "macos"))))]
 fn pick<T>(
     picking: impl Future<Output = Vec<T>>,
     unparented: impl Future<Output = Vec<T>>,
