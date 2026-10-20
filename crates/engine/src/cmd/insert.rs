@@ -1053,6 +1053,56 @@ fn cover_page(s: &mut Session, v: &Value) -> CmdResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// A DATE field without an explicit language initially uses the paragraph's and document's
+    /// inherited pt-BR language, just as the subsequent refresh will.
+    #[test]
+    fn date_field_inherits_document_default_locale_on_first_render() {
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        s.doc.styles.default_chr.lang = Some("pt-BR".into());
+        s.run("insert.dateTime", &json!({
+            "format": "d 'de' MMMM 'de' yyyy", "update": true
+        })).unwrap();
+
+        let path = s.doc.para_paths(StoryRef::Body).remove(0);
+        let p = s.doc.para(StoryRef::Body, &path).unwrap();
+        let InlineObject::Field { result, .. } = &p.objects[0] else { panic!("expected DATE field") };
+        let expected = format_date_in("d 'de' MMMM 'de' yyyy", Some("pt-BR"));
+        assert_eq!(*result, expected);
+        assert!(result.contains(" de "));
+        let before = result.clone();
+        crate::cmd::references::refresh_date_fields(&mut s.doc);
+        let p = s.doc.para(StoryRef::Body, &path).unwrap();
+        let InlineObject::Field { result, .. } = &p.objects[0] else { panic!("expected DATE field") };
+        assert_eq!(*result, before, "refresh must not switch languages");
+    }
+
+    /// Fixed date text uses the selected pt-BR editing language, without dropping the
+    /// caret's other character formatting or making the insertion refreshable.
+    #[test]
+    fn fixed_date_text_keeps_selected_language() {
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        s.run("insert.dateTime", &json!({
+            "format": "d 'de' MMMM 'de' yyyy", "language": "pt-BR", "update": false
+        })).unwrap();
+        let path = s.doc.para_paths(StoryRef::Body).remove(0);
+        let p = s.doc.para(StoryRef::Body, &path).unwrap();
+        assert_eq!(p.props_of_char(0).lang.as_deref(), Some("pt-BR"));
+        assert_eq!(p.plain_text(), format_date_in("d 'de' MMMM 'de' yyyy", Some("pt-BR")));
+        assert!(p.objects.iter().all(|o| !matches!(o, InlineObject::Field { .. })));
+    }
+
+    /// Word's doubled apostrophe escapes one literal quote both before and inside a quoted run.
+    /// The existing three-character abbreviations must preserve accented Portuguese characters.
+    #[test]
+    fn word_date_picture_doubled_apostrophes_and_accented_abbreviations() {
+        let format = |pic, day| format_date_parts_in(pic, Some("pt-BR"), 2026, 10, day, (12, 0, 0), 2);
+        assert_eq!(format("d''MM", 20), "20'10");
+        assert_eq!(format("d 'd''água' MMMM", 20), "20 d'água outubro");
+        assert_eq!(format("ddd", 20), "sáb");
+        assert_eq!(format("MMM", 20), "out");
+        assert_eq!(format("MMMM", 20), "outubro");
+    }
+
     /// A pt-BR dynamic field keeps its result after DOCX round-trip and refresh.
     #[test]
     fn pt_br_date_time_dialog_inserts_dynamic_field() {
