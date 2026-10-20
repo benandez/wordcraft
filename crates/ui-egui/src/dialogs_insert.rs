@@ -38,14 +38,22 @@ pub(crate) fn date_time_preview_matches(value: &str) -> bool {
     })
 }
 
+/// State of the Word-like Insert > Date & Time dialog, including an optional validation error.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DateTimeForm {
+    /// Selected Word field picture, not a Rust strftime format.
     pub format: String,
+    /// Language of the resulting text or DATE field.
     pub language: String,
+    /// Whether to insert a refreshable field rather than fixed text.
     pub update: bool,
+    /// Last insertion failure; retain the window so the user can change the choice.
+    #[serde(skip)]
+    pub error: Option<String>,
 }
 impl DateTimeForm {
+    /// Restore a saved format/language or choose a sensible default for the UI language.
     pub fn new(app: &WordApp) -> Self {
         let language = if app.ui.date_time_language.is_empty() {
             if crate::i18n::current().code().starts_with("pt") { "pt-BR" } else { "en-US" }.to_string()
@@ -55,15 +63,19 @@ impl DateTimeForm {
         let language = if language == "pt-BR" { language } else { "en-US".into() };
         let list = if language == "pt-BR" { PT_DATE_FORMATS } else { DATE_FORMATS };
         let format = if list.contains(&app.ui.date_time_format.as_str()) { app.ui.date_time_format.clone() } else { list[0].to_string() };
-        Self { format, language, update: app.ui.date_time_update }
+        Self { format, language, update: app.ui.date_time_update, error: None }
     }
+    /// Pictures available in the chosen language.
     fn formats(&self) -> &'static [&'static str] {
         if self.language == "pt-BR" { PT_DATE_FORMATS } else { DATE_FORMATS }
     }
+    /// Engine command parameters corresponding to the current controls.
     pub fn params(&self) -> Value {
         json!({"format": self.format, "language": self.language, "update": self.update})
     }
 }
+/// Draw the interactive format list, language picker and update checkbox; close on successful
+/// insertion or Cancel, keeping errors visible rather than silently dismissing the dialog.
 fn date_time_ui(app: &mut WordApp, ui: &mut Ui, f: &mut DateTimeForm) -> bool {
     let tokens = Tokens::get(ui.ctx());
     ui.set_width(520.0);
@@ -107,11 +119,20 @@ fn date_time_ui(app: &mut WordApp, ui: &mut Ui, f: &mut DateTimeForm) -> bool {
         app.ui.date_time_language = f.language.clone();
         app.ui.date_time_update = f.update;
     }
+    if let Some(error) = &f.error {
+        ui.colored_label(ui.visuals().error_fg_color, error);
+    }
     let (ok, cancel) = buttons(ui, "OK", "Cancel", true);
     if ok {
-        let _ = app.run("insert.dateTime", f.params());
+        match app.run("insert.dateTime", f.params()) {
+            Ok(_) => return true,
+            Err(error) => {
+                f.error = Some(error.to_string());
+                return false;
+            }
+        }
     }
-    ok || cancel
+    cancel
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -1533,6 +1554,7 @@ fn field_options(ui: &mut Ui, f: &mut FieldForm, t: &Tokens) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// Existing locale preferences select the matching date formats and command language.
     #[test]
     fn date_time_dialog_uses_saved_pt_br_language() {
         let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
