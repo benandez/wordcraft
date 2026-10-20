@@ -1588,9 +1588,11 @@ mod tests {
         h.run_steps(4);
 
         // Go through the actual language combo box and then select a long Portuguese date.
-        h.get_by_label("English (United States)").click();
+        // Scope the click to this dialog: the ribbon has another English-language button.
+        // The popup's selectable entries have a checkmark prefix in the accessibility tree.
+        h.get_by_role_and_label(Role::Window, "Date and Time").get_by_role(Role::ComboBox).click();
         h.run_steps(3);
-        h.get_by_label("Portuguese (Brazil)").click();
+        h.get_by_label("✓ Portuguese (Brazil)").click();
         h.run_steps(3);
         let sample = wordcraft_engine::cmd::insert::format_date_in("d 'de' MMMM 'de' yyyy", Some("pt-BR"));
         h.get_by_label(&sample).click();
