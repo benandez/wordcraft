@@ -5,7 +5,7 @@ use wordcraft_doc::para::{Float, InlineObject, ShapeKind, Wrap};
 use wordcraft_doc::props::{Align, CharProps, Rgb, TabAlign, TabStop, TextColor};
 use wordcraft_doc::{Block, Paragraph, PartKind, Path, Pos, StoryRef, Table, para_block};
 
-use super::{delete_selection, sel_result, split_para, type_text};
+use super::{delete_selection, sel_result, split_para, type_text, type_text_with_lang};
 use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
 
 pub fn specs() -> Vec<CommandSpec> {
@@ -789,6 +789,8 @@ fn page_number(s: &mut Session, v: &Value) -> CmdResult {
     Ok(json!({"story": id}))
 }
 
+/// Insert a fixed date or a refreshable DATE field, inheriting the editing language from the
+/// paragraph style and document defaults when the caller supplies no explicit language.
 fn date_time(s: &mut Session, v: &Value) -> CmdResult {
     let fmt = p::str(v, "format").unwrap_or("M/d/yyyy");
     let language = p::str(v, "language");
@@ -798,12 +800,15 @@ fn date_time(s: &mut Session, v: &Value) -> CmdResult {
     if fmt.is_empty() || fmt.len() > 120 || fmt.contains('"') || fmt.contains('\\') {
         return Err(CmdError::Params("invalid date picture".into()));
     }
-    let text = format_date_in(fmt, language);
+    let mut props = s.typing_props();
+    if let Some(lang) = language {
+        props.lang = Some(lang.to_string());
+    }
+    // Resolve the same run language used by refresh_date_fields on subsequent updates.
+    let effective_language = s.doc.para_at(s.sel.ordered().0)
+        .and_then(|p| s.doc.styles.resolve_char(p.props.style.as_deref(), &props).lang);
+    let text = format_date_in(fmt, effective_language.as_deref());
     if p::bool(v, "update").unwrap_or(false) {
-        let mut props = s.typing_props();
-        if let Some(l) = language {
-            props.lang = Some(l.to_string());
-        }
         let at = delete_selection(s)?;
         let end = s.doc.insert_object(
             &at,
@@ -812,7 +817,7 @@ fn date_time(s: &mut Session, v: &Value) -> CmdResult {
         )?;
         s.sel = Selection::caret(end);
     } else {
-        type_text(s, &text)?;
+        type_text_with_lang(s, &text, language)?;
     }
     sel_result(s)
 }
@@ -860,6 +865,7 @@ const PORTUGUESE: DateNames = DateNames {
     default: "dd/MM/yyyy",
 };
 
+/// Choose month and weekday names according to the primary language subtag.
 fn date_names(lang: Option<&str>) -> &'static DateNames {
     let primary = lang.and_then(|l| l.trim().split(['-', '_']).next()).unwrap_or("");
     if primary.eq_ignore_ascii_case("pt") { &PORTUGUESE } else { &ENGLISH }
@@ -876,7 +882,7 @@ pub fn format_date_parts(fmt: &str, y: i64, m: usize, d: u32, hms: (u32, u32, u3
 }
 
 /// [`format_date_parts`] with month and weekday names in `lang`. Text between single quotes is
-/// copied as it is (`'de'`), and two single quotes there are one.
+/// copied as it is (`'de'`), while doubled apostrophes emit one literal quote anywhere.
 #[allow(clippy::too_many_arguments)]
 pub fn format_date_parts_in(fmt: &str, lang: Option<&str>, y: i64, m: usize, d: u32, (hh, mm, ss): (u32, u32, u32), days_since: i64) -> String {
     let names = date_names(lang);
@@ -888,8 +894,14 @@ pub fn format_date_parts_in(fmt: &str, lang: Option<&str>, y: i64, m: usize, d: 
     let mut i = 0;
     while i < chars.len() {
         let c = chars.get(i).copied().unwrap_or(' ');
-        // A quoted literal: copied up to the closing quote (or the end), `''` inside is one quote.
+        // Two apostrophes emit one literal apostrophe inside or outside a quoted region.
         if c == '\'' {
+            if chars.get(i + 1) == Some(&'\'') {
+                out.push('\'');
+                i += 2;
+                continue;
+            }
+            // Copy quoted text until the closing quote (or end).
             i += 1;
             while let Some(&q) = chars.get(i) {
                 if q == '\'' {
@@ -1041,6 +1053,7 @@ fn cover_page(s: &mut Session, v: &Value) -> CmdResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// A pt-BR dynamic field keeps its result after DOCX round-trip and refresh.
     #[test]
     fn pt_br_date_time_dialog_inserts_dynamic_field() {
         let mut s = Session::new(wordcraft_doc::Document::new());
