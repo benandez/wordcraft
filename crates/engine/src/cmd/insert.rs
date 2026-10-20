@@ -805,8 +805,7 @@ fn date_time(s: &mut Session, v: &Value) -> CmdResult {
         props.lang = Some(lang.to_string());
     }
     // Resolve the same run language used by refresh_date_fields on subsequent updates.
-    let effective_language = s.doc.para_at(s.sel.ordered().0)
-        .and_then(|p| s.doc.styles.resolve_char(p.props.style.as_deref(), &props).lang);
+    let effective_language = s.doc.para_at(s.sel.ordered().0).and_then(|p| s.doc.styles.resolve_char(p.props.style.as_deref(), &props).lang);
     let text = format_date_in(fmt, effective_language.as_deref());
     if p::bool(v, "update").unwrap_or(false) {
         let at = delete_selection(s)?;
@@ -1059,9 +1058,13 @@ mod tests {
     fn date_field_inherits_document_default_locale_on_first_render() {
         let mut s = Session::new(wordcraft_doc::Document::new());
         s.doc.styles.default_chr.lang = Some("pt-BR".into());
-        s.run("insert.dateTime", &json!({
-            "format": "d 'de' MMMM 'de' yyyy", "update": true
-        })).unwrap();
+        s.run(
+            "insert.dateTime",
+            &json!({
+                "format": "d 'de' MMMM 'de' yyyy", "update": true
+            }),
+        )
+        .unwrap();
 
         let path = s.doc.para_paths(StoryRef::Body).remove(0);
         let p = s.doc.para(StoryRef::Body, &path).unwrap();
@@ -1081,9 +1084,13 @@ mod tests {
     #[test]
     fn fixed_date_text_keeps_selected_language() {
         let mut s = Session::new(wordcraft_doc::Document::new());
-        s.run("insert.dateTime", &json!({
-            "format": "d 'de' MMMM 'de' yyyy", "language": "pt-BR", "update": false
-        })).unwrap();
+        s.run(
+            "insert.dateTime",
+            &json!({
+                "format": "d 'de' MMMM 'de' yyyy", "language": "pt-BR", "update": false
+            }),
+        )
+        .unwrap();
         let path = s.doc.para_paths(StoryRef::Body).remove(0);
         let p = s.doc.para(StoryRef::Body, &path).unwrap();
         assert_eq!(p.props_of_char(0).lang.as_deref(), Some("pt-BR"));
