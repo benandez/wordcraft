@@ -1379,7 +1379,7 @@ mod tests {
             let para = s.doc.para_at(&s.doc.start_of(StoryRef::Body)).unwrap();
             assert_eq!(para.props_of_char(0).lang.as_deref(), Some("pt-BR"));
             if update {
-                assert!(para.objects.iter().any(|obj| matches!(obj, InlineObject::Field { instr, .. } if instr == r#"DATE \\@ "dd/MM/yyyy""#)));
+                assert!(para.objects.iter().any(|obj| matches!(obj, InlineObject::Field { instr, .. } if instr == r#"DATE \@ "dd/MM/yyyy""#)));
             } else {
                 assert!(para.objects.is_empty());
             }
