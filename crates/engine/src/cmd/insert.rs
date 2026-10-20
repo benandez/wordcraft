@@ -792,13 +792,9 @@ fn page_number(s: &mut Session, v: &Value) -> CmdResult {
 /// Insert a fixed date or a refreshable DATE field, inheriting the editing language from the
 /// paragraph style and document defaults when the caller supplies no explicit language.
 fn date_time(s: &mut Session, v: &Value) -> CmdResult {
-    let fmt = p::str(v, "format").unwrap_or("M/d/yyyy");
     let language = p::str(v, "language");
     if language.is_some_and(|l| !matches!(l, "en-US" | "pt-BR")) {
         return Err(CmdError::Params("language must be en-US or pt-BR".into()));
-    }
-    if fmt.is_empty() || fmt.len() > 120 || fmt.contains('"') || fmt.contains('\\') {
-        return Err(CmdError::Params("invalid date picture".into()));
     }
     let mut props = s.typing_props();
     if let Some(lang) = language {
@@ -806,6 +802,12 @@ fn date_time(s: &mut Session, v: &Value) -> CmdResult {
     }
     // Resolve the same run language used by refresh_date_fields on subsequent updates.
     let effective_language = s.doc.para_at(&s.sel.ordered().0).and_then(|p| s.doc.styles.resolve_char(p.props.style.as_deref(), &props).lang);
+    // A missing picture follows the selected or inherited language, just like a DATE field
+    // without a \\@ switch; an explicitly supplied picture is never overridden.
+    let fmt = p::str(v, "format").unwrap_or_else(|| default_date_picture(effective_language.as_deref()));
+    if fmt.is_empty() || fmt.len() > 120 || fmt.contains('"') || fmt.contains('\\') {
+        return Err(CmdError::Params("invalid date picture".into()));
+    }
     let text = format_date_in(fmt, effective_language.as_deref());
     if p::bool(v, "update").unwrap_or(false) {
         let at = delete_selection(s)?;
@@ -1363,6 +1365,25 @@ mod tests {
         assert_eq!(p.props_of_char(2).font.as_deref(), Some("DejaVu Sans"), "the symbol");
         assert_eq!(p.props_of_char(5).font, None, "typing after it (byte offsets)");
         assert!(s.run("insert.symbol", &json!({"char": ""})).is_err());
+    }
+
+    /// With no picture supplied, both fixed and updating dates use the selected language's
+    /// Word default instead of silently falling back to US month/day order.
+    #[test]
+    fn date_time_without_picture_uses_portuguese_default() {
+        for update in [false, true] {
+            let mut s = Session::new(wordcraft_doc::Document::new());
+            s.run("insert.dateTime", &json!({"language": "pt-BR", "update": update})).unwrap();
+            let expected = format_date_in("dd/MM/yyyy", Some("pt-BR"));
+            assert_eq!(s.doc.plain_text(StoryRef::Body), expected);
+            let para = s.doc.para_at(&s.doc.start_of(StoryRef::Body)).unwrap();
+            assert_eq!(para.props_of_char(0).lang.as_deref(), Some("pt-BR"));
+            if update {
+                assert!(para.objects.iter().any(|obj| matches!(obj, InlineObject::Field { instr, .. } if instr == "DATE \\\\@ \\"dd/MM/yyyy\\"")));
+            } else {
+                assert!(para.objects.is_empty());
+            }
+        }
     }
 
     #[test]
