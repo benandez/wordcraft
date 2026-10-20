@@ -805,7 +805,7 @@ fn date_time(s: &mut Session, v: &Value) -> CmdResult {
         props.lang = Some(lang.to_string());
     }
     // Resolve the same run language used by refresh_date_fields on subsequent updates.
-    let effective_language = s.doc.para_at(s.sel.ordered().0).and_then(|p| s.doc.styles.resolve_char(p.props.style.as_deref(), &props).lang);
+    let effective_language = s.doc.para_at(&s.sel.ordered().0).and_then(|p| s.doc.styles.resolve_char(p.props.style.as_deref(), &props).lang);
     let text = format_date_in(fmt, effective_language.as_deref());
     if p::bool(v, "update").unwrap_or(false) {
         let at = delete_selection(s)?;
