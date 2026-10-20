@@ -697,8 +697,8 @@ fn balloon(app: &mut WordApp, ctx: &egui::Context, nib: Rect, t: &Tokens) {
     }
 }
 
-/// A plain colour for Nib's metal (light and dark interfaces alike).
-pub(crate) const GOLD: Color32 = Color32::from_rgb(214, 168, 58);
+/// Nib's metal: the ArtCraft logo blue (`docs/brand/artcraft-mark.svg`), for light and dark alike.
+pub(crate) const BLUE: Color32 = Color32::from_rgb(78, 123, 251);
 
 #[cfg(test)]
 mod tests;

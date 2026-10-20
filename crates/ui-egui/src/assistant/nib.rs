@@ -1,4 +1,4 @@
-//! Nib, drawn in code: an original fountain-pen nib with eyes and little arms. No artwork from
+//! Nib, drawn in code: an original fountain-pen nib with eyes. No artwork from
 //! any other product; see CLAUDE.md's asset rule.
 //!
 //! Drawn in a unit box (x, y in 0–1) mapped onto the rect, so it scales with the interface. Each
@@ -8,7 +8,7 @@
 
 use egui::{Color32, Painter, Pos2, Rect, Shape, Stroke, pos2};
 
-use super::GOLD;
+use super::BLUE;
 use crate::theme::Tokens;
 
 /// What Nib is doing.
@@ -18,7 +18,7 @@ pub enum Pose {
     /// frames: only one at each blink (see [`idle_wait`]).
     #[default]
     Idle,
-    /// Waving hello (the Introduction, being turned on).
+    /// Bobbing hello (the Introduction, being turned on).
     Wave,
     /// Leaning in to write a squiggle (a Tip or agent message appears).
     Write,
@@ -30,7 +30,10 @@ pub enum Pose {
     Bow,
 }
 
-const OUTLINE: Color32 = Color32::from_rgb(120, 86, 22);
+const OUTLINE: Color32 = Color32::from_rgb(28, 52, 132);
+/// The nib's shaded (right) and lit (upper-left) faces, either side of [`BLUE`].
+const SHADE: Color32 = Color32::from_rgb(53, 97, 224);
+const SHINE: Color32 = Color32::from_rgb(125, 157, 252);
 const EYE: Color32 = Color32::from_rgb(252, 252, 250);
 const PUPIL: Color32 = Color32::from_rgb(34, 34, 40);
 const INK: Color32 = Color32::from_rgb(38, 64, 150);
@@ -103,23 +106,16 @@ pub fn paint(p: &Painter, rect: Rect, pose: Pose, clock: f32, since: f32, t: &To
         }
     }
 
-    // Arms (behind the body). Waving lifts the right one and swings it.
-    let arm = Stroke::new(2.4, OUTLINE);
-    p.line_segment([f.pt(0.26, 0.42), f.pt(0.10, 0.54)], arm);
-    let wave = if pose == Pose::Wave { (since * 9.0).sin() * 0.06 * (1.0 - settle(2.5)) } else { 0.0 };
-    let hand = if pose == Pose::Wave && since < 2.5 { (0.93 + wave, 0.18) } else { (0.90, 0.54) };
-    p.line_segment([f.pt(0.74, 0.42), f.pt(hand.0, hand.1)], arm);
-
-    // The nib: shoulders, then tapering to the tip.
-    let body: Vec<Pos2> = [(0.50, 0.04), (0.71, 0.09), (0.79, 0.28), (0.73, 0.52), (0.50, 0.82), (0.27, 0.52), (0.21, 0.28), (0.29, 0.09)]
-        .iter()
-        .map(|&(x, y)| f.pt(x, y))
-        .collect();
-    p.add(Shape::convex_polygon(body, GOLD, Stroke::new(1.8, OUTLINE)));
-    // Collar, breather hole and slit.
-    p.line_segment([f.pt(0.26, 0.17), f.pt(0.74, 0.17)], Stroke::new(1.4, OUTLINE));
-    p.circle_filled(f.pt(0.5, 0.58), f.len(0.035), OUTLINE);
-    p.line_segment([f.pt(0.5, 0.60), f.pt(0.5, 0.81)], Stroke::new(1.4, OUTLINE));
+    // The nib, faceted like the ArtCraft mark: a lit left face, a shaded right face and a centre
+    // ridge, tapering to the tip.
+    let pts = |u: &[(f32, f32)]| -> Vec<Pos2> { u.iter().map(|&(x, y)| f.pt(x, y)).collect() };
+    let outline = [(0.50, 0.04), (0.66, 0.08), (0.74, 0.30), (0.66, 0.54), (0.50, 0.82), (0.34, 0.54), (0.26, 0.30), (0.34, 0.08)];
+    p.add(Shape::convex_polygon(pts(&outline), BLUE, Stroke::NONE));
+    p.add(Shape::convex_polygon(pts(&outline[..5]), SHADE, Stroke::NONE));
+    p.add(Shape::convex_polygon(pts(&[(0.50, 0.04), (0.34, 0.08), (0.26, 0.30), (0.50, 0.17)]), SHINE, Stroke::NONE));
+    p.add(Shape::closed_line(pts(&outline), Stroke::new(1.8, OUTLINE)));
+    p.line_segment([f.pt(0.30, 0.17), f.pt(0.70, 0.17)], Stroke::new(1.4, OUTLINE));
+    p.line_segment([f.pt(0.5, 0.17), f.pt(0.5, 0.81)], Stroke::new(1.1, OUTLINE));
 
     // Eyes: open, blinking, wide (startled) or shut (dozing).
     let blink = pose == Pose::Idle && blinking(clock);
