@@ -460,7 +460,7 @@ fn parse_list(lines: &[String], mut i: usize, depth: usize, level: u8, out: &mut
         while item.len() > 1 && item.last().is_some_and(|x| x.is_empty()) {
             item.pop();
         }
-        let li = ListInfo { ordered: first.ordered, level: level.min(8) };
+        let li = ListInfo { ordered: first.ordered, level: level.min(8), start: first.start };
         let inner = if depth >= MAX_NEST {
             let mut p = Para::default();
             p.push_text(&item.join(" "), &Fmt::default());
@@ -1085,6 +1085,7 @@ fn escape_line_start(s: String) -> String {
         || t == "-"
         || t == "+"
         || t.starts_with('=')
+        || (t.starts_with('-') && t.trim_end_matches([' ', '\t']).chars().all(|c| c == '-'))
         || thematic_break(t)
         || {
             let d = t.chars().take_while(|c| c.is_ascii_digit()).count();
@@ -1097,6 +1098,14 @@ fn escape_line_start(s: String) -> String {
         return format!("{indent}{}\\{}", &t[..d], &t[d..]);
     }
     format!("{indent}\\{t}")
+}
+
+/// [`escape_line_start`] for every line of a body, including those after a manual line break.
+fn escape_lines(body: String) -> String {
+    if !body.contains("\\\n") {
+        return escape_line_start(body);
+    }
+    body.split("\\\n").map(|l| escape_line_start(l.to_string())).collect::<Vec<_>>().join("\\\n")
 }
 
 fn code_span(t: &str) -> String {
@@ -1346,7 +1355,10 @@ fn write_blocks(blocks: &[FBlock], out: &mut Vec<String>) {
                             prev_top_ordered = li.ordered;
                         }
                         let n = counters.get_mut(lv).map(|c| {
-                            *c += 1;
+                            if *c == 0 {
+                                *c = li.start.saturating_sub(1);
+                            }
+                            *c = c.saturating_add(1);
                             *c
                         });
                         for d in counters.iter_mut().skip(lv + 1) {
@@ -1355,11 +1367,10 @@ fn write_blocks(blocks: &[FBlock], out: &mut Vec<String>) {
                         let marker = if li.ordered { format!("{}.", n.unwrap_or(1)) } else { "-".to_string() };
                         let pad = " ".repeat(4 * lv);
                         let cont = " ".repeat(4 * lv + marker.len() + 1);
-                        let body = body.replace("\\\n", &format!("\\\n{cont}"));
                         let body = if p.kind == Kind::Code {
                             code_span(&p.text())
                         } else {
-                            let body = escape_line_start(body);
+                            let body = escape_lines(body).replace("\\\n", &format!("\\\n{cont}"));
                             // The bullet marker can turn a short run of hyphens into a rule.
                             if thematic_break(&format!("{marker} {body}")) { format!("\\{body}") } else { body }
                         };
@@ -1377,7 +1388,7 @@ fn write_blocks(blocks: &[FBlock], out: &mut Vec<String>) {
                             Kind::Title => format!("# {}", body.replace("\\\n", " ")),
                             Kind::Rule => "---".to_string(),
                             Kind::Quote => {
-                                let b = escape_line_start(body);
+                                let b = escape_lines(body);
                                 format!("> {}", b.replace("\\\n", "\\\n> "))
                             }
                             _ => {
@@ -1385,7 +1396,7 @@ fn write_blocks(blocks: &[FBlock], out: &mut Vec<String>) {
                                     i += 1;
                                     continue;
                                 }
-                                escape_line_start(body)
+                                escape_lines(body)
                             }
                         };
                         out.push(line);
@@ -1693,5 +1704,62 @@ mod tests {
         let FBlock::Table(back_table2) = &back_flow2.blocks[0] else { panic!() };
         assert_eq!(back_table2.rows[1][0].text(), "a`b|c");
         assert_eq!(back_table2.rows[1][1].text(), "CRITICAL_DISTINCTIVE_INFO");
+    }
+
+    #[test]
+    fn ordered_list_keeps_start_number() {
+        let txt = |md: &str| String::from_utf8_lossy(&crate::txt::export(&import(md))).into_owned();
+        assert_eq!(txt("5. a\n6. b"), "5.\ta\r\n6.\tb");
+        assert_eq!(txt("3. a\n- b\n4. c"), "3.\ta\r\n•\tb\r\n4.\tc");
+        assert_eq!(export(&import("5. a\n6. b")).trim_end(), "5. a\n6. b");
+    }
+
+    #[test]
+    fn lines_after_line_break_stay_in_paragraph() {
+        use wordcraft_doc::{CharProps, Document, Paragraph, StoryRef, para_block};
+        let cases = ["Shopping\n- milk\n# not a heading", "a\n1. x", "a\n2) x", "a\n+ x", "a\n---", "a\n***", "a\n==", "a\n--", "a\n> q"];
+        for s in cases {
+            let d = Document { body: vec![para_block(Paragraph::with_text(s, CharProps::default()))], ..Default::default() };
+            let md = export(&d);
+            let back = import(&md);
+            assert_eq!(back.body.len(), 1, "{s:?} -> {md:?}");
+            assert_eq!(back.plain_text(StoryRef::Body), s, "{md:?}");
+        }
+    }
+
+    #[test]
+    fn lines_after_line_break_stay_in_list_item_and_quote() {
+        let cases = ["a\n- x", "a\n# h", "a\n1. x", "a\n--", "a\n---", "a\n==", "a\n> q"];
+        let shapes: [(Kind, Option<ListInfo>); 5] = [
+            (Kind::Normal, Some(ListInfo { ordered: false, level: 0, start: 1 })),
+            (Kind::Normal, Some(ListInfo { ordered: true, level: 0, start: 1 })),
+            (Kind::Normal, Some(ListInfo { ordered: false, level: 1, start: 1 })),
+            (Kind::Normal, Some(ListInfo { ordered: true, level: 1, start: 1 })),
+            (Kind::Quote, None),
+        ];
+        for s in cases {
+            for (kind, list) in shapes {
+                let mut blocks = Vec::new();
+                if let Some(li) = list.filter(|l| l.level > 0) {
+                    let mut parent = Para::new(Kind::Normal);
+                    parent.list = Some(ListInfo { ordered: li.ordered, level: 0, start: 1 });
+                    parent.push_text("top", &Fmt::default());
+                    blocks.push(FBlock::Para(parent));
+                }
+                let mut p = Para::new(kind);
+                p.list = list;
+                p.push_text(s, &Fmt::default());
+                blocks.push(FBlock::Para(p));
+                let mut out = Vec::new();
+                write_blocks(&blocks, &mut out);
+                let md = out.join("\n");
+                let back = parse(&md);
+                assert_eq!(back.blocks.len(), blocks.len(), "{s:?} {kind:?} {list:?} -> {md:?}");
+                let Some(FBlock::Para(q)) = back.blocks.last() else { panic!("{md:?}") };
+                assert_eq!(q.kind, kind, "{md:?}");
+                assert_eq!(q.list, list, "{md:?}");
+                assert_eq!(q.text(), s, "{md:?}");
+            }
+        }
     }
 }

@@ -1,8 +1,8 @@
 //! Table Design and Table Layout tabs.
 
+use super::table_formula::parse_number;
 use serde_json::{Value, json};
 use wordcraft_doc::collate::{SortKey, sort_key};
-use wordcraft_doc::locale_number::parse_number;
 use wordcraft_doc::props::{Align, Border, BorderStyle, Borders, HeightRule, Rgb, TextDirection, VAlign};
 use wordcraft_doc::{Block, Document, Paragraph, Path, Pos, RevisionKind, StoryRef, Table, para_block};
 
@@ -586,6 +586,35 @@ fn del_col(s: &mut Session, _: &Value) -> CmdResult {
     fix_caret(s, &tp, r, c.saturating_sub(1))
 }
 
+/// Backspace with whole cells selected (#1844): whole rows go like Delete Rows (every row: the
+/// table, like Delete Table), whole columns like Delete Columns, with their undo and Track
+/// Changes. `None` for any other block of cells, and for a single cell of a table with more
+/// (Backspace then clears them).
+pub(crate) fn backspace_cells(s: &mut Session) -> Option<CmdResult> {
+    let cr = s.cell_range()?.clone();
+    let (tp, _, _) = s.sel.focus.path.cell()?;
+    if cr.story != s.sel.focus.story || cr.table != tp {
+        return None;
+    }
+    let t = s.doc.table(cr.story, &tp)?;
+    // One cell of several is just that cell, also in a one-row or one-column table (Word's cell
+    // selection doesn't take the end-of-row mark): Backspace clears it.
+    let cells: usize = t.rows.iter().map(|row| row.cells.len()).sum();
+    if cells > 1 && cr.cells(t).len() <= 1 {
+        return None;
+    }
+    let (last_row, last_col) = (t.rows.len().saturating_sub(1), t.cols().saturating_sub(1));
+    let r = if cr.cols == (0, last_col) {
+        del_row(s, &Value::Null)
+    } else if cr.rows == (0, last_row) {
+        del_col(s, &Value::Null)
+    } else {
+        return None;
+    };
+    s.column = None;
+    Some(r)
+}
+
 fn del_table(s: &mut Session, _: &Value) -> CmdResult {
     let (tp, _, _) = cell(s)?;
     let story = s.sel.focus.story;
@@ -734,14 +763,17 @@ fn split(s: &mut Session, v: &Value) -> CmdResult {
     cells.sort_unstable_by_key(|&(top, g)| std::cmp::Reverse((g, top)));
     for &(top, g) in &cells {
         let Some(ci) = t.cell_at_grid(top, g) else { continue };
-        // 1 × 1 on a cell that was already merged down cuts it back into one cell per row, as
-        // Word does; a cell just merged by Merge cells before split stays one cell.
+        // 1 × 1 on a cell that was already merged down changes nothing in Word, at any height; a
+        // cell just merged by Merge cells before split stays one cell.
         let height = t.vertical_extent(top, ci).map_or(1, |(_, k)| k);
-        let rows = if !merge_first && height > 1 && rows == 1 && cols == 1 { height } else { rows };
+        if !merge_first && cols == 1 && rows == 1 && height > 1 {
+            continue;
+        }
+        if height > 1 && rows > 1 && !height.is_multiple_of(rows) {
+            return Err(CmdError::Params(format!("The number must be a divisor of {height}.")));
+        }
         if !t.split_cell_grid(top, ci, cols, rows) {
-            return Err(CmdError::Failed(format!(
-                "can't split into {rows} rows: a merged cell splits into a number of rows that divides its height"
-            )));
+            return Err(CmdError::Failed(format!("can't split into {rows} rows: the table would get too many rows")));
         }
     }
     // The caret goes to the first part of the first cell (the top of a merged cell).
