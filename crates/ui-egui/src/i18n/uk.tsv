@@ -425,6 +425,8 @@
 	First line:	Перший рядок:
 	Fixed Column Width	Фіксована ширина стовпця
 	Focus	Зосередження
+	Full Screen View	Повноекранний режим
+	Show the ribbon	Показати стрічку
 	Font	Шрифт
 	Font Color	Колір шрифту
 	Font color:	Колір шрифту:
@@ -2311,3 +2313,43 @@
 	User templates:	Шаблони користувача:
 	Not set	Не задано
 	File › New lists the .dotx and .dotm templates here under Personal; Save as Word Template starts here.	Файл › Новий показує звідси шаблони .dotx і .dotm у групі «Особисті»; «Зберегти як шаблон Word» починає тут.
+	Format Shape Pane	Область «Формат фігури»
+	Format Shape	Формат фігури
+	Format Shape…	Формат фігури…
+	No fill	Без заливки
+	Solid fill	Суцільна заливка
+	Gradient fill	Градієнтна заливка
+	Preset gradients	Готові градієнти
+	Radial	Радіальний
+	Rectangular	Прямокутний
+	Path	Контур
+	Direction	Напрямок
+	Angle	Кут
+	Gradient stops	Точки градієнта
+	Add gradient stop	Додати точку градієнта
+	Remove gradient stop	Видалити точку градієнта
+	Rotate with shape	Обертати разом із фігурою
+	Gradient	Градієнт
+	No Gradient	Без градієнта
+	Light Variations	Світлі варіанти
+	Dark Variations	Темні варіанти
+	More Gradients…	Інші градієнти…
+	Select a shape, text box or drawing canvas to format its fill.	Виберіть фігуру, текстове поле або полотно, щоб налаштувати заливку.
+	Linear Right	Лінійний праворуч
+	Linear Diagonal - Top Left to Bottom Right	Лінійний по діагоналі — зліва вгорі → справа внизу
+	Linear Down	Лінійний вниз
+	Linear Diagonal - Top Right to Bottom Left	Лінійний по діагоналі — справа вгорі → зліва внизу
+	Linear Left	Лінійний ліворуч
+	Linear Diagonal - Bottom Right to Top Left	Лінійний по діагоналі — справа внизу → зліва вгорі
+	Linear Up	Лінійний вгору
+	Linear Diagonal - Bottom Left to Top Right	Лінійний по діагоналі — зліва внизу → справа вгорі
+	From Top Left Corner	Із кута зліва вгорі
+	From Top Right Corner	Із кута справа вгорі
+	From Bottom Left Corner	Із кута зліва внизу
+	From Bottom Right Corner	Із кута справа внизу
+	From Center	Із центру
+	Soft	М'який
+	Lit from Top	Освітлення згори
+	Deep	Глибокий
+	Lit from Bottom	Освітлення знизу
+	Center Glow	Сяйво з центру

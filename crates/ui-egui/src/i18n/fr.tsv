@@ -368,6 +368,8 @@
 	First line:	Première ligne :
 	Fixed Column Width	Largeur de colonne fixe
 	Focus	Focus
+	Full Screen View	Affichage plein écran
+	Show the ribbon	Afficher le ruban
 	Font	Police
 	Font Color	Couleur de police
 	Font color:	Couleur de police :
@@ -2711,3 +2713,43 @@ template	Letter	Lettre
 	User templates:	Modèles utilisateur :
 	Not set	Non défini
 	File › New lists the .dotx and .dotm templates here under Personal; Save as Word Template starts here.	Fichier › Nouveau affiche les modèles .dotx et .dotm de ce dossier sous Personnel ; Enregistrer comme modèle Word commence ici.
+	Format Shape Pane	Volet Mise en forme de la forme
+	Format Shape	Mise en forme de la forme
+	Format Shape…	Mise en forme de la forme…
+	No fill	Aucun remplissage
+	Solid fill	Remplissage uni
+	Gradient fill	Remplissage dégradé
+	Preset gradients	Dégradés prédéfinis
+	Radial	Radial
+	Rectangular	Rectangulaire
+	Path	Tracé
+	Direction	Direction
+	Angle	Angle
+	Gradient stops	Points de dégradé
+	Add gradient stop	Ajouter un point de dégradé
+	Remove gradient stop	Supprimer le point de dégradé
+	Rotate with shape	Pivoter avec la forme
+	Gradient	Dégradé
+	No Gradient	Aucun dégradé
+	Light Variations	Variantes claires
+	Dark Variations	Variantes foncées
+	More Gradients…	Autres dégradés…
+	Select a shape, text box or drawing canvas to format its fill.	Sélectionnez une forme, une zone de texte ou une zone de dessin pour mettre en forme son remplissage.
+	Linear Right	Linéaire vers la droite
+	Linear Diagonal - Top Left to Bottom Right	Linéaire diagonal – en haut à gauche vers en bas à droite
+	Linear Down	Linéaire vers le bas
+	Linear Diagonal - Top Right to Bottom Left	Linéaire diagonal – en haut à droite vers en bas à gauche
+	Linear Left	Linéaire vers la gauche
+	Linear Diagonal - Bottom Right to Top Left	Linéaire diagonal – en bas à droite vers en haut à gauche
+	Linear Up	Linéaire vers le haut
+	Linear Diagonal - Bottom Left to Top Right	Linéaire diagonal – en bas à gauche vers en haut à droite
+	From Top Left Corner	Depuis le coin en haut à gauche
+	From Top Right Corner	Depuis le coin en haut à droite
+	From Bottom Left Corner	Depuis le coin en bas à gauche
+	From Bottom Right Corner	Depuis le coin en bas à droite
+	From Center	Depuis le centre
+	Soft	Doux
+	Lit from Top	Éclairé par le haut
+	Deep	Profond
+	Lit from Bottom	Éclairé par le bas
+	Center Glow	Halo central

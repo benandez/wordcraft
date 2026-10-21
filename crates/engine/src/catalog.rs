@@ -456,6 +456,8 @@ Chart Design|Chart Layouts|Chart Title|chart.title
 Chart Design|Chart Layouts|Legend|chart.legend
 Chart Design|Chart Layouts|Data Labels|chart.dataLabels
 Shape Format|Shape Styles|Shape Fill|shape.fill
+Shape Format|Shape Styles|Shape Fill Gradient|shape.fill
+Shape Format|Shape Styles|Format Shape Pane|view.formatShapePane
 Shape Format|Shape Styles|Shape Outline|shape.outline
 Shape Format|Shape Styles|Shape Effects|shape.effects
 Shape Format|WordArt Styles|WordArt Quick Styles|wordArt.style
@@ -516,6 +518,7 @@ Tools|Customize|Customize Ribbon|tools.customizeRibbon
 Tools|Customize|Customize Keyboard|tools.customizeKeyboard
 Tools|Protection|Encrypt with Password|file.encrypt
 Tools|Templates|Templates and Add-ins|tools.templates
+Tools|Views|Full Screen View|view.fullScreenView
 ";
 
 /// Catalog entries: (tab, group, feature, id).

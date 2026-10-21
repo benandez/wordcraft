@@ -31,7 +31,6 @@ fn back_chevron_c(band_min_x: f32, center_y: f32, fullscreen: bool, content_left
 
 pub fn show(app: &mut WordApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
-    let recovery = app.ui.backstage_page == "recover";
     // No document open (#1129): only the pages that open or create one, and Options.
     let has_document = app.has_document();
     if !has_document && !works_without_document(&app.ui.backstage_page) {
@@ -42,12 +41,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
         .exact_size(200.0)
         // Fixed width, as in Word: without this egui shows a resize handle that does nothing (#502).
         .resizable(false)
-        .frame(egui::Frame::NONE.fill(if recovery { egui::Color32::BLACK } else { APP_COLOR }).inner_margin(egui::Margin {
-            left: 0,
-            right: 0,
-            top: if mac { 0 } else { 12 },
-            bottom: 12,
-        }))
+        .frame(egui::Frame::NONE.fill(APP_COLOR).inner_margin(egui::Margin { left: 0, right: 0, top: if mac { 0 } else { 12 }, bottom: 12 }))
         .show(ui, |ui| {
             let back = if mac {
                 // macOS (#222): the Backstage covers the title bar, so its top band is the title
@@ -146,31 +140,28 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                 }
             });
         });
-    egui::CentralPanel::default()
-        .frame(egui::Frame::NONE.fill(if recovery { egui::Color32::BLACK } else { t.ribbon }).inner_margin(egui::Margin::symmetric(40, 30)))
-        .show(ui, |ui| {
-            // The Print page fills the pane and scrolls its settings and its preview itself (#1156).
-            if app.ui.backstage_page == "print" {
-                export_page(app, ui);
-                return;
-            }
-            egui::ScrollArea::vertical().show(ui, |ui| match app.ui.backstage_page.as_str() {
-                "home" => home_page(app, ui),
-                "new" => new_page(app, ui),
-                "open" => open_page(app, ui),
-                "saveAs" => save_as_page(app, ui),
-                "info" => info_page(app, ui),
-                "recover" => recovery_page(app, ui),
-                "print" | "export" => export_page(app, ui),
-                "options" => crate::options::page(app, ui),
-                _ => home_page(app, ui),
-            });
+    egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.ribbon).inner_margin(egui::Margin::symmetric(40, 30))).show(ui, |ui| {
+        // The Print page fills the pane and scrolls its settings and its preview itself (#1156).
+        if app.ui.backstage_page == "print" {
+            export_page(app, ui);
+            return;
+        }
+        egui::ScrollArea::vertical().show(ui, |ui| match app.ui.backstage_page.as_str() {
+            "home" => home_page(app, ui),
+            "new" => new_page(app, ui),
+            "open" => open_page(app, ui),
+            "saveAs" => save_as_page(app, ui),
+            "info" => info_page(app, ui),
+            "recover" => recovery_page(app, ui),
+            "print" | "export" => export_page(app, ui),
+            "options" => crate::options::page(app, ui),
+            _ => home_page(app, ui),
         });
+    });
 }
 
 /// Recovery is a separate copy. Leaving this page never discards it.
 fn recovery_page(app: &mut WordApp, ui: &mut Ui) {
-    ui.visuals_mut().override_text_color = Some(egui::Color32::WHITE);
     heading(ui, "Recover documents");
     ui.label(tl!("Restore opens an unsaved copy. Your original file stays unchanged."));
     ui.add_space(20.0);
@@ -198,9 +189,6 @@ fn recovery_page(app: &mut WordApp, ui: &mut Ui) {
             ui.label(&doc.name);
             ui.label(&doc.saved_at);
             ui.add_enabled_ui(!busy, |ui| {
-                // Buttons keep the theme's own text colour: the page-wide white override is
-                // for labels on the black background and would bleach button labels (#1895).
-                ui.visuals_mut().override_text_color = None;
                 ui.horizontal(|ui| {
                     if ui.button(tl!("Restore")).clicked() {
                         let _ = app.run("file.recover", json!({"restore": doc.id}));
@@ -215,7 +203,6 @@ fn recovery_page(app: &mut WordApp, ui: &mut Ui) {
     });
     ui.add_space(20.0);
     ui.horizontal(|ui| {
-        ui.visuals_mut().override_text_color = None;
         if ui.button(tl!("Continue without restoring")).clicked() {
             let _ = app.run("ui.backstage", json!({"value": false}));
             app.canvas.want_focus = true;
@@ -795,6 +782,56 @@ mod tests {
         // Worker completion is a state boundary; egui needs subsequent frames to finish
         // font installation/layout and expose the resulting buttons to AccessKit.
         h.run_steps(4);
+    }
+
+    /// #3243: the Recover page uses the app theme like every other Backstage page: no black
+    /// fill, and its labels are not forced white (unreadable on the light theme).
+    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn recovery_page_follows_the_theme() {
+        for theme in [egui::Theme::Light, egui::Theme::Dark] {
+            let (mut app, root) = recovery_app();
+            let ctx = egui::Context::default();
+            crate::theme::apply(&ctx, crate::theme::Appearance::System);
+            ctx.set_theme(theme);
+            let mut shapes = Vec::new();
+            let end = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            for frame in 0..1000 {
+                let input = egui::RawInput {
+                    time: Some(f64::from(frame) * 0.01),
+                    screen_rect: Some(egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1440.0, 900.0))),
+                    ..Default::default()
+                };
+                let mut out = ctx.run_ui(input, |ui| {
+                    app.logic(&ctx.clone());
+                    app.ui(ui);
+                });
+                out.textures_delta.clear();
+                shapes = out.shapes;
+                if frame > 4 && app.session.recovery_ready() && !app.session.recovery_busy() && !app.session.recovery_documents().is_empty() {
+                    break;
+                }
+                assert!(std::time::Instant::now() < end);
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+            assert!(app.ui.backstage && app.ui.backstage_page == "recover");
+            let mut texts = 0;
+            for s in &shapes {
+                match &s.shape {
+                    egui::Shape::Rect(r) => {
+                        assert_ne!(r.fill, egui::Color32::BLACK, "{theme:?}: the Recover page is filled black");
+                    }
+                    egui::Shape::Text(t) if t.galley.job.text == "Document" || t.galley.job.text == "Recovery copy" => {
+                        texts += 1;
+                        assert_ne!(t.override_text_color, Some(egui::Color32::WHITE), "{theme:?}: header forced white");
+                    }
+                    _ => {}
+                }
+            }
+            assert_eq!(texts, 2, "{theme:?}: both column headers drawn");
+            drop(app);
+            let _ = std::fs::remove_dir_all(root);
+        }
     }
 
     #[test]
