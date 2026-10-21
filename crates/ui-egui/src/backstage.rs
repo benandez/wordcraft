@@ -31,7 +31,6 @@ fn back_chevron_c(band_min_x: f32, center_y: f32, fullscreen: bool, content_left
 
 pub fn show(app: &mut WordApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
-    let recovery = app.ui.backstage_page == "recover";
     // No document open (#1129): only the pages that open or create one, and Options.
     let has_document = app.has_document();
     if !has_document && !works_without_document(&app.ui.backstage_page) {
@@ -42,12 +41,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
         .exact_size(200.0)
         // Fixed width, as in Word: without this egui shows a resize handle that does nothing (#502).
         .resizable(false)
-        .frame(egui::Frame::NONE.fill(if recovery { egui::Color32::BLACK } else { APP_COLOR }).inner_margin(egui::Margin {
-            left: 0,
-            right: 0,
-            top: if mac { 0 } else { 12 },
-            bottom: 12,
-        }))
+        .frame(egui::Frame::NONE.fill(APP_COLOR).inner_margin(egui::Margin { left: 0, right: 0, top: if mac { 0 } else { 12 }, bottom: 12 }))
         .show(ui, |ui| {
             let back = if mac {
                 // macOS (#222): the Backstage covers the title bar, so its top band is the title
@@ -146,31 +140,28 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                 }
             });
         });
-    egui::CentralPanel::default()
-        .frame(egui::Frame::NONE.fill(if recovery { egui::Color32::BLACK } else { t.ribbon }).inner_margin(egui::Margin::symmetric(40, 30)))
-        .show(ui, |ui| {
-            // The Print page fills the pane and scrolls its settings and its preview itself (#1156).
-            if app.ui.backstage_page == "print" {
-                export_page(app, ui);
-                return;
-            }
-            egui::ScrollArea::vertical().show(ui, |ui| match app.ui.backstage_page.as_str() {
-                "home" => home_page(app, ui),
-                "new" => new_page(app, ui),
-                "open" => open_page(app, ui),
-                "saveAs" => save_as_page(app, ui),
-                "info" => info_page(app, ui),
-                "recover" => recovery_page(app, ui),
-                "print" | "export" => export_page(app, ui),
-                "options" => crate::options::page(app, ui),
-                _ => home_page(app, ui),
-            });
+    egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.ribbon).inner_margin(egui::Margin::symmetric(40, 30))).show(ui, |ui| {
+        // The Print page fills the pane and scrolls its settings and its preview itself (#1156).
+        if app.ui.backstage_page == "print" {
+            export_page(app, ui);
+            return;
+        }
+        egui::ScrollArea::vertical().show(ui, |ui| match app.ui.backstage_page.as_str() {
+            "home" => home_page(app, ui),
+            "new" => new_page(app, ui),
+            "open" => open_page(app, ui),
+            "saveAs" => save_as_page(app, ui),
+            "info" => info_page(app, ui),
+            "recover" => recovery_page(app, ui),
+            "print" | "export" => export_page(app, ui),
+            "options" => crate::options::page(app, ui),
+            _ => home_page(app, ui),
         });
+    });
 }
 
 /// Recovery is a separate copy. Leaving this page never discards it.
 fn recovery_page(app: &mut WordApp, ui: &mut Ui) {
-    ui.visuals_mut().override_text_color = Some(egui::Color32::WHITE);
     heading(ui, "Recover documents");
     ui.label(tl!("Restore opens an unsaved copy. Your original file stays unchanged."));
     ui.add_space(20.0);
@@ -198,9 +189,6 @@ fn recovery_page(app: &mut WordApp, ui: &mut Ui) {
             ui.label(&doc.name);
             ui.label(&doc.saved_at);
             ui.add_enabled_ui(!busy, |ui| {
-                // Buttons keep the theme's own text colour: the page-wide white override is
-                // for labels on the black background and would bleach button labels (#1895).
-                ui.visuals_mut().override_text_color = None;
                 ui.horizontal(|ui| {
                     if ui.button(tl!("Restore")).clicked() {
                         let _ = app.run("file.recover", json!({"restore": doc.id}));
@@ -215,7 +203,6 @@ fn recovery_page(app: &mut WordApp, ui: &mut Ui) {
     });
     ui.add_space(20.0);
     ui.horizontal(|ui| {
-        ui.visuals_mut().override_text_color = None;
         if ui.button(tl!("Continue without restoring")).clicked() {
             let _ = app.run("ui.backstage", json!({"value": false}));
             app.canvas.want_focus = true;
@@ -358,6 +345,11 @@ fn open_list(app: &mut WordApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     ui.label(egui::RichText::new(tl!("Recent")).font(semibold(16.0)));
     ui.add_space(6.0);
+    let error = ui.ctx().data(|d| d.get_temp::<String>(open_error_id())).unwrap_or_default();
+    if !error.is_empty() {
+        ui.label(egui::RichText::new(error).color(ui.visuals().error_fg_color));
+        ui.add_space(6.0);
+    }
     if app.ui.recent.is_empty() {
         ui.label(egui::RichText::new(tl!("Documents you open will show up here.")).color(t.text_dim));
     }
@@ -371,11 +363,28 @@ fn open_list(app: &mut WordApp, ui: &mut Ui) {
         ui.painter().text(pos2(r.min.x + 40.0, r.min.y + 13.0), Align2::LEFT_CENTER, &name, medium(13.0), t.text);
         ui.painter().text(pos2(r.min.x + 40.0, r.min.y + 29.0), Align2::LEFT_CENTER, &p, regular(11.0), t.text_dim);
         if resp.clicked() {
-            let _ = app.run("file.open", json!({"path": p}));
-            app.ui.backstage = false;
-            app.canvas.want_focus = true;
+            let failed = open_recent(app, &p).err();
+            ui.ctx().data_mut(|d| d.insert_temp(open_error_id(), failed.unwrap_or_default()));
         }
     }
+}
+
+fn open_error_id() -> egui::Id {
+    egui::Id::new("backstage_open_error")
+}
+
+/// Drop the Recent list's open error once File is closed, so it doesn't come back next time.
+pub(crate) fn forget_open_error(ctx: &egui::Context) {
+    ctx.data_mut(|d| d.remove::<String>(open_error_id()));
+}
+
+/// Open a file from the Recent list. A file that can't be opened (deleted, moved, unreadable)
+/// leaves File open so the list can say why, rather than closing it on a greyed-out window.
+fn open_recent(app: &mut WordApp, path: &str) -> Result<(), String> {
+    app.run("file.open", json!({"path": path}))?;
+    app.ui.backstage = false;
+    app.canvas.want_focus = true;
+    Ok(())
 }
 
 fn open_page(app: &mut WordApp, ui: &mut Ui) {
@@ -529,6 +538,19 @@ mod tests {
         }
     }
 
+    /// #2938: opening a deleted file from Recent keeps File open and reports the error instead of
+    /// closing it on a greyed-out window.
+    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn opening_a_missing_recent_file_keeps_file_open_with_the_error() {
+        let mut app = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Services::default());
+        app.ui.backstage = true;
+        let missing = std::env::temp_dir().join(format!("wordcraft-missing-{}.docx", std::process::id()));
+        let err = super::open_recent(&mut app, &missing.to_string_lossy()).unwrap_err();
+        assert!(!err.is_empty());
+        assert!(app.ui.backstage, "File stays open");
+    }
+
     /// #1873: the macOS back chevron sits beside the traffic lights windowed, at the plain
     /// control inset in full screen.
     #[test]
@@ -590,6 +612,56 @@ mod tests {
         // Worker completion is a state boundary; egui needs subsequent frames to finish
         // font installation/layout and expose the resulting buttons to AccessKit.
         h.run_steps(4);
+    }
+
+    /// #3243: the Recover page uses the app theme like every other Backstage page: no black
+    /// fill, and its labels are not forced white (unreadable on the light theme).
+    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn recovery_page_follows_the_theme() {
+        for theme in [egui::Theme::Light, egui::Theme::Dark] {
+            let (mut app, root) = recovery_app();
+            let ctx = egui::Context::default();
+            crate::theme::apply(&ctx, crate::theme::Appearance::System);
+            ctx.set_theme(theme);
+            let mut shapes = Vec::new();
+            let end = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            for frame in 0..1000 {
+                let input = egui::RawInput {
+                    time: Some(f64::from(frame) * 0.01),
+                    screen_rect: Some(egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1440.0, 900.0))),
+                    ..Default::default()
+                };
+                let mut out = ctx.run_ui(input, |ui| {
+                    app.logic(&ctx.clone());
+                    app.ui(ui);
+                });
+                out.textures_delta.clear();
+                shapes = out.shapes;
+                if frame > 4 && app.session.recovery_ready() && !app.session.recovery_busy() && !app.session.recovery_documents().is_empty() {
+                    break;
+                }
+                assert!(std::time::Instant::now() < end);
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+            assert!(app.ui.backstage && app.ui.backstage_page == "recover");
+            let mut texts = 0;
+            for s in &shapes {
+                match &s.shape {
+                    egui::Shape::Rect(r) => {
+                        assert_ne!(r.fill, egui::Color32::BLACK, "{theme:?}: the Recover page is filled black");
+                    }
+                    egui::Shape::Text(t) if t.galley.job.text == "Document" || t.galley.job.text == "Recovery copy" => {
+                        texts += 1;
+                        assert_ne!(t.override_text_color, Some(egui::Color32::WHITE), "{theme:?}: header forced white");
+                    }
+                    _ => {}
+                }
+            }
+            assert_eq!(texts, 2, "{theme:?}: both column headers drawn");
+            drop(app);
+            let _ = std::fs::remove_dir_all(root);
+        }
     }
 
     #[test]
@@ -715,6 +787,124 @@ mod tests {
         h.run_steps(4);
         assert!(!h.state().ui.backstage, "the arrow closes the File page");
         assert!(h.state().canvas.focused, "and the page has the keyboard");
+    }
+
+    /// A harness over the whole app; kittest always runs AccessKit, so a frame that names as
+    /// focused a widget it didn't draw panics with "Focused ID … is not in the node list".
+    fn a11y_harness(a: WordApp) -> egui_kittest::Harness<'static, WordApp> {
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            a,
+        );
+        h.run_steps(4);
+        h
+    }
+
+    /// A primary click at `pos` (for chrome with no label to find it by).
+    fn click_at(h: &mut egui_kittest::Harness<'static, WordApp>, pos: egui::Pos2) {
+        h.event(egui::Event::PointerMoved(pos));
+        for pressed in [true, false] {
+            h.event(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE });
+        }
+        h.run_steps(4);
+    }
+
+    /// The macOS back chevron beside the traffic lights, in a window.
+    fn mac_chevron(a: &WordApp) -> egui::Pos2 {
+        super::back_chevron_c(0.0, a.mac_titlebar.height / 2.0, false, a.mac_titlebar.content_left)
+    }
+
+    /// #2972: on macOS the File page's back button is the chevron beside the traffic lights (the
+    /// "sidebar collapse toggle" of the report; there is no other toggle there). Blank document,
+    /// File, then the chevron ended 0.8.0 with AccessKit's "Focused ID … is not in the node
+    /// list". The same spot clicked in the editor (the title bar) must not either.
+    #[test]
+    fn mac_back_chevron_returns_to_the_page_with_accessibility_on() {
+        let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Services::default());
+        a.integrated_titlebar = true;
+        a.mac_titlebar = crate::chrome::MacTitleBar { height: 28.0, content_left: 70.0 };
+        let chevron = mac_chevron(&a);
+        let mut h = a11y_harness(a);
+        assert!(h.state().canvas.widget_id.is_some(), "the page has been drawn");
+        for _ in 0..2 {
+            h.state_mut().run("ui.backstage", json!({"value": true})).unwrap();
+            h.run_steps(4);
+            assert!(h.state().ui.backstage);
+            click_at(&mut h, chevron);
+            assert!(!h.state().ui.backstage, "the chevron closes the File page");
+            assert!(h.state().canvas.focused, "and the page has the keyboard");
+            // The same spot in the editor's title bar.
+            click_at(&mut h, chevron);
+            assert!(!h.state().ui.backstage);
+        }
+    }
+
+    /// #2931: File › New › Blank document with a document open returns to the editor without
+    /// AccessKit losing the focused node; and so does Home's Blank document tile and Escape.
+    #[test]
+    fn blank_document_from_the_file_page_with_accessibility_on() {
+        let work = |mac: bool| {
+            let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("Work")), Services::default());
+            a.integrated_titlebar = mac;
+            a11y_harness(a)
+        };
+        for mac in [false, true] {
+            for page in ["new", "home"] {
+                // A fresh "Work" document each time, so each path must really make a blank one.
+                let mut h = work(mac);
+                h.state_mut().run("ui.backstage", json!({"value": true, "page": page})).unwrap();
+                h.run_steps(4);
+                h.get_by_label("Blank document").click();
+                h.run_steps(4);
+                assert!(!h.state().ui.backstage, "{page}: Blank document returns to the editor");
+                assert_eq!(h.state().session.doc.plain_text(wordcraft_doc::StoryRef::Body), "", "{page}: a new blank document");
+                assert!(h.state().dialog.is_none(), "{page}: nothing asks first");
+            }
+            let mut h = work(mac);
+            h.state_mut().run("ui.backstage", json!({"value": true})).unwrap();
+            h.run_steps(4);
+            h.key_press(egui::Key::Escape);
+            h.run_steps(4);
+            assert!(!h.state().ui.backstage, "Escape closes the File page");
+            assert_eq!(h.state().session.doc.plain_text(wordcraft_doc::StoryRef::Body), "Work", "Escape keeps the document");
+        }
+    }
+
+    /// #2908: File › Options, then the back arrow (Windows/Linux layout and the macOS chevron),
+    /// with a document open and from the Start screen, without AccessKit ending the program.
+    #[test]
+    fn options_back_arrow_with_accessibility_on() {
+        for (mac, start) in [(false, false), (true, false), (false, true), (true, true)] {
+            let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Services::default());
+            a.integrated_titlebar = mac;
+            if start {
+                a.ui.start_screen = true;
+                assert!(a.start_screen());
+            }
+            let back = if mac { mac_chevron(&a) } else { egui::pos2(100.0, 32.0) };
+            let mut h = a11y_harness(a);
+            if !start {
+                h.state_mut().run("ui.backstage", json!({"value": true})).unwrap();
+                h.run_steps(4);
+            }
+            h.get_by_role_and_label(egui::accesskit::Role::Button, "Options").click();
+            h.run_steps(4);
+            assert_eq!(h.state().ui.backstage_page, "options", "mac {mac} start {start}");
+            // Into a pane, so the Options page has a focused widget of its own.
+            h.get_by_label("Display").click();
+            h.run_steps(4);
+            click_at(&mut h, back);
+            assert!(!h.state().ui.backstage, "mac {mac} start {start}: the arrow closes the File page");
+            if start {
+                assert!(!h.state().has_document(), "mac {mac}: from the Start screen, an empty window");
+            } else {
+                assert!(h.state().canvas.focused, "mac {mac}: and the page has the keyboard");
+            }
+        }
     }
 
     /// #260: File › Info's Title and Author fields dropped every keystroke (they edited a copy

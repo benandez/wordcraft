@@ -416,6 +416,8 @@
 	First line:	Primeira linha:
 	Fixed Column Width	Largura de coluna fixa
 	Focus	Foco
+	Full Screen View	Modo de tela inteira
+	Show the ribbon	Mostrar a faixa de opções
 	Font	Fonte
 	Font Color	Cor da fonte
 	Font color:	Cor da fonte:
@@ -2300,3 +2302,43 @@
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Digite um tamanho em qualquer unidade, como 5 cm ou 300 px. O outro lado acompanha, e a imagem mantém as proporções.
 
 	Import…	Importar…
+	Format Shape Pane	Painel Formatar Forma
+	Format Shape	Formatar Forma
+	Format Shape…	Formatar Forma…
+	No fill	Sem preenchimento
+	Solid fill	Preenchimento sólido
+	Gradient fill	Preenchimento gradiente
+	Preset gradients	Gradientes predefinidos
+	Radial	Radial
+	Rectangular	Retangular
+	Path	Caminho
+	Direction	Direção
+	Angle	Ângulo
+	Gradient stops	Pontos de gradiente
+	Add gradient stop	Adicionar ponto de gradiente
+	Remove gradient stop	Remover ponto de gradiente
+	Rotate with shape	Girar com a forma
+	Gradient	Gradiente
+	No Gradient	Sem gradiente
+	Light Variations	Variações claras
+	Dark Variations	Variações escuras
+	More Gradients…	Mais gradientes…
+	Select a shape, text box or drawing canvas to format its fill.	Selecione uma forma, caixa de texto ou tela de desenho para formatar o preenchimento.
+	Linear Right	Linear para a direita
+	Linear Diagonal - Top Left to Bottom Right	Linear diagonal – do superior esquerdo ao inferior direito
+	Linear Down	Linear para baixo
+	Linear Diagonal - Top Right to Bottom Left	Linear diagonal – do superior direito ao inferior esquerdo
+	Linear Left	Linear para a esquerda
+	Linear Diagonal - Bottom Right to Top Left	Linear diagonal – do inferior direito ao superior esquerdo
+	Linear Up	Linear para cima
+	Linear Diagonal - Bottom Left to Top Right	Linear diagonal – do inferior esquerdo ao superior direito
+	From Top Left Corner	Do canto superior esquerdo
+	From Top Right Corner	Do canto superior direito
+	From Bottom Left Corner	Do canto inferior esquerdo
+	From Bottom Right Corner	Do canto inferior direito
+	From Center	Do centro
+	Soft	Suave
+	Lit from Top	Iluminado de cima
+	Deep	Profundo
+	Lit from Bottom	Iluminado de baixo
+	Center Glow	Brilho central

@@ -285,7 +285,7 @@ pub(crate) fn highlight_menu(ui: &mut egui::Ui, app: &mut WordApp) {
             ui.painter().rect_filled(r, 2.0, egui::Color32::from_rgb(c.0, c.1, c.2));
             if resp.on_hover_text(h.name()).clicked() {
                 app.canvas.last_highlight = h.ooxml().to_string();
-                let _ = app.run("format.highlight", json!({"color": h.ooxml()}));
+                widgets::run_from_ribbon(app, "format.highlight", json!({"color": h.ooxml()}));
                 ui.close();
             }
             if i % 5 == 0 {
@@ -305,7 +305,7 @@ pub(crate) fn highlight_menu(ui: &mut egui::Ui, app: &mut WordApp) {
 fn font_color_menu(ui: &mut egui::Ui, app: &mut WordApp) {
     egui::ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
         if ui.selectable_label(false, "Automatic").clicked() {
-            let _ = app.run("format.color", json!({"color": "auto"}));
+            widgets::run_from_ribbon(app, "format.color", json!({"color": "auto"}));
             ui.close();
             return;
         }
@@ -573,8 +573,8 @@ mod tests {
     }
 
     /// Scrolled until the selection went under the ribbon, the bar went with it and drew over the
-    /// ribbon and the ruler. It stays in the document area: the part past its edge neither shows
-    /// nor takes the pointer.
+    /// ribbon and the ruler (#1069). With no part of the selection on screen it has no anchor
+    /// (`visible_anchor`, #1501), so it hides: nothing over the ruler, which still takes the drag.
     #[test]
     // #1069 lets the bar slide under the ribbon with a selection scrolled past the document's
     // top; #1501, landed first, anchors it to the visible part of the selection only and drops it
@@ -583,8 +583,7 @@ mod tests {
     fn the_bar_scrolls_under_the_ribbon_not_over_it() {
         let mut h = bar_over("The quick");
         let page = h.state().canvas.canvas_rect.expect("the document is shown");
-        // Scroll the selection's line to 45 points above the document area: the bar, below the
-        // line now, has its first row past the edge, over the ruler, and its second showing.
+        // Scroll the selection's line to 45 points above the document area, under the ruler.
         let target = page.min.y - 45.0;
         let line = h.state().canvas.mini_anchor.expect("the selection is on screen");
         h.event(egui::Event::PointerMoved(page.center()));
@@ -594,22 +593,12 @@ mod tests {
         h.step();
         h.state_mut().canvas.wheel = Default::default();
         steps(&mut h);
-        let line = h.state().canvas.mini_anchor.expect("the selection is still laid out");
-        assert!((line.min.y - target).abs() < 1.0, "the line scrolled to {}, not {target}", line.min.y);
-        let [bar, _] = h.ctx.data(|d| d.get_temp::<[Rect; 2]>(shown_id())).expect("the bar still shows in part");
-        assert!(bar.min.y < page.min.y && bar.max.y > page.min.y, "the bar {bar:?} should straddle the document's top {}", page.min.y);
+        assert!(h.state().canvas.mini_anchor.is_none(), "the selection scrolled off the document area");
+        assert!(bar_layer(&h).is_none(), "the bar hides with its selection, not over the ribbon");
 
-        let drawn: Vec<Rect> =
-            h.output().shapes.iter().filter(|s| matches!(&s.shape, egui::epaint::Shape::Rect(r) if r.rect == bar)).map(|s| s.clip_rect).collect();
-        assert!(!drawn.is_empty(), "the bar's background is painted");
-        for clip in drawn {
-            assert!(page.expand(0.5).contains_rect(clip), "the bar paints outside the document area {page:?}, over the ribbon: {clip:?}");
-        }
-
-        // The ruler's left-indent marker sits under the hidden part, at the line's start and the
-        // ruler's foot (`canvas::rulers`); dragging it still moves the indent.
+        // The ruler's left-indent marker sits at the line's start and the ruler's foot
+        // (`canvas::rulers`); dragging it moves the indent.
         let marker = pos2(line.min.x, page.min.y - 6.0);
-        assert!(bar.contains(marker), "the bar {bar:?} should cover the left-indent marker {marker:?}");
         h.event(egui::Event::PointerMoved(marker));
         h.event(egui::Event::PointerButton { pos: marker, button: egui::PointerButton::Primary, pressed: true, modifiers: Default::default() });
         h.step();
@@ -622,7 +611,7 @@ mod tests {
         steps(&mut h);
         let s = &h.state().session;
         let indent = s.doc.para_at(&s.sel.focus).map(|p| s.doc.styles.resolve_para(&p.props).indent_left).unwrap_or_default();
-        assert!(indent > 0.0, "dragging the ruler's left-indent marker under the bar's hidden part left the indent at {indent}");
+        assert!(indent > 0.0, "dragging the ruler's left-indent marker where the bar was left the indent at {indent}");
     }
 
     /// Picking from one of the bar's own lists (popups below it) keeps the bar up.
@@ -677,5 +666,52 @@ mod tests {
         let arrow = highlight_arrow(&h);
         click_at(&mut h, pos2(arrow.min.x - 12.0, arrow.center().y));
         assert_eq!(format_state(&mut h).get("highlight"), Some(&Value::Null), "the button applies No Color, not yellow again");
+    }
+
+    /// #3039: picking Automatic from the bar's font-colour menu hands the keyboard back to the
+    /// document.
+    #[test]
+    fn the_font_colour_menus_automatic_returns_focus_to_the_document() {
+        use egui_kittest::kittest::{By, Queryable};
+        let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("Hello")), Default::default());
+        a.run("select.all", json!({})).unwrap();
+        let mut h = egui_kittest::Harness::builder().with_size(Vec2::new(400.0, 400.0)).build_ui_state(
+            |ui, app: &mut WordApp| {
+                egui::Area::new(egui::Id::new("font_colour_probe")).fixed_pos(pos2(50.0, 50.0)).show(ui.ctx(), |ui| {
+                    font_color_menu(ui, app);
+                });
+            },
+            a,
+        );
+        steps(&mut h);
+        let automatic = h.get(By::new().label_contains("Automatic")).rect().center();
+        h.state_mut().canvas.want_focus = false;
+        click_at(&mut h, automatic);
+        assert!(h.state().canvas.want_focus, "Automatic returns focus to the document");
+    }
+
+    /// #3038: a pick from the bar's highlight grid hands the keyboard back to the document,
+    /// like the No Color button beside the swatches (it ran through `run_from_ribbon` already).
+    #[test]
+    fn picking_a_highlight_swatch_returns_focus_to_the_document() {
+        let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("Hello")), Default::default());
+        a.run("select.all", json!({})).unwrap();
+        let origin = egui::Id::new("hl_swatch_origin");
+        let mut h = egui_kittest::Harness::builder().with_size(Vec2::new(400.0, 300.0)).build_ui_state(
+            move |ui, app: &mut WordApp| {
+                egui::Area::new(egui::Id::new("hl_probe")).fixed_pos(pos2(100.0, 100.0)).show(ui.ctx(), |ui| {
+                    ui.ctx().data_mut(|d| d.insert_temp(origin, ui.next_widget_position()));
+                    highlight_menu(ui, app);
+                });
+            },
+            a,
+        );
+        steps(&mut h);
+        // The first rendered swatch is Yellow (None is skipped), 18 × 18 at the grid's origin.
+        let first = h.ctx.data(|d| d.get_temp::<egui::Pos2>(origin)).expect("the grid drew");
+        h.state_mut().canvas.want_focus = false;
+        click_at(&mut h, first + Vec2::new(9.0, 9.0));
+        assert!(h.state().canvas.want_focus, "the swatch pick returns focus to the document");
+        assert!(format_state(&mut h).get("highlight").is_some_and(|v| !v.is_null()), "the first swatch applied a highlight");
     }
 }

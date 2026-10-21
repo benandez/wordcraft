@@ -355,6 +355,8 @@
 	First line:	Първи ред:
 	Fixed Column Width	Фиксирана ширина на колоните
 	Focus	Фокус
+	Full Screen View	Изглед на цял екран
+	Show the ribbon	Показване на лентата
 	Font	Шрифт
 	Font Color	Цвят на шрифта
 	Font Dialog	Диалогов прозорец за шрифт
@@ -2412,6 +2414,7 @@
 	{name} already exists. Choose Save again to replace it.	{name} вече съществува. Изберете „Запазване“ отново, за да го замените.
 	This folder can't be read: {error}	Тази папка не може да бъде прочетена: {error}
 	Showing the first {count} items.	Показани са първите {count} елемента.
+	No items to show.	Няма елементи за показване.
 	File name:	Име на файла:
 	Browse in WordCraft…	Разглеждане в WordCraft…
 	Open a file with WordCraft's own browser when the system file dialog doesn't appear.	Отваряне на файл чрез собствения браузър на WordCraft, когато системният диалогов прозорец за файлове не се появява.
@@ -2687,3 +2690,43 @@
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Въведете размер в произволна единица, например 5 cm или 300 px. Другата страна се променя съответно, така че картината запазва пропорциите си.
 
 	Import…	Импортиране…
+	Format Shape Pane	Екран „Форматиране на фигура“
+	Format Shape	Форматиране на фигура
+	Format Shape…	Форматиране на фигура…
+	No fill	Без запълване
+	Solid fill	Плътно запълване
+	Gradient fill	Преливащо запълване
+	Preset gradients	Готови преливания
+	Radial	Радиално
+	Rectangular	Правоъгълно
+	Path	Контур
+	Direction	Посока
+	Angle	Ъгъл
+	Gradient stops	Точки на преливането
+	Add gradient stop	Добавяне на точка на преливане
+	Remove gradient stop	Премахване на точка на преливане
+	Rotate with shape	Завъртане с фигурата
+	Gradient	Преливане
+	No Gradient	Без преливане
+	Light Variations	Светли варианти
+	Dark Variations	Тъмни варианти
+	More Gradients…	Още преливания…
+	Select a shape, text box or drawing canvas to format its fill.	Изберете фигура, текстово поле или платно за рисуване, за да форматирате запълването му.
+	Linear Right	Линейно надясно
+	Linear Diagonal - Top Left to Bottom Right	Линейно диагонално – от горе вляво към долу вдясно
+	Linear Down	Линейно надолу
+	Linear Diagonal - Top Right to Bottom Left	Линейно диагонално – от горе вдясно към долу вляво
+	Linear Left	Линейно наляво
+	Linear Diagonal - Bottom Right to Top Left	Линейно диагонално – от долу вдясно към горе вляво
+	Linear Up	Линейно нагоре
+	Linear Diagonal - Bottom Left to Top Right	Линейно диагонално – от долу вляво към горе вдясно
+	From Top Left Corner	От ъгъла горе вляво
+	From Top Right Corner	От ъгъла горе вдясно
+	From Bottom Left Corner	От ъгъла долу вляво
+	From Bottom Right Corner	От ъгъла долу вдясно
+	From Center	От центъра
+	Soft	Меко
+	Lit from Top	Осветено отгоре
+	Deep	Наситено
+	Lit from Bottom	Осветено отдолу
+	Center Glow	Сияние от центъра

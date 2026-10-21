@@ -274,6 +274,8 @@
 	First line:	İlk satır:
 	Fixed Column Width	Sabit Sütun Genişliği
 	Focus	Odak
+	Full Screen View	Tam Ekran Görünümü
+	Show the ribbon	Şeridi göster
 	Font	Yazı Tipi
 	Font Color	Yazı Tipi Rengi
 	Font color:	Yazı tipi rengi:
@@ -2197,6 +2199,7 @@ preview	Title	Örnek
 	{name} already exists. Choose Save again to replace it.	{name} zaten var. Değiştirmek için Kaydet'i yeniden seçin.
 	This folder can't be read: {error}	Bu klasör okunamıyor: {error}
 	Showing the first {count} items.	İlk {count} öğe gösteriliyor.
+	No items to show.	Gösterilecek öğe yok.
 	File name:	Dosya adı:
 	Browse in WordCraft…	WordCraft'ta Gözat…
 	Open a file with WordCraft's own browser when the system file dialog doesn't appear.	Sistemin dosya iletişim kutusu açılmadığında dosyayı WordCraft'ın kendi dosya tarayıcısıyla açın.
@@ -2695,3 +2698,43 @@ preview	Title	Örnek
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Herhangi bir birimde bir boyut yazın, örneğin 5 cm veya 300 px. Diğer kenar da buna uyar, böylece resim oranlarını korur.
 
 	Import…	İçe aktar…
+	Format Shape Pane	Şekli Biçimlendir bölmesi
+	Format Shape	Şekli Biçimlendir
+	Format Shape…	Şekli Biçimlendir…
+	No fill	Dolgu yok
+	Solid fill	Düz dolgu
+	Gradient fill	Degrade dolgu
+	Preset gradients	Hazır degradeler
+	Radial	Dairesel
+	Rectangular	Dikdörtgen
+	Path	Yol
+	Direction	Yön
+	Angle	Açı
+	Gradient stops	Degrade durakları
+	Add gradient stop	Degrade durağı ekle
+	Remove gradient stop	Degrade durağını kaldır
+	Rotate with shape	Şekille birlikte döndür
+	Gradient	Degrade
+	No Gradient	Degrade yok
+	Light Variations	Açık çeşitler
+	Dark Variations	Koyu çeşitler
+	More Gradients…	Diğer degradeler…
+	Select a shape, text box or drawing canvas to format its fill.	Dolgusunu biçimlendirmek için bir şekil, metin kutusu veya çizim tuvali seçin.
+	Linear Right	Doğrusal sağa
+	Linear Diagonal - Top Left to Bottom Right	Doğrusal çapraz – sol üst köşeden sağ alt köşeye
+	Linear Down	Doğrusal aşağı
+	Linear Diagonal - Top Right to Bottom Left	Doğrusal çapraz – sağ üst köşeden sol alt köşeye
+	Linear Left	Doğrusal sola
+	Linear Diagonal - Bottom Right to Top Left	Doğrusal çapraz – sağ alt köşeden sol üst köşeye
+	Linear Up	Doğrusal yukarı
+	Linear Diagonal - Bottom Left to Top Right	Doğrusal çapraz – sol alt köşeden sağ üst köşeye
+	From Top Left Corner	sol üst köşeden
+	From Top Right Corner	sağ üst köşeden
+	From Bottom Left Corner	sol alt köşeden
+	From Bottom Right Corner	sağ alt köşeden
+	From Center	Merkezden
+	Soft	Yumuşak
+	Lit from Top	Üstten aydınlatılmış
+	Deep	Koyu
+	Lit from Bottom	Alttan aydınlatılmış
+	Center Glow	Merkez parıltısı

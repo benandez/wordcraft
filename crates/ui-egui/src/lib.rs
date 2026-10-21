@@ -54,9 +54,11 @@ pub mod equation_tab;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod file_browser;
 pub mod file_dialogs;
+pub mod format_shape;
 pub mod frame;
 pub mod guides;
 pub mod i18n;
+pub mod ibeam;
 pub mod icons;
 pub mod ink;
 pub mod keys;
@@ -301,6 +303,8 @@ pub struct UiState {
     /// View › Switch Modes: show pages dark (white text on black), kept between runs. Only the
     /// pages: the interface follows [`UiState::theme`] (#312).
     pub dark_page: bool,
+    /// File › Options › Proofing › Check spelling as you type, kept between runs (#1792).
+    pub check_spelling: bool,
     /// File › Options › Advanced › Animation: the caret glides to its new place and its blink
     /// fades, as Word's does on Windows (on, the default), or it jumps and blinks on and off
     /// (off).
@@ -386,6 +390,7 @@ impl Default for UiState {
             alt_pressed: false,
             alt_chord_used: false,
             dark_page: false,
+            check_spelling: true,
             caret_animation: true,
             keyboard: wordcraft_engine::KeyMap::default(),
             ribbon: wordcraft_engine::RibbonLayout::default(),
@@ -526,6 +531,8 @@ pub struct WordApp {
     pub integrated_titlebar: bool,
     /// macOS: the title bar's height and where its content starts, around the traffic lights.
     pub mac_titlebar: chrome::MacTitleBar,
+    /// Focus (#1678): the ribbon is dropped down from the Focus bar, over the page.
+    pub(crate) focus_ribbon: bool,
     control_rx: Option<std::sync::mpsc::Receiver<ControlRequest>>,
     shot_token: u64,
     queued_shots: Vec<(u64, f64, u32)>,
@@ -665,6 +672,7 @@ impl WordApp {
             previews: previews::Previews::default(),
             integrated_titlebar: false,
             mac_titlebar: chrome::MacTitleBar::default(),
+            focus_ribbon: false,
             control_rx: None,
             shot_token: 0,
             queued_shots: Vec::new(),
@@ -762,6 +770,7 @@ impl WordApp {
         ui.read_aloud_skip_citations = self.session.read_aloud.skip_citations;
         ui.dark_page = self.session.view.dark_mode;
         ui.nav_pane = self.session.view.nav_pane;
+        ui.check_spelling = self.session.view.proofing;
         ui.keyboard = self.session.keymap.clone();
         ui.ribbon = self.session.ribbon.clone();
         ui.ink_pens = self.session.view.draw.pens.clone();
@@ -807,6 +816,7 @@ impl WordApp {
         self.session.read_aloud.skip_citations = self.ui.read_aloud_skip_citations;
         self.session.view.dark_mode = self.ui.dark_page;
         self.session.view.nav_pane = self.ui.nav_pane;
+        self.session.view.proofing = self.ui.check_spelling;
         // Keys for commands this version doesn't have are dropped.
         self.session.keymap = std::mem::take(&mut self.ui.keyboard);
         let reg = self.session.registry.clone();
@@ -1522,6 +1532,18 @@ impl WordApp {
                 self.ui.ribbon_collapsed = !self.ui.ribbon_collapsed;
                 json!({"collapsed": self.ui.ribbon_collapsed})
             }
+            "ui.focusRibbon" => {
+                // Focus's "⋯" (#1678): `value` true drops the ribbon down over the page, false
+                // puts it away; no value toggles it. Outside Focus there is no ribbon to drop:
+                // it stays put away.
+                let focus = chrome::Screen::of(&self.session.view) == chrome::Screen::Focus;
+                match p.get("value") {
+                    None => self.focus_ribbon = focus && !self.focus_ribbon,
+                    Some(Value::Bool(on)) => self.focus_ribbon = focus && *on,
+                    Some(_) => return Some(Err("`value` must be true or false".into())),
+                }
+                json!({"focusRibbon": self.focus_ribbon})
+            }
             "ui.quickAccessToolbar" => {
                 // Hide Quick Access Toolbar (its menu) and Show Quick Access Toolbar (the ribbon's
                 // right-click menu, Customize Ribbon), #1945: `value` true shows the toolbar in
@@ -2203,10 +2225,9 @@ impl WordApp {
         // Keytips are read before layout so the frame paints the new state; badges paint after
         // the ribbon so they sit on top of it.
         crate::keytips::logic(self, &ctx);
-        // Focus (View › Immersive, the status bar) keeps only the title bar and the page; Escape
-        // brings the rest back, as in Word.
-        if self.session.view.focus_mode && self.dialog.is_none() && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
-            let _ = self.run("view.focus", json!({"value": false}));
+        // A failed Recent open is news only until File closes (#2938).
+        if !self.ui.backstage {
+            backstage::forget_open_error(&ctx);
         }
         if self.ui.backstage {
             backstage::show(self, ui);
@@ -2217,15 +2238,24 @@ impl WordApp {
             chrome::status_bar(self, ui);
             egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.canvas)).show(ui, |_| {});
         } else {
-            chrome::title_bar(self, ui);
-            if !self.session.view.focus_mode {
+            let screen = chrome::Screen::of(&self.session.view);
+            // Focus and Full Screen (#1678) take the whole screen, with only their slim bar.
+            self.focus_ribbon &= screen == chrome::Screen::Focus;
+            if screen != chrome::Screen::Normal {
+                chrome::screen_bar(self, ui, screen);
+            } else {
+                chrome::title_bar(self, ui);
                 ribbon::show(self, ui);
                 chrome::status_bar(self, ui);
                 panes::show(self, ui);
             }
-            egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.canvas)).show(ui, |ui| {
+            let fill = if screen == chrome::Screen::Focus { chrome::FOCUS_CANVAS } else { t.canvas };
+            egui::CentralPanel::default().frame(egui::Frame::NONE.fill(fill)).show(ui, |ui| {
                 canvas::show(self, ui);
             });
+            if self.focus_ribbon {
+                chrome::focus_ribbon(self, &ctx);
+            }
         }
         content_controls::popup(self, &ctx);
         dialogs::show(self, &ctx);
@@ -2255,22 +2285,31 @@ impl WordApp {
         self.report_dirty();
     }
 
-    /// Carry View › Full Screen (`view.fullScreen`, F11) to the window, and follow the window
-    /// when the system takes it in or out of full screen (the macOS title bar button, the window
-    /// manager). Leaving full screen gives the window back its earlier size and place: the system
-    /// keeps them, and [`window_geometry`] never saves a full-screen size (#980).
+    /// Carry View › Full Screen (`view.fullScreen`, F11), Focus and Full Screen View (#1678) to
+    /// the window, and follow the window when the system takes it in or out of full screen (the
+    /// macOS title bar button, the window manager): in is Full Screen, out ends all three. Leaving
+    /// full screen gives the window back its earlier size and place: the system keeps them, and
+    /// [`window_geometry`] never saves a full-screen size (#980).
     fn sync_full_screen(&mut self, ctx: &egui::Context) {
+        let v = &self.session.view;
+        let want = v.full_screen || v.focus_mode || v.full_screen_view;
         let seen = ctx.input(|i| i.viewport().fullscreen);
         if seen != self.seen_full_screen {
             self.seen_full_screen = seen;
             if let Some(on) = seen
-                && on != self.session.view.full_screen
+                && on != want
             {
-                self.session.view.full_screen = on;
+                let v = &mut self.session.view;
+                v.full_screen = on;
+                if !on {
+                    v.focus_mode = false;
+                    v.full_screen_view = false;
+                }
                 self.sent_full_screen = on;
             }
         }
-        let want = self.session.view.full_screen;
+        let v = &self.session.view;
+        let want = v.full_screen || v.focus_mode || v.full_screen_view;
         if want != self.sent_full_screen {
             ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(want));
             self.sent_full_screen = want;
@@ -2292,11 +2331,13 @@ impl WordApp {
             return;
         }
         let Some(pos) = ctx.input(|i| if i.pointer.any_click() { i.pointer.interact_pos() } else { None }) else { return };
+        // The ribbon dropped over the page in Focus (#1678) is chrome, though it lies over the page.
+        let on_focus_ribbon = self.focus_ribbon && ctx.layer_id_at(pos).is_some_and(|l| l.id == egui::Id::new("focus_ribbon"));
         // The page handles its own clicks (comment balloons there take the keyboard themselves).
-        if self.canvas.balloon.is_some() || self.canvas.viewport.is_some_and(|v| v.contains(pos)) {
+        if !on_focus_ribbon && (self.canvas.balloon.is_some() || self.canvas.viewport.is_some_and(|v| v.contains(pos))) {
             return;
         }
-        let on_chrome = ctx.layer_id_at(pos).is_none_or(|l| l.order == egui::Order::Background);
+        let on_chrome = on_focus_ribbon || ctx.layer_id_at(pos).is_none_or(|l| l.order == egui::Order::Background);
         if on_chrome && ctx.memory(|m| m.focused().is_none()) && !egui::Popup::is_any_open(ctx) {
             self.canvas.want_focus = true;
             // The page has already been drawn, so it only sees `want_focus` next frame, and its own
@@ -2738,6 +2779,185 @@ mod tests {
         assert_eq!(titles(&mut app), 1);
     }
 
+    /// #1678: Focus and Full Screen View put the window in full screen, asked of the system once
+    /// per change (switching between the two keeps it), and the usual window comes back after.
+    #[test]
+    fn focus_and_full_screen_view_ask_for_full_screen_once_per_change() {
+        let ctx = egui::Context::default();
+        let mut app = app();
+        let sent = |app: &mut WordApp| {
+            let out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                app.logic(ui.ctx());
+                app.ui(ui);
+            });
+            let v: Vec<bool> = out
+                .viewport_output
+                .values()
+                .flat_map(|v| v.commands.iter())
+                .filter_map(|c| if let egui::ViewportCommand::Fullscreen(b) = c { Some(*b) } else { None })
+                .collect();
+            out.drop_without_applying_deltas();
+            v
+        };
+        let start: Vec<bool> = (0..4).flat_map(|_| sent(&mut app)).collect();
+        assert!(start.is_empty(), "the window starts as it was: {start:?}");
+        app.run("view.focus", json!({})).unwrap();
+        assert_eq!(sent(&mut app), [true]);
+        assert!(sent(&mut app).is_empty());
+        app.run("view.fullScreenView", json!({})).unwrap();
+        assert!(sent(&mut app).is_empty(), "Focus to Full Screen View stays full screen");
+        app.run("view.fullScreenView", json!({})).unwrap();
+        assert_eq!(sent(&mut app), [false]);
+    }
+
+    /// #1678: Focus hides the title bar, ribbon and status bar; "⋯" drops the ribbon over the
+    /// page without leaving Focus, and Escape leaves Focus (and Full Screen View).
+    #[test]
+    fn focus_hides_the_chrome_drops_the_ribbon_and_esc_leaves() {
+        use egui_kittest::kittest::Queryable;
+        let mut a = app();
+        a.run("text.insert", json!({"text": "Hello"})).unwrap();
+        let mut h = harness(a);
+        h.run_steps(4);
+        assert!(h.query_by_label("Insert").is_some(), "the ribbon's tabs show in the usual window");
+        // Focus on the status bar, as a user turns it on.
+        h.get_by_label("Focus").click();
+        h.run_steps(3);
+        assert!(h.state().session.view.focus_mode, "the status bar's Focus turns Focus on");
+        assert!(h.query_by_label("Insert").is_none(), "Focus hides the ribbon");
+        assert!(h.query_by_label("Search commands and help").is_none(), "and the title bar");
+        // "⋯" in the Focus bar, at the top centre.
+        h.get_by_label("Show the ribbon").click();
+        h.run_steps(3);
+        assert!(h.query_by_label("Insert").is_some(), "the ribbon drops down");
+        assert!(h.state().session.view.focus_mode, "still in Focus");
+        // A click on the dropped ribbon works it and leaves it down; one on the page puts it away.
+        h.get_by_label("Insert").click();
+        h.run_steps(3);
+        assert!(h.state().focus_ribbon && h.state().ui.tab == "Insert", "a click on the ribbon keeps it down");
+        // The dropped ribbon lies over the page but is chrome: its click hands the keyboard back
+        // to the page, as a ribbon click does in the usual window (#1093).
+        assert!(h.state().canvas.focused, "a click on the dropped ribbon gives the page the keyboard");
+        h.event(egui::Event::Text("x".into()));
+        h.run_steps(2);
+        assert!(h.state().session.doc.plain_text(wordcraft_doc::StoryRef::Body).contains("Hellox"), "typing after it reaches the page");
+        assert!(h.state().focus_ribbon, "typing leaves the dropped ribbon down");
+        let page = crate::canvas::page_to_screen(h.state_mut(), 0, 300.0, 600.0).unwrap();
+        h.event(egui::Event::PointerMoved(page));
+        h.event(egui::Event::PointerButton { pos: page, button: egui::PointerButton::Primary, pressed: true, modifiers: Default::default() });
+        h.event(egui::Event::PointerButton { pos: page, button: egui::PointerButton::Primary, pressed: false, modifiers: Default::default() });
+        h.run_steps(3);
+        assert!(!h.state().focus_ribbon && h.state().session.view.focus_mode, "a click on the page puts it away, still in Focus");
+        h.get_by_label("Show the ribbon").click();
+        h.run_steps(3);
+        h.key_press(egui::Key::Escape);
+        h.run_steps(3);
+        let a = h.state_mut();
+        assert!(!a.session.view.focus_mode && !a.focus_ribbon, "Escape leaves Focus");
+        a.run("view.fullScreenView", json!({})).unwrap();
+        h.run_steps(3);
+        assert!(h.query_by_label("Insert").is_none(), "Full Screen View shows the pages alone");
+        assert!(h.query_by_label("Search commands and help").is_some(), "with Search at the top");
+        h.key_press(egui::Key::Escape);
+        h.run_steps(3);
+        assert!(!h.state().session.view.full_screen_view, "Escape leaves Full Screen View");
+        // Full Screen (#980, F11) is the whole window, ribbon and all.
+        h.state_mut().run("view.fullScreen", json!({})).unwrap();
+        h.run_steps(3);
+        assert!(h.query_by_label("Insert").is_some(), "Full Screen keeps the ribbon");
+    }
+
+    /// #1678: Focus's dropped ribbon is a command, `ui.focusRibbon`, which "⋯" and a click on the
+    /// page run; outside Focus it does nothing and never fails.
+    #[test]
+    fn focus_ribbon_is_a_command() {
+        let mut a = app();
+        let off = json!({"focusRibbon": false});
+        assert_eq!(a.run("ui.focusRibbon", json!({})).unwrap(), off, "outside Focus there is no ribbon to drop");
+        assert_eq!(a.run("ui.focusRibbon", json!({"value": true})).unwrap(), off);
+        assert!(!a.focus_ribbon);
+        a.run("view.focus", json!({})).unwrap();
+        assert_eq!(a.run("ui.focusRibbon", json!({})).unwrap(), json!({"focusRibbon": true}), "no value toggles it");
+        assert!(a.focus_ribbon && a.session.view.focus_mode);
+        assert_eq!(a.run("ui.focusRibbon", json!({})).unwrap(), off);
+        assert_eq!(a.run("ui.focusRibbon", json!({"value": true})).unwrap()["focusRibbon"], true);
+        assert_eq!(a.run("ui.focusRibbon", json!({"value": true})).unwrap()["focusRibbon"], true, "true keeps it down");
+        for junk in [json!({"value": "yes"}), json!({"value": 1}), json!({"value": null}), json!({"value": [true]})] {
+            assert!(a.run("ui.focusRibbon", junk).is_err());
+        }
+        assert!(a.focus_ribbon, "a refused value leaves it as it was");
+        assert_eq!(a.run("ui.focusRibbon", json!({"value": false})).unwrap(), off);
+        assert!(a.session.view.focus_mode, "putting the ribbon away stays in Focus");
+    }
+
+    /// A harness on a document with text whose page has the keyboard.
+    fn canvas_harness() -> egui_kittest::Harness<'static, WordApp> {
+        let mut a = app();
+        a.run("text.insert", json!({"text": "Hello"})).unwrap();
+        let mut h = harness(a);
+        h.run_steps(4);
+        h.state_mut().canvas.want_focus = true;
+        h.run_steps(3);
+        assert!(h.state().canvas.focused, "the page has the keyboard");
+        h
+    }
+
+    /// #1678: one Escape path. In Focus with text selected on the page, the first Escape only
+    /// collapses the selection, as in a normal window, and the second leaves Focus. A handler that
+    /// takes Escape for Focus before the page sees it would leave Focus with the selection kept.
+    #[test]
+    fn focus_esc_collapses_the_selection_first_then_leaves() {
+        let mut h = canvas_harness();
+        h.state_mut().run("view.focus", json!({})).unwrap();
+        h.run_steps(3);
+        h.state_mut().run("select.all", json!({})).unwrap();
+        h.run_steps(2);
+        assert!(h.state().canvas.focused && h.state().session.view.focus_mode);
+        assert!(!h.state().session.sel.is_collapsed(), "text is selected");
+        h.key_press(egui::Key::Escape);
+        h.run_steps(3);
+        assert!(h.state().session.sel.is_collapsed(), "the first Escape collapses the selection");
+        assert!(h.state().session.view.focus_mode, "and keeps Focus");
+        h.key_press(egui::Key::Escape);
+        h.run_steps(3);
+        assert!(!h.state().session.view.focus_mode, "the second Escape leaves Focus");
+    }
+
+    /// Ctrl+F1 pressed on the page, through the app's key handling.
+    #[cfg(not(target_os = "macos"))]
+    fn press_ctrl_f1(h: &mut egui_kittest::Harness<'static, WordApp>) {
+        let modifiers = egui::Modifiers { ctrl: true, command: true, ..Default::default() };
+        h.event(egui::Event::Key { key: egui::Key::F1, physical_key: None, pressed: true, repeat: false, modifiers });
+        h.event(egui::Event::Key { key: egui::Key::F1, physical_key: None, pressed: false, repeat: false, modifiers });
+        h.run_steps(3);
+    }
+
+    /// #1678: unbound, Ctrl+F1 collapses the ribbon and a second one brings it back (not on
+    /// macOS, where Ctrl+F1 is the system's).
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn ctrl_f1_through_the_app_collapses_the_ribbon() {
+        let mut h = canvas_harness();
+        assert!(!h.state().ui.ribbon_collapsed);
+        press_ctrl_f1(&mut h);
+        assert!(h.state().ui.ribbon_collapsed, "Ctrl+F1 collapses the ribbon");
+        assert!(!h.state().session.view.focus_mode);
+        press_ctrl_f1(&mut h);
+        assert!(!h.state().ui.ribbon_collapsed, "and brings it back");
+    }
+
+    /// #1678: a Ctrl+F1 the user binds in Customize Keyboard runs their command through the app,
+    /// and the ribbon stays as it was.
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn a_user_bound_ctrl_f1_through_the_app_runs_the_command() {
+        let mut h = canvas_harness();
+        h.state_mut().session.keymap = wordcraft_engine::keymap::KeyMap::from_value(&json!({"assigned": {"Mod+F1": "view.focus"}}));
+        press_ctrl_f1(&mut h);
+        assert!(h.state().session.view.focus_mode, "the bound command ran");
+        assert!(!h.state().ui.ribbon_collapsed, "the ribbon is unchanged");
+    }
+
     /// The caption is Inter semibold, which has no Hebrew (or Arabic, Thai, …), so egui would
     /// paint each of those letters as `?`. Opening such a file borrows one document fallback
     /// face. A CJK name uses the CJK UI font instead of that list.
@@ -2998,6 +3218,29 @@ mod tests {
         b.run("ui.startScreen", json!({"value": false})).unwrap();
         assert!(!b.start_screen(), "off: today's behaviour");
         assert!(!b.ui.backstage && b.has_document());
+    }
+
+    /// #3045: on the empty window (no document behind the Start screen) the ribbon is greyed
+    /// out, but the tab strip works: File reaches the Start screen again, where a document can
+    /// be made. Disabling the Share / Editing / Comments row disabled the whole line, the tab
+    /// strip with it: the tabs took clicks that did nothing.
+    #[test]
+    fn empty_window_ribbon_tabs_reach_the_start_screen() {
+        use egui_kittest::kittest::Queryable;
+        let mut a = app();
+        a.start_screen();
+        let mut h = harness(a);
+        h.run_steps(4);
+        // Esc (or the back arrow) leaves the Start screen for the empty window, as #1129 has it.
+        h.key_press(egui::Key::Escape);
+        h.run_steps(4);
+        assert!(!h.state().ui.backstage, "the empty window");
+        assert!(!h.state().has_document(), "with no document");
+        // File, the first tab, is live and reaches the Start screen.
+        h.get_by_label("File").click();
+        h.run_steps(4);
+        assert!(h.state().ui.backstage && h.state().ui.backstage_page == "home", "File reaches the Start screen");
+        assert!(h.query_by_label("Blank document").is_some(), "where a document can be made");
     }
 
     /// #1908: with no document open the Home ribbon's split buttons grey out like the plain
@@ -4364,6 +4607,85 @@ mod tests {
         a.raw_input_hook(&mut native);
         assert!(!native.focused, "a frame without control keys keeps the native focus state");
         assert!(!a.canvas.focused);
+    }
+
+    /// #2103: double-clicking the page number in a later page's footer opens the footer there;
+    /// the view stays on that page instead of jumping to the top of the document.
+    #[test]
+    fn double_clicking_a_later_pages_footer_does_not_scroll_to_the_top() {
+        let ctx = egui::Context::default();
+        let mut a = app();
+        // A header too, so opening the header instead of the footer can't pass.
+        a.run("insert.header", json!({"text": "Head"})).unwrap();
+        a.run("insert.closeHeader", json!({})).unwrap();
+        a.run("insert.pageNumber", json!({"position": "bottom"})).unwrap();
+        for _ in 0..4 {
+            a.run("text.insert", json!({"text": "Some body text on this page."})).unwrap();
+            a.run("insert.pageBreak", json!({})).unwrap();
+        }
+        a.run("text.insert", json!({"text": "The last page."})).unwrap();
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 800.0));
+        let mut t = 0.0;
+        let mut frame = |a: &mut WordApp, events: Vec<egui::Event>| {
+            t += 1.0 / 60.0;
+            let input = egui::RawInput { events, time: Some(t), screen_rect: Some(screen), ..Default::default() };
+            ctx.run_ui(input, |ui| {
+                a.logic(ui.ctx());
+                a.ui(ui);
+            })
+            .drop_without_applying_deltas();
+        };
+        let btn = |pos, pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+        for _ in 0..30 {
+            frame(&mut a, Vec::new());
+        }
+        let last = a.session.layout().pages.len() - 1;
+        assert!(last >= 3, "several pages");
+        let page = a.session.layout().pages[last].clone();
+        let (x, y) = (page.body.x + page.body.w / 2.0, (page.body.bottom() + page.h) / 2.0);
+        // Scroll the reader to the last page's footer, as with the wheel.
+        let at = canvas::page_to_screen(&mut a, last, x, y).expect("footer laid out");
+        let vp = a.canvas.viewport.expect("the canvas laid out");
+        let wheel = egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(0.0, vp.center().y - at.y),
+            phase: egui::TouchPhase::Move,
+            modifiers: Default::default(),
+        };
+        frame(&mut a, vec![egui::Event::PointerMoved(vp.center()), wheel]);
+        for _ in 0..30 {
+            frame(&mut a, Vec::new());
+        }
+        let at = canvas::page_to_screen(&mut a, last, x, y).expect("footer laid out");
+        assert!(vp.contains(at), "the last page's footer is on screen");
+        let before = a.canvas.scroll_offset;
+        assert!(before.y > 1000.0, "scrolled down to the last page: {before:?}");
+        frame(&mut a, vec![egui::Event::PointerMoved(at)]);
+        // A single click there leaves the caret and the view alone (it used to scroll up to the
+        // body text above).
+        let caret = a.session.sel.clone();
+        frame(&mut a, vec![btn(at, true)]);
+        // Already at the press, before the release can decide anything.
+        assert_eq!(a.session.sel, caret, "pressing in the footer area doesn't move the caret");
+        assert!((a.canvas.scroll_offset.y - before.y).abs() < 1.0, "pressing doesn't scroll: {before:?} -> {:?}", a.canvas.scroll_offset);
+        frame(&mut a, vec![btn(at, false)]);
+        for _ in 0..40 {
+            frame(&mut a, Vec::new());
+        }
+        assert_eq!(a.session.sel, caret, "a single click in the footer area doesn't move the caret");
+        assert!((a.canvas.scroll_offset.y - before.y).abs() < 1.0, "a single click doesn't scroll: {before:?} -> {:?}", a.canvas.scroll_offset);
+        for _ in 0..2 {
+            frame(&mut a, vec![btn(at, true)]);
+            frame(&mut a, vec![btn(at, false)]);
+        }
+        for _ in 0..30 {
+            frame(&mut a, Vec::new());
+        }
+        let footer = page.footer_story.expect("the clicked page has a footer");
+        assert!(page.header_story.is_some_and(|h| h != footer), "the page has a separate header: {:?}", page.header_story);
+        assert_eq!(a.session.sel.focus.story, wordcraft_doc::StoryRef::Part(footer), "editing the clicked page's footer");
+        assert_eq!(a.session.page_hint, last, "on the clicked page");
+        assert!((a.canvas.scroll_offset.y - before.y).abs() < 1.0, "the view stays put: {before:?} -> {:?}", a.canvas.scroll_offset);
     }
 
     /// The control channel's `ui.wheel` scrolls the canvas like a mouse wheel over it.
@@ -6614,6 +6936,22 @@ mod tests {
     }
 
     #[test]
+    fn check_spelling_survives_restart() {
+        // #1792: unchecking Check spelling as you type was forgotten on restart.
+        let mut first = app();
+        assert!(first.session.view.proofing);
+        first.run("file.options", json!({"checkSpelling": false})).unwrap();
+        let saved = serde_json::to_vec(&first.prefs()).unwrap();
+
+        let mut second = app();
+        second.apply_prefs(serde_json::from_slice(&saved).unwrap());
+        assert!(!second.session.view.proofing);
+        // Settings saved before #1792 have no key: spelling stays on.
+        second.apply_prefs(serde_json::from_str("{}").unwrap());
+        assert!(second.session.view.proofing);
+    }
+
+    #[test]
     fn prefs_without_user_name_keep_default() {
         let mut a = app();
         let default = a.session.author.clone();
@@ -6933,6 +7271,12 @@ mod tests {
         assert!(a.session.view.full_screen);
         assert!(frame(&mut a, Some(false)).is_empty());
         assert!(!a.session.view.full_screen, "and came back");
+        // Focus, then the system takes the window out of full screen: Focus ends with it.
+        a.run("view.focus", json!({})).unwrap();
+        assert_eq!(frame(&mut a, Some(false)), vec![egui::ViewportCommand::Fullscreen(true)]);
+        assert!(frame(&mut a, Some(true)).is_empty());
+        assert!(frame(&mut a, Some(false)).is_empty());
+        assert!(!a.session.view.focus_mode, "Focus ended with the window's full screen");
         // Asked for: sent once; the window is slow to report it, which doesn't undo the request.
         a.run("view.fullScreen", json!({})).unwrap();
         assert_eq!(frame(&mut a, Some(false)), vec![egui::ViewportCommand::Fullscreen(true)]);
