@@ -351,6 +351,7 @@
 	Focus	Tập trung
 	Full Screen View	Chế độ xem toàn màn hình
 	Show the ribbon	Hiện dải lệnh
+	Old menu keys: Alt, {keys}. Keep typing, or press Esc to cancel.	Phím menu cũ: Alt, {keys}. Tiếp tục gõ hoặc nhấn Esc để hủy.
 	Font	Phông chữ
 	Font Color	Màu phông chữ
 	Font Dialog	Hộp thoại phông chữ
@@ -1711,6 +1712,12 @@
 	Do not check spelling or grammar	Không kiểm tra chính tả hoặc ngữ pháp
 	Dutch	Tiếng Hà Lan
 	English (United Kingdom)	Tiếng Anh (Anh)
+	English (Australia)	Tiếng Anh (Úc)
+	English (Canada)	Tiếng Anh (Canada)
+	English (India)	Tiếng Anh (Ấn Độ)
+	English (Ireland)	Tiếng Anh (Ireland)
+	English (New Zealand)	Tiếng Anh (New Zealand)
+	English (South Africa)	Tiếng Anh (Nam Phi)
 	Envelope size:	Cỡ phong bì:
 	Estonian	Tiếng Estonia
 	Finnish	Tiếng Phần Lan

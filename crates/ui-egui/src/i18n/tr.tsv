@@ -276,6 +276,7 @@
 	Focus	Odak
 	Full Screen View	Tam Ekran Görünümü
 	Show the ribbon	Şeridi göster
+	Old menu keys: Alt, {keys}. Keep typing, or press Esc to cancel.	Eski menü tuşları: Alt, {keys}. Yazmaya devam edin ya da iptal etmek için Esc tuşuna basın.
 	Font	Yazı Tipi
 	Font Color	Yazı Tipi Rengi
 	Font color:	Yazı tipi rengi:
@@ -1737,6 +1738,12 @@ preview	Title	Örnek
 	Go Back	Geri Git
 	Do Not Check Spelling or Grammar	Yazım veya dilbilgisini denetleme
 	English (United Kingdom)	İngilizce (Birleşik Krallık)
+	English (Australia)	İngilizce (Avustralya)
+	English (Canada)	İngilizce (Kanada)
+	English (India)	İngilizce (Hindistan)
+	English (Ireland)	İngilizce (İrlanda)
+	English (New Zealand)	İngilizce (Yeni Zelanda)
+	English (South Africa)	İngilizce (Güney Afrika)
 	Polish	Lehçe
 	Insert Date Field	Tarih Alanı Ekle
 	Insert Page Field	Sayfa Alanı Ekle

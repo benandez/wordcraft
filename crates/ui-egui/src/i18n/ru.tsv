@@ -280,6 +280,7 @@
 	Focus	Фокус
 	Full Screen View	Полноэкранный режим
 	Show the ribbon	Показать ленту
+	Old menu keys: Alt, {keys}. Keep typing, or press Esc to cancel.	Старые клавиши меню: Alt, {keys}. Продолжайте ввод или нажмите Esc для отмены.
 	Font	Шрифт
 	Font Color	Цвет шрифта
 	Font color:	Цвет шрифта:
@@ -2186,6 +2187,12 @@ preview	Title	Пример
 	Reading Text Size	Размер текста в режиме чтения
 	Do Not Check Spelling or Grammar	Не проверять орфографию и грамматику
 	English (United Kingdom)	Английский (Великобритания)
+	English (Australia)	Английский (Австралия)
+	English (Canada)	Английский (Канада)
+	English (India)	Английский (Индия)
+	English (Ireland)	Английский (Ирландия)
+	English (New Zealand)	Английский (Новая Зеландия)
+	English (South Africa)	Английский (Южная Африка)
 	Polish	Польский
 
 # Built-in file browser (#576).

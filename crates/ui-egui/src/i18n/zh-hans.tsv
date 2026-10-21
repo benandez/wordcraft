@@ -429,6 +429,7 @@
 	Focus	专注
 	Full Screen View	全屏视图
 	Show the ribbon	显示功能区
+	Old menu keys: Alt, {keys}. Keep typing, or press Esc to cancel.	旧菜单键: Alt, {keys}。继续输入，或按 Esc 取消。
 	Font	字体
 	Font Color	字体颜色
 	Font color:	字体颜色：
@@ -1764,6 +1765,12 @@
 	Reading Line Spacing	阅读行距
 	Reading Text Size	阅读字号
 	English (United Kingdom)	英语（英国）
+	English (Australia)	英语（澳大利亚）
+	English (Canada)	英语（加拿大）
+	English (India)	英语（印度）
+	English (Ireland)	英语（爱尔兰）
+	English (New Zealand)	英语（新西兰）
+	English (South Africa)	英语（南非）
 	Polish	波兰语
 	Do Not Check Spelling or Grammar	不检查拼写和语法
 

@@ -418,6 +418,7 @@
 	Focus	Foco
 	Full Screen View	Modo de tela inteira
 	Show the ribbon	Mostrar a faixa de opções
+	Old menu keys: Alt, {keys}. Keep typing, or press Esc to cancel.	Teclas de menu antigas: Alt, {keys}. Continue digitando ou pressione Esc para cancelar.
 	Font	Fonte
 	Font Color	Cor da fonte
 	Font color:	Cor da fonte:
@@ -1764,6 +1765,12 @@
 	Reading Line Spacing	Espaçamento entre linhas na leitura
 	Reading Text Size	Tamanho do texto na leitura
 	English (United Kingdom)	Inglês (Reino Unido)
+	English (Australia)	Inglês (Austrália)
+	English (Canada)	Inglês (Canadá)
+	English (India)	Inglês (Índia)
+	English (Ireland)	Inglês (Irlanda)
+	English (New Zealand)	Inglês (Nova Zelândia)
+	English (South Africa)	Inglês (África do Sul)
 	Polish	Polonês
 	Do Not Check Spelling or Grammar	Não verificar ortografia nem gramática
 

@@ -360,6 +360,7 @@
 	Focus	Fokus
 	Full Screen View	Vollbildansicht
 	Show the ribbon	Menüband anzeigen
+	Old menu keys: Alt, {keys}. Keep typing, or press Esc to cancel.	Alte Menütasten: Alt, {keys}. Weitertippen oder mit Esc abbrechen.
 	Font	Schriftart
 	Font Color	Schriftfarbe
 	Font color:	Schriftfarbe:
@@ -2024,6 +2025,12 @@
 	Do not check spelling or grammar	Rechtschreibung und Grammatik nicht prüfen
 	Dutch	Niederländisch
 	English (United Kingdom)	Englisch (Vereinigtes Königreich)
+	English (Australia)	Englisch (Australien)
+	English (Canada)	Englisch (Kanada)
+	English (India)	Englisch (Indien)
+	English (Ireland)	Englisch (Irland)
+	English (New Zealand)	Englisch (Neuseeland)
+	English (South Africa)	Englisch (Südafrika)
 	Envelope size:	Umschlaggröße:
 	Estonian	Estnisch
 	Finnish	Finnisch
