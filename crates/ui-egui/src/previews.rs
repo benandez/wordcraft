@@ -17,6 +17,7 @@ pub struct Previews {
     tex: HashMap<String, TextureHandle>,
     /// The font list, for the interface language it was made in.
     families: Option<(&'static str, Vec<String>)>,
+    font_gen: u64,
     /// Lowercase English family → its name in that language (simsun → 宋体), and back.
     local_names: HashMap<String, String>,
     english_names: HashMap<String, String>,
@@ -156,7 +157,9 @@ impl Previews {
     /// one (宋体 for SimSun in Chinese, #505), like Word's.
     pub fn families(&mut self) -> Vec<String> {
         let lang = crate::i18n::current().code();
-        if self.families.as_ref().is_none_or(|(l, _)| *l != lang) {
+        let generation = wordcraft_fonts::FontDb::global().generation();
+        if self.families.as_ref().is_none_or(|(l, _)| *l != lang) || self.font_gen != generation {
+            self.font_gen = generation;
             let db = wordcraft_fonts::FontDb::global();
             let mut f: Vec<String> = db.families_in(lang).into_iter().filter(|f| !f.starts_with('.')).collect();
             for w in [wordcraft_doc::styles::BODY_FONT, wordcraft_doc::styles::HEADING_FONT] {
@@ -211,6 +214,7 @@ impl Previews {
     /// `families` (an entry drawn before its font was added shows the fallback face).
     pub fn fonts_changed(&mut self, ctx: &egui::Context, families: impl Iterator<Item = String>) {
         self.families = None;
+        self.east_asian = None;
         ctx.data_mut(|d| {
             for f in families {
                 d.remove::<TextureHandle>(egui::Id::new(format!("font:{f}")));
@@ -224,6 +228,7 @@ impl Previews {
             let key = format!("font:{name}");
             let tex: Option<TextureHandle> = ui.ctx().data(|d| d.get_temp::<TextureHandle>(egui::Id::new(&key)));
             let (r, resp) = ui.allocate_exact_size(vec2(260.0, crate::widgets::COMBO_PREVIEW_ROW_H), Sense::click());
+            resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name));
             let t = Tokens::get(ui.ctx());
             if resp.hovered() {
                 ui.painter().rect_filled(r, 3.0, t.hover);
@@ -500,6 +505,10 @@ pub fn style_preview(app: &mut WordApp, ui: &mut Ui, id: &str, ty: &str, size: e
     }
 }
 
+/// Tiles the Home tab's Styles gallery shows, as designed and in a compact group.
+const STYLE_TILES: usize = 6;
+const STYLE_TILES_COMPACT: usize = 3;
+
 /// The Home tab's Styles gallery.
 pub fn style_gallery(app: &mut WordApp, ui: &mut Ui, state: &Value) {
     let t = Tokens::get(ui.ctx());
@@ -509,7 +518,9 @@ pub fn style_gallery(app: &mut WordApp, ui: &mut Ui, state: &Value) {
     let skey = app.previews.styles_key(&app.session.doc, rev);
     let ppp = ui.ctx().pixels_per_point();
     let start = ui.data(|d| d.get_temp::<usize>(egui::Id::new("gallery_start"))).unwrap_or(0).min(styles.len().saturating_sub(1));
-    let visible = 6usize;
+    // A compact ribbon group (#662, #1285) trims the gallery to fewer tiles before it folds.
+    let visible = if crate::ribbon_fit::compact(ui.ctx()) { STYLE_TILES_COMPACT } else { STYLE_TILES };
+    crate::ribbon_fit::add_saving(ui.ctx(), (STYLE_TILES - STYLE_TILES_COMPACT) as f32 * 76.0);
     let (area, _) = ui.allocate_exact_size(vec2(visible as f32 * 76.0 + 18.0, crate::widgets::CONTENT_H), Sense::hover());
     ui.painter().rect(area.shrink(1.0), 4.0, t.input, Stroke::new(1.0, t.border), egui::StrokeKind::Inside);
     for (k, (id, name)) in styles.iter().skip(start).take(visible).enumerate() {

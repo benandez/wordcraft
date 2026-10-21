@@ -99,6 +99,7 @@
 	Ignore web and file addresses	Пропускати веб-адреси та шляхи до файлів
 	Ignore words in capitals	Пропускати слова з великих літер
 	Ignore words with numbers	Пропускати слова з цифрами
+	In the margin	На полях
 	Inches	Дюйми
 	Formatting exceptions	Винятки форматування
 	Include level number from:	Додати номер рівня:
@@ -126,6 +127,7 @@
 	Number alignment:	Вирівнювання номера:
 	Number format	Формат номера
 	Number style for this level:	Стиль номера для цього рівня:
+	Only for the selected text	Лише для виділеного тексту
 	Outside border	Зовнішня межа
 	Overtype	Заміна
 	Overtype (typing replaces the characters after the caret)	Заміна (введений текст замінює символи після курсора)
@@ -164,6 +166,9 @@
 	Bold	Напівжирний
 	Bookmark	Закладка
 	Bookmark name:	Назва закладки:
+	Delete Bookmark	Видалити закладку
+	Hidden bookmarks	Приховані закладки
+	Sort by:	Сортувати за:
 	Border Painter	Пензель меж
 	Border\nPainter	Пензель\nмеж
 	Borders	Межі
@@ -190,6 +195,7 @@
 	Use the Insert key to switch overtype on and off	Клавіша Insert вмикає та вимикає режим заміни
 	Whole document	Увесь документ
 	This section	Цей розділ
+	Selected text	До виділеного тексту
 	Fill	Колір заливки
 	Setting:	Тип:
 	3-D	Об'ємна
@@ -523,6 +529,8 @@
 	Labels	Етикетки
 	Landscape	Альбомна
 	Language	Мова
+	{language} (no dictionary)	{language} (немає словника)
+	No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations.	Орфографічний словник для мови «{language}» не встановлено, тому текст не перевіряється. WordCraft шукає словник Hunspell {name} у теці WORDCRAFT_DICTIONARIES та в звичайних системних розташуваннях.
 	Lasso	Ласо
 	Last Column	Останній стовпець
 	Last commit	Останній коміт
@@ -575,10 +583,14 @@
 	Modify…	Змінити…
 	Move or Resize	Перемістити або змінити розмір
 	Multilevel List	Багаторівневий список
+	Multilevel List Library	Бібліотека багаторівневих списків
+	Article I.	Стаття I.
+	Chapter 1	Глава 1
+	Section 1.01	Розділ 1.01
 	Multiple Pages	Кілька сторінок
 	Name (A–Z)	Назва (А–Я)
 	Name:	Назва:
-	Narrow  0.5" all	Вузькі — усі по 0,5″
+	Narrow  {size} all	Вузькі — усі по {size}
 	Navigation	Навігація
 	Navigation Pane	Панель навігації
 	New	Новий
@@ -605,7 +617,7 @@
 	Nonbreaking Hyphen	Нерозривний дефіс
 	Nonbreaking Space	Нерозривний пробіл
 	None	Немає
-	Normal  1" all	Звичайні — усі по 1″
+	Normal  {size} all	Звичайні — усі по {size}
 	Normal Style	Звичайний стиль
 	Not available right now	Зараз недоступно
 	Not saved	Не збережено
@@ -849,6 +861,8 @@
 	Space before/after:	Інтервал перед/після:
 	Spacing	Інтервал
 	Spacing (pt):	Інтервал (пункти):
+	Kerning for fonts:	Кернінг шрифтів:
+	Points and above	пт і більше
 	Speech	Мовлення
 	Spelling & Grammar	Правопис і граматика
 	Spelling &\nGrammar	Правопис і\nграматика
@@ -1488,6 +1502,8 @@
 	Math AutoCorrect	Математичне автовиправлення
 	More >>	Більше >>
 	Moves	Переміщення
+	Moved from:	Переміщено звідси:
+	Moved to:	Переміщено сюди:
 	New document	Новий документ
 	No changes (read only)	Без змін (лише читання)
 	Only allow this kind of editing:	Дозволити лише такий тип редагування:
@@ -1547,6 +1563,8 @@
 	Customize Ribbon	Налаштувати стрічку
 	Add to Quick Access Toolbar	Додати на панель швидкого доступу
 	Remove from Quick Access Toolbar	Видалити з панелі швидкого доступу
+	Hide Quick Access Toolbar	Приховати панель швидкого доступу
+	Show Quick Access Toolbar	Показати панель швидкого доступу
 	Customize the Ribbon…	Налаштувати стрічку…
 	Customize Quick Access Toolbar…	Налаштувати панель швидкого доступу…
 	More Commands…	Інші команди…
@@ -1566,6 +1584,11 @@
 	Add Font…	Додати шрифт…
 	Added Fonts	Додані шрифти
 	Remove Added Font	Видалити доданий шрифт
+	Load System Installed Fonts…	Завантажити встановлені системні шрифти…
+	All system fonts are already available.	Усі системні шрифти вже доступні.
+	Local font access is not supported by your browser.	Ваш браузер не підтримує доступ до локальних шрифтів.
+	Local font access was denied.	У доступі до локальних шрифтів відмовлено.
+	Loaded {count} system fonts.	Завантажено системних шрифтів: {count}.
 	Recent Colors	Останні кольори
 	More Colors…	Інші кольори…
 	Standard	Стандартні
@@ -2045,6 +2068,7 @@
 	Hyphenation zone:	Зона перенесення:
 	Italian	Італійська
 	Croatian	Хорватська
+	Indonesian	Індонезійська
 	Japanese	Японська
 	Korean	Корейська
 	Limit consecutive hyphens to:	Обмежити кількість переносів поспіль:
@@ -2091,6 +2115,53 @@
 	AutoFit Column by Double-Clicking	Добір ширини стовпця подвійним клацанням
 	Region:	Регіон:
 	Automatic ({region})	Автоматично ({region})
+	Odd Banded Rows	Непарні смугасті рядки
+	Even Banded Rows	Парні смугасті рядки
+	Odd Banded Columns	Непарні смугасті стовпці
+	Even Banded Columns	Парні смугасті стовпці
+	Top Left Cell	Ліва верхня клітинка
+	Top Right Cell	Права верхня клітинка
+	Bottom Left Cell	Ліва нижня клітинка
+	Bottom Right Cell	Права нижня клітинка
+	Inside Horizontal Border	Внутрішня горизонтальна межа
+	Inside Vertical Border	Внутрішня вертикальна межа
+	Text of the nearest paragraph with a given style (running headers)	Текст найближчого абзацу із заданим стилем (живі колонтитули)
+	Style name:	Назва стилю:
+# Mail merge: filter and sort recipients (#778)
+	Filter Recipients	Фільтр одержувачів
+	Sort Recipients	Сортування одержувачів
+	Filter and Sort	Фільтр і сортування
+	And	І
+	Or	Або
+	Comparison	Порівняння
+	Compare to	Значення
+	Add Condition	Додати умову
+	Remove condition	Видалити умову
+	Sort by	Сортувати за
+	Then by	Потім за
+	Ascending	За зростанням
+	Descending	За спаданням
+	Equal to	Дорівнює
+	Not equal to	Не дорівнює
+	Less than	Менше
+	Greater than	Більше
+	Less than or equal	Менше або дорівнює
+	Greater than or equal	Більше або дорівнює
+	Is blank	Порожнє
+	Is not blank	Не порожнє
+	Contains	Містить
+	Does not contain	Не містить
+	{count} of {total} recipients will be merged.	Одержувачів для злиття: {count} з {total}.
+	Find in list:	Знайти в списку:
+	Any field	Будь-яке поле
+	Matches: {count}	Збігів: {count}
+	Show only records that will be merged	Показувати лише записи для злиття
+	Take the last match on the page	Брати останній збіг на сторінці
+	Show its list number	Показувати його номер у списку
+	Show its number relative to this field	Показувати його номер відносно цього поля
+	Show its number with all higher levels	Показувати його номер з усіма вищими рівнями
+	Number only, without the label's words	Лише номер, без слів мітки
+	Add whether it is above or below	Додавати, вище він чи нижче
 	Start-up	Запуск
 	Show the Start screen when WordCraft starts	Показувати початковий екран під час запуску WordCraft
 	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Увімкнено: WordCraft відкривається на сторінці Файл › Основне з порожнім документом, шаблонами та нещодавніми документами. Вимкнено: відкривається порожній документ.
@@ -2142,6 +2213,24 @@
 	Suggested	Пропоновані
 	Set Proofing Language…	Вибрати мову перевірки правопису…
 	Language Preferences…	Мовні параметри…
+	Printer	Принтер
+	Select a printer	Виберіть принтер
+	Refresh printers	Оновити принтери
+	Two-sided printing	Двосторонній друк
+	Printer default	За замовчуванням принтера
+	One-sided	Односторонній
+	Two-sided: long edge	Двосторонній: довгий край
+	Two-sided: short edge	Двосторонній: короткий край
+	Grayscale	Відтінки сірого
+	Finding printers…	Пошук принтерів…
+	No printers found. Configure a system printer or export a PDF.	Принтерів не знайдено. Налаштуйте системний принтер або експортуйте PDF.
+	Printer discovery failed.	Не вдалося знайти принтери.
+	Submitting print job…	Надсилання завдання на друк…
+	Print job submitted.	Завдання на друк надіслано.
+	Print job submitted: {receipt}	Завдання на друк надіслано: {receipt}
+	Print failed: the printing worker stopped.	Друк не вдався: процес друку зупинився.
+	Print settings	Параметри друку
+	Submit print job	Надіслати завдання на друк
 
 # Dictionaries folder (#1063)
 	Dictionaries	Словники
@@ -2150,3 +2239,64 @@
 	Hunspell .aff and .dic files here (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) are used before the system's.	Файли Hunspell .aff і .dic із цієї папки (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) використовуються раніше за системні.
 	{language}: {file}	{language}: {file}
 	{language}: no dictionary found	{language}: словник не знайдено
+
+# Backstage › Recover (#586)
+	Recover	Відновити
+
+# Page Setup › Mirror margins (#1239)
+	Mirror margins	Дзеркальні поля
+
+# Insert Hyperlink › Place in This Document (#1370)
+	Existing File or Web Page	Файл або веб-сторінка
+	Link to:	Зв'язати з:
+	Place in This Document	Місце в документі
+# Table Layout › Sort dialog (#1205)
+	Column {n}	Стовпець {n}
+	Header row	Рядок заголовка
+	No header row	Без рядка заголовка
+	My list has	Мій список містить
+# Table Layout › Formula dialog (#1210)
+	Formula:	Формула:
+	Paste function:	Вставити функцію:
+# Reading Mode column widths (#1040)
+	Narrow	Вузька
+	Medium	Середня
+# Split Cells and Convert Text to Table (#2592)
+	Merge cells before split	Об'єднати клітинки перед розділенням
+	Table size	Розмір таблиці
+	AutoFit behavior	Добір розміру
+	Initial column width:	Початкова ширина стовпців:
+	AutoFit to contents	Добір розміру за вмістом
+	AutoFit to window	Добір розміру за шириною вікна
+	Separate text at	Розділювач тексту
+	Commas	Коми
+	Other:	Інше:
+	The number must be between 1 and {max}.	Число має бути від 1 до {max}.
+	The measurement must be between {min} and {max}.	Розмір має бути від {min} до {max}.
+	Recently Used Fonts	Нещодавно використані шрифти
+	All Fonts	Усі шрифти
+	Spike	Накопичувач
+	Insert Spike	Вставити з накопичувача
+# Add Font status (#1789)
+	Added 1 font	Додано 1 шрифт
+	Added {n} fonts	Додано шрифтів: {n}
+	{added}; {count} couldn't be read: {names}	{added}; не вдалося прочитати ({count}): {names}
+	{names} and {n} more	{names} та ще {n}
+	{added}; {n} skipped (limit {max})	{added}; пропущено: {n} (ліміт {max})
+
+# Drop Cap menu and Drop Cap Options (#2601)
+	Dropped	У тексті
+	In margin	На полі
+	Drop Cap Options…	Параметри буквиці…
+	Lines to drop:	Висота в рядках:
+	Distance from text:	Відстань від тексту:
+	Distance from text	Відстань від тексту
+
+# Picture Format › Size: the Size dialog, sizes typed in any unit (#2573)
+	Lock aspect ratio	Зберігати пропорції
+	Relative to original picture size	Відносно початкового розміру зображення
+	Original size	Початковий розмір
+	{width} × {height} pixels	{width} × {height} пікс.
+	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Введіть розмір у будь-яких одиницях, наприклад 5 cm або 300 px. Інша сторона зміниться разом із нею, тож зображення збереже пропорції.
+
+	Import…	Імпортувати…

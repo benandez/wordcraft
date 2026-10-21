@@ -29,7 +29,9 @@ pub(crate) fn preset_kind(prst: &str) -> ShapeKind {
         "ellipse" | "wedgeEllipseCallout" | "cloudCallout" | "cloud" | "flowChartConnector" | "donut" | "flowChartOnlineStorage" => {
             ShapeKind::Ellipse
         }
-        "triangle" | "rtTriangle" | "flowChartExtract" | "flowChartMerge" => ShapeKind::Triangle,
+        "flowChartOr" => ShapeKind::FlowchartOr,
+        "triangle" | "flowChartExtract" | "flowChartMerge" => ShapeKind::Triangle,
+        "rtTriangle" => ShapeKind::RightTriangle,
         "diamond" | "flowChartDecision" => ShapeKind::Diamond,
         "line" | "lineInv" => ShapeKind::Line,
         "straightConnector1" => ShapeKind::StraightConnector,
@@ -42,6 +44,65 @@ pub(crate) fn preset_kind(prst: &str) -> ShapeKind {
         "heart" => ShapeKind::Heart,
         _ => ShapeKind::Rectangle,
     }
+}
+
+/// The shape kind drawn for a legacy VML preset shape type `spt` (`o:spt`, the MSOSPT numbers of
+/// [MS-ODRAW] §2.4.24): that of the DrawingML preset of the same shape, through [`preset_kind`],
+/// so a preset WordCraft has no shape for is drawn as the nearest one; None for shapes with no
+/// preset geometry (freeforms, WordArt text, picture frames) and numbers MSOSPT doesn't define.
+pub(crate) fn vml_preset_kind(spt: u32) -> Option<ShapeKind> {
+    let prst = match spt {
+        // A text box's shapetype: a text box even without text, as DrawingML's `txBox`.
+        202 => return Some(ShapeKind::TextBox),
+        // Not primitive (freeform), WordArt text shapes, picture frame, host control.
+        0 | 24..=31 | 75 | 136..=175 | 201 => return None,
+        // Line and straight connector: corner to corner of the shape's box.
+        20 | 32 => "line",
+        2 => "roundRect",
+        3 => "ellipse",
+        4 => "diamond",
+        5 => "triangle",
+        6 => "rtTriangle",
+        12 => "star5",
+        13 => "rightArrow",
+        21 => "plaque",
+        23 => "donut",
+        33 => "bentConnector2",
+        34 => "bentConnector3",
+        35 => "bentConnector4",
+        36 => "bentConnector5",
+        37 => "curvedConnector2",
+        38 => "curvedConnector3",
+        39 => "curvedConnector4",
+        40 => "curvedConnector5",
+        58 => "star8",
+        59 => "star16",
+        60 => "star32",
+        62 => "wedgeRoundRectCallout",
+        63 => "wedgeEllipseCallout",
+        66 => "leftArrow",
+        67 => "downArrow",
+        68 => "upArrow",
+        69 => "leftRightArrow",
+        70 => "upDownArrow",
+        74 => "heart",
+        92 => "star24",
+        93 => "stripedRightArrow",
+        94 => "notchedRightArrow",
+        106 => "cloudCallout",
+        110 => "flowChartDecision",
+        116 => "flowChartTerminator",
+        120 => "flowChartConnector",
+        127 => "flowChartExtract",
+        128 => "flowChartMerge",
+        130 => "flowChartOnlineStorage",
+        176 => "flowChartAlternateProcess",
+        187 => "star4",
+        // Every other preset is drawn as its box, as `preset_kind` does.
+        1..=201 => "rect",
+        _ => return None,
+    };
+    Some(preset_kind(prst))
 }
 
 /// A shape's fill and outline.
@@ -84,18 +145,63 @@ pub(crate) fn shape_paint(sppr: Option<&El>, style: Option<&El>, theme: &[Rgb]) 
     ShapePaint { fill, stroke, stroke_width }
 }
 
-/// A VML colour (`strokecolor`, `fillcolor`): `#rrggbb` or `#rgb` (Word follows it with the
-/// theme slot, as in `#4472c4 [3204]`), or a colour name.
+/// Explicit DrawingML dash stops override the solid default.
+pub(crate) fn line_dash(ln: Option<&El>) -> wordcraft_doc::line_dash::LineDash {
+    use wordcraft_doc::line_dash::{LineDash, MAX_DASH_STOPS};
+    let Some(ln) = ln else { return LineDash::Solid };
+    if let Some(custom) = ln.child("a:custDash") {
+        let stops: Vec<_> =
+            custom.children("a:ds").take(MAX_DASH_STOPS).filter_map(|e| Some((dash_ratio(e.attr("d")?)?, dash_ratio(e.attr("sp")?)?))).collect();
+        return if stops.is_empty() { LineDash::Solid } else { LineDash::Custom(stops) };
+    }
+    ln.child("a:prstDash").and_then(|e| e.attr("val")).map(LineDash::from_ooxml).unwrap_or_default()
+}
+
+/// Strict OOXML may spell percentages with a percent sign instead of integer units.
+fn dash_ratio(value: &str) -> Option<u32> {
+    const PERCENT_UNITS: f64 = 1000.0;
+    let value = value.trim();
+    let Some(percent) = value.strip_suffix('%') else { return value.parse().ok() };
+    let units = percent.parse::<f64>().ok()? * PERCENT_UNITS;
+    if !units.is_finite() || !(0.0..=f64::from(u32::MAX)).contains(&units) {
+        return None;
+    }
+    Some(units.round() as u32)
+}
+
+/// A VML colour (`strokecolor`, `fillcolor`): `#rrggbb`, `rrggbb`, `#rgb` or `rgb` (Word follows it
+/// with the theme slot, as in `#4472c4 [3204]` or `4472c4 [3204]`), an `rgb(...)` function, or a
+/// colour name.
 pub(crate) fn vml_color(v: &str) -> Option<Rgb> {
-    let v = v.split_whitespace().next()?;
-    if let Some(hex) = v.strip_prefix('#') {
-        if hex.len() == 3 && hex.is_ascii() {
-            let long: String = hex.chars().flat_map(|c| [c, c]).collect();
-            return Rgb::parse(&long);
+    let s = v.trim();
+    if let Some(inner) = s.strip_prefix("rgb(").or_else(|| s.strip_prefix("rgba(")) {
+        let nums: Vec<u8> = inner
+            .trim_end_matches(')')
+            .split(',')
+            .take(3)
+            .filter_map(|x| {
+                let x = x.trim();
+                if let Some(p) = x.strip_suffix('%') {
+                    p.trim().parse::<f32>().ok().map(|f| (f.clamp(0.0, 100.0) * 2.55).round() as u8)
+                } else {
+                    x.parse::<f32>().ok().map(|f| f.clamp(0.0, 255.0).round() as u8)
+                }
+            })
+            .collect();
+        if let [r, g, b] = nums[..] {
+            return Some(Rgb(r, g, b));
         }
+    }
+    let tok = s.split_whitespace().next()?;
+    let hex = tok.strip_prefix('#').unwrap_or(tok);
+    if hex.len() == 3 && hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        let long: String = hex.chars().flat_map(|c| [c, c]).collect();
+        return Rgb::parse(&long);
+    }
+    if hex.len() == 6 && hex.chars().all(|c| c.is_ascii_hexdigit()) {
         return Rgb::parse(hex);
     }
-    super::drawing_color::preset_color(v)
+    super::drawing_color::preset_color(tok)
 }
 
 #[cfg(test)]
@@ -120,6 +226,11 @@ mod tests {
         assert_eq!(p.stroke, Some(THEME_COLORS[7]));
         assert_eq!(p.stroke_width, 0.5);
         assert_eq!(p.fill, None);
+    }
+
+    #[test]
+    fn flowchart_or_keeps_its_spokes() {
+        assert_eq!(preset_kind("flowChartOr"), ShapeKind::FlowchartOr);
     }
 
     #[test]
@@ -167,10 +278,35 @@ mod tests {
     }
 
     #[test]
+    fn vml_presets_map_like_drawingml_presets() {
+        assert_eq!(vml_preset_kind(13), Some(ShapeKind::Arrow));
+        assert_eq!(vml_preset_kind(12), Some(ShapeKind::Star));
+        assert_eq!(vml_preset_kind(32), Some(ShapeKind::Line));
+        assert_eq!(vml_preset_kind(202), Some(ShapeKind::TextBox));
+        // The nearest shape, as `preset_kind` gives it: left arrow, right triangle, four-point
+        // star, rounded callout, elbow connector, a bevel (its box).
+        assert_eq!(vml_preset_kind(66), Some(ShapeKind::Arrow));
+        assert_eq!(vml_preset_kind(6), Some(ShapeKind::RightTriangle));
+        assert_eq!(vml_preset_kind(187), Some(ShapeKind::Star));
+        assert_eq!(vml_preset_kind(62), Some(ShapeKind::RoundedRectangle));
+        assert_eq!(vml_preset_kind(34), Some(ShapeKind::ElbowConnector));
+        assert_eq!(vml_preset_kind(84), Some(ShapeKind::Rectangle));
+        // No preset geometry: freeform, WordArt text, picture frame, host control, out of range.
+        for spt in [0, 24, 31, 136, 175, 75, 201, 203, u32::MAX] {
+            assert_eq!(vml_preset_kind(spt), None, "{spt}");
+        }
+    }
+
+    #[test]
     fn vml_colours() {
         assert_eq!(vml_color("#ffc000 [3207]"), Some(Rgb(0xFF, 0xC0, 0)));
+        assert_eq!(vml_color("ffc000 [3207]"), Some(Rgb(0xFF, 0xC0, 0)));
         assert_eq!(vml_color("#f00"), Some(Rgb(0xFF, 0, 0)));
+        assert_eq!(vml_color("f00"), Some(Rgb(0xFF, 0, 0)));
         assert_eq!(vml_color("black"), Some(Rgb(0, 0, 0)));
+        assert_eq!(vml_color("Red"), Some(Rgb(0xFF, 0, 0)));
+        assert_eq!(vml_color("rgb(255, 128, 0)"), Some(Rgb(255, 128, 0)));
+        assert_eq!(vml_color("rgb(100%, 0%, 0%)"), Some(Rgb(255, 0, 0)));
         assert_eq!(vml_color("#é"), None);
         assert_eq!(vml_color(""), None);
     }

@@ -80,6 +80,9 @@
 	Bold	Paks
 	Bookmark	Järjehoidja
 	Bookmark name:	Järjehoidja nimi:
+	Delete Bookmark	Kustuta järjehoidja
+	Hidden bookmarks	Peidetud järjehoidjad
+	Sort by:	Sordi:
 	Book Title	Raamatu pealkiri
 	Border Painter	Äärisepintsel
 	Border\nPainter	Äärise-\npintsel
@@ -337,6 +340,7 @@
 	Immersive	Süvenemine
 	Immersive Reader	Süvaluger
 	Immersive\nReader	Süva-\nluger
+	In the margin	Veerisel
 	Inches	Tollid
 	Increase Font Size	Suurenda fondi suurust
 	Increase Indent	Suurenda taanet
@@ -396,6 +400,8 @@
 	Labels	Sildid
 	Landscape	Rõhtpaigutus
 	Language	Keel
+	{language} (no dictionary)	{language} (sõnastik puudub)
+	No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations.	Keele {language} õigekirjasõnastikku pole paigaldatud, seega seda ei kontrollita. WordCraft otsib Hunspelli sõnastikku {name} kaustast WORDCRAFT_DICTIONARIES ja tavalistest süsteemikohtadest.
 	Lasso	Lasso
 	Last Column	Viimane veerg
 	Last commit	Viimane commit
@@ -453,10 +459,14 @@
 	More templates →	Veel malle →
 	Move or Resize	Teisalda või muuda suurust
 	Multilevel List	Mitmetasemeline loend
+	Multilevel List Library	Mitmetasemeliste loendite teek
+	Article I.	Artikkel I.
+	Chapter 1	Peatükk 1
+	Section 1.01	Jaotis 1.01
 	Multiple Pages	Mitu lehte
 	Name (A–Z)	Nimi (A–Z)
 	Name:	Nimi:
-	Narrow  0.5" all	Kitsas  0,5" kõigil külgedel
+	Narrow  {size} all	Kitsas  {size} kõigil külgedel
 	Navigation	Navigeerimine
 	Navigation Pane	Navigeerimispaan
 	New	Uus
@@ -489,7 +499,7 @@
 	Nonbreaking Hyphen	Poolitamatu sidekriips
 	Nonbreaking Space	Poolitamatu tühik
 	None	Puudub
-	Normal  1" all	Tavaline  1" kõigil külgedel
+	Normal  {size} all	Tavaline  {size} kõigil külgedel
 	Normal Style	Tavaline stiil
 	Not available right now	Praegu pole saadaval
 	Not saved	Salvestamata
@@ -504,6 +514,7 @@
 	Office 2003 Default	Office 2003 vaikevalik
 	One	Üks
 	One Page	Üks leht
+	Only for the selected text	Ainult valitud teksti jaoks
 	Open	Ava
 	OpenDocument Text (*.odt)	OpenDocumenti tekst (*.odt)
 	Optional Hyphen	Valikuline poolitusmärk
@@ -738,6 +749,8 @@
 	Spaces	Tühikud
 	Spacing	Vahe
 	Spacing (pt):	Vahe (pt):
+	Kerning for fonts:	Fondi märgipaaride tihendus:
+	Points and above	punkti ja rohkem
 	Speech	Kõne
 	Spelling	Õigekiri
 	Spelling & Grammar	Õigekiri ja grammatika
@@ -1324,6 +1337,7 @@
 	Apply to:	Rakenda:
 	Whole document	Kogu dokument
 	This section	See jaotis
+	Selected text	Valitud tekst
 	Fill	Täide
 	Setting:	Säte:
 	3-D	Ruumiline
@@ -1495,6 +1509,8 @@
 	Math AutoCorrect	Matemaatika automaatparandus
 	More >>	Rohkem >>
 	Moves	Teisaldused
+	Moved from:	Teisaldatud kohast:
+	Moved to:	Teisaldatud kohta:
 	New document	Uus dokument
 	No changes (read only)	Muudatusi pole (kirjutuskaitstud)
 	Only allow this kind of editing:	Luba ainult seda tüüpi muutmist:
@@ -1565,6 +1581,8 @@
 	Put the default commands back on the Quick Access Toolbar?	Kas panna vaikekäsud kiirpääsuribale tagasi?
 	Remove every custom tab and group and show all tabs again?	Kas eemaldada kõik kohandatud vahekaardid ja rühmad ning kuvada uuesti kõik vahekaardid?
 	Remove from Quick Access Toolbar	Eemalda kiirpääsuribalt
+	Hide Quick Access Toolbar	Peida kiirpääsuriba
+	Show Quick Access Toolbar	Kuva kiirpääsuriba
 	Rename…	Nimeta ümber…
 	Reset…	Lähtesta…
 	Ribbon	Lint
@@ -1573,6 +1591,11 @@
 	Add Font…	Lisa font…
 	Added Fonts	Lisatud fondid
 	Remove Added Font	Eemalda lisatud font
+	Load System Installed Fonts…	Laadi süsteemi installitud fondid…
+	All system fonts are already available.	Kõik süsteemifondid on juba saadaval.
+	Local font access is not supported by your browser.	Teie brauser ei toeta kohalike fontide juurdepääsu.
+	Local font access was denied.	Juurdepääs kohalikele fontidele keelati.
+	Loaded {count} system fonts.	Laaditi {count} süsteemifonti.
 	Recent Colors	Viimati kasutatud värvid
 	More Colors…	Rohkem värve…
 	Standard	Standard
@@ -2067,6 +2090,7 @@
 	Hyphenation zone:	Poolitusala:
 	Italian	Itaalia
 	Croatian	Horvaadi
+	Indonesian	Indoneesia
 	Japanese	Jaapani
 	Korean	Korea
 	Limit consecutive hyphens to:	Järjestikuseid poolitusi kuni:
@@ -2113,6 +2137,53 @@
 	AutoFit Column by Double-Clicking	Veeru automaatne sobitus topeltklõpsuga
 	Region:	Piirkond:
 	Automatic ({region})	Automaatne ({region})
+	Odd Banded Rows	Paaritud vahelduvad read
+	Even Banded Rows	Paaris vahelduvad read
+	Odd Banded Columns	Paaritud vahelduvad veerud
+	Even Banded Columns	Paaris vahelduvad veerud
+	Top Left Cell	Ülemine vasak lahter
+	Top Right Cell	Ülemine parem lahter
+	Bottom Left Cell	Alumine vasak lahter
+	Bottom Right Cell	Alumine parem lahter
+	Inside Horizontal Border	Sisemine horisontaalne ääris
+	Inside Vertical Border	Sisemine vertikaalne ääris
+	Text of the nearest paragraph with a given style (running headers)	Antud stiiliga lähima lõigu tekst (jooksvad päised)
+	Style name:	Stiili nimi:
+# Mail merge: filter and sort recipients (#778)
+	Filter Recipients	Filtreeri adressaate
+	Sort Recipients	Sordi adressaate
+	Filter and Sort	Filtreerimine ja sortimine
+	And	Ja
+	Or	Või
+	Comparison	Võrdlus
+	Compare to	Võrdle väärtusega
+	Add Condition	Lisa tingimus
+	Remove condition	Eemalda tingimus
+	Sort by	Sordi välja järgi
+	Then by	Seejärel
+	Ascending	Kasvavalt
+	Descending	Kahanevalt
+	Equal to	Võrdne
+	Not equal to	Ei võrdu
+	Less than	Väiksem kui
+	Greater than	Suurem kui
+	Less than or equal	Väiksem või võrdne
+	Greater than or equal	Suurem või võrdne
+	Is blank	On tühi
+	Is not blank	Pole tühi
+	Contains	Sisaldab
+	Does not contain	Ei sisalda
+	{count} of {total} recipients will be merged.	Ühendatavaid adressaate: {count} / {total}.
+	Find in list:	Otsi loendist:
+	Any field	Mis tahes väli
+	Matches: {count}	Vasteid: {count}
+	Show only records that will be merged	Näita ainult ühendatavaid kirjeid
+	Take the last match on the page	Võta lehe viimane vaste
+	Show its list number	Näita selle loendinumbrit
+	Show its number relative to this field	Näita selle numbrit selle välja suhtes
+	Show its number with all higher levels	Näita selle numbrit koos kõigi kõrgemate tasemetega
+	Number only, without the label's words	Ainult number, ilma sildi sõnadeta
+	Add whether it is above or below	Lisa, kas see on üleval või all
 	Start-up	Käivitamine
 	Show the Start screen when WordCraft starts	Näita WordCrafti käivitamisel avakuva
 	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Sees: WordCraft avaneb vaates Fail › Avaleht, kus on tühi dokument, mallid ja hiljutised dokumendid. Väljas: avaneb tühi dokument.
@@ -2164,6 +2235,24 @@
 	Suggested	Soovitused
 	Set Proofing Language…	Määra õigekeelsuskontrolli keel…
 	Language Preferences…	Keele-eelistused…
+	Printer	Printer
+	Select a printer	Vali printer
+	Refresh printers	Värskenda printereid
+	Two-sided printing	Kahepoolne printimine
+	Printer default	Printeri vaikesäte
+	One-sided	Ühepoolne
+	Two-sided: long edge	Kahepoolne: pikk serv
+	Two-sided: short edge	Kahepoolne: lühike serv
+	Grayscale	Halltoonid
+	Finding printers…	Printerite otsimine…
+	No printers found. Configure a system printer or export a PDF.	Printereid ei leitud. Seadista süsteemis printer või ekspordi PDF.
+	Printer discovery failed.	Printerite otsimine nurjus.
+	Submitting print job…	Prinditöö saatmine…
+	Print job submitted.	Prinditöö saadetud.
+	Print job submitted: {receipt}	Prinditöö saadetud: {receipt}
+	Print failed: the printing worker stopped.	Printimine nurjus: printimisprotsess peatus.
+	Print settings	Printimisseaded
+	Submit print job	Saada prinditöö
 
 # Dictionaries folder (#1063)
 	Dictionaries	Sõnastikud
@@ -2172,3 +2261,64 @@
 	Hunspell .aff and .dic files here (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) are used before the system's.	Selle kausta Hunspelli .aff- ja .dic-failid (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) on eelistatud süsteemi omadele.
 	{language}: {file}	{language}: {file}
 	{language}: no dictionary found	{language}: sõnastikku ei leitud
+
+# Backstage › Recover (#586)
+	Recover	Taasta
+
+# Page Setup › Mirror margins (#1239)
+	Mirror margins	Peegelveerised
+
+# Insert Hyperlink › Place in This Document (#1370)
+	Existing File or Web Page	Olemasolev fail või veebileht
+	Link to:	Link:
+	Place in This Document	Koht selles dokumendis
+# Table Layout › Sort dialog (#1205)
+	Column {n}	Veerg {n}
+	Header row	Päiserida
+	No header row	Päiserida puudub
+	My list has	Minu loendil on
+# Table Layout › Formula dialog (#1210)
+	Formula:	Valem:
+	Paste function:	Kleebi funktsioon:
+# Reading Mode column widths (#1040)
+	Narrow	Kitsas
+	Medium	Keskmine
+# Split Cells and Convert Text to Table (#2592)
+	Merge cells before split	Ühenda lahtrid enne tükeldamist
+	Table size	Tabeli suurus
+	AutoFit behavior	Automaatne sobitamine
+	Initial column width:	Veeru algne laius:
+	AutoFit to contents	Sobita sisuga
+	AutoFit to window	Sobita aknaga
+	Separate text at	Eralda tekst kohas
+	Commas	Komad
+	Other:	Muu:
+	The number must be between 1 and {max}.	Arv peab olema vahemikus 1 kuni {max}.
+	The measurement must be between {min} and {max}.	Mõõt peab olema vahemikus {min} kuni {max}.
+	Recently Used Fonts	Viimati kasutatud fondid
+	All Fonts	Kõik fondid
+	Spike	Koguja
+	Insert Spike	Lisa kogujast
+# Add Font status (#1789)
+	Added 1 font	Lisati 1 font
+	Added {n} fonts	Lisati {n} fonti
+	{added}; {count} couldn't be read: {names}	{added}; {count} ei õnnestunud lugeda: {names}
+	{names} and {n} more	{names} ja veel {n}
+	{added}; {n} skipped (limit {max})	{added}; {n} jäeti vahele (piir {max})
+
+# Drop Cap menu and Drop Cap Options (#2601)
+	Dropped	Tekstis
+	In margin	Veerisel
+	Drop Cap Options…	Süvisinitsiaali suvandid…
+	Lines to drop:	Ridade arv:
+	Distance from text:	Kaugus tekstist:
+	Distance from text	Kaugus tekstist
+
+# Picture Format › Size: the Size dialog, sizes typed in any unit (#2573)
+	Lock aspect ratio	Lukusta kuvasuhe
+	Relative to original picture size	Pildi algsuuruse suhtes
+	Original size	Algne suurus
+	{width} × {height} pixels	{width} × {height} pikslit
+	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Sisesta suurus mis tahes ühikus, näiteks 5 cm või 300 px. Teine külg muutub kaasa, nii et pilt säilitab oma proportsioonid.
+
+	Import…	Impordi…

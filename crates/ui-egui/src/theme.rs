@@ -14,9 +14,9 @@ pub const APP_INK: Color32 = Color32::from_rgb(0x2B, 0x47, 0xB5);
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(from = "String", into = "String")]
 pub enum Appearance {
-    #[default]
     Light,
     Dark,
+    #[default]
     System,
 }
 
@@ -268,11 +268,31 @@ pub struct Tokens {
     /// Alignment guides while moving a picture or shape: drawn on the page, so legible on white
     /// paper in both themes.
     pub guide: Color32,
+    /// Crop mode: the crop handles, and the dim over the cropped-away part of a picture.
+    pub crop_handle: Color32,
+    pub crop_dim: Color32,
+    /// Comment and revision balloons in the markup area beside the page (#2045): the card, the
+    /// area behind it and its edge. The card holds `text`, so it is dark in the dark theme.
+    pub balloon: Color32,
+    pub markup_area: Color32,
+    pub markup_edge: Color32,
+    /// "Resolved" on a balloon: `green` is only 4.2:1 on the light card.
+    pub resolved_text: Color32,
+    /// One stripe and leader colour per comment author, in turn.
+    pub author_colors: [Color32; 5],
+    /// The same colours for the leader line across the page: the paper stays white in the dark
+    /// theme, so these are the light-theme colours in both.
+    pub leader_colors: [Color32; 5],
     pub menu: Color32,
     pub blue: Color32,
     pub red: Color32,
     pub green: Color32,
     pub orange: Color32,
+    /// A window's close box while the pointer is over it (the red of a Windows caption button),
+    /// while pressed, and the ✕ drawn on it then (#1885).
+    pub close_hover: Color32,
+    pub close_pressed: Color32,
+    pub on_close: Color32,
 }
 
 impl Tokens {
@@ -309,11 +329,34 @@ impl Tokens {
             handle: Color32::WHITE,
             handle_shadow: Color32::from_rgba_unmultiplied(0, 0, 0, 0x28),
             guide: Color32::from_rgb(0xC0, 0x28, 0x8C),
+            crop_handle: Color32::BLACK,
+            crop_dim: Color32::from_rgba_unmultiplied(0x30, 0x30, 0x30, 0xE0),
+            balloon: Color32::WHITE,
+            markup_area: Color32::from_rgb(0xF3, 0xF3, 0xF3),
+            markup_edge: Color32::from_rgb(0xE0, 0xE0, 0xE0),
+            resolved_text: Color32::from_rgb(0x1B, 0x6B, 0x42),
+            author_colors: [
+                Color32::from_rgb(0x2F, 0x6F, 0xD0),
+                Color32::from_rgb(0xB0, 0x3A, 0x2E),
+                Color32::from_rgb(0x2E, 0x7D, 0x32),
+                Color32::from_rgb(0x8E, 0x44, 0xAD),
+                Color32::from_rgb(0xE0, 0x7B, 0x1F),
+            ],
+            leader_colors: [
+                Color32::from_rgb(0x2F, 0x6F, 0xD0),
+                Color32::from_rgb(0xB0, 0x3A, 0x2E),
+                Color32::from_rgb(0x2E, 0x7D, 0x32),
+                Color32::from_rgb(0x8E, 0x44, 0xAD),
+                Color32::from_rgb(0xE0, 0x7B, 0x1F),
+            ],
             menu: Color32::WHITE,
             blue: Color32::from_rgb(0x2F, 0x6F, 0xD0),
             red: Color32::from_rgb(0xD1, 0x3B, 0x3B),
             green: Color32::from_rgb(0x2E, 0x8B, 0x57),
             orange: Color32::from_rgb(0xE0, 0x7B, 0x1F),
+            close_hover: Color32::from_rgb(0xC4, 0x2B, 0x1C),
+            close_pressed: Color32::from_rgb(0xA6, 0x23, 0x16),
+            on_close: Color32::WHITE,
         }
     }
     pub fn dark() -> Self {
@@ -351,11 +394,35 @@ impl Tokens {
             handle: Color32::from_rgb(0xF2, 0xF2, 0xF2),
             handle_shadow: Color32::from_rgba_unmultiplied(0, 0, 0, 0x5A),
             guide: Color32::from_rgb(0xE0, 0x4C, 0xB0),
+            crop_handle: Color32::BLACK,
+            crop_dim: Color32::from_rgba_unmultiplied(0x30, 0x30, 0x30, 0xE0),
+            balloon: Color32::from_rgb(0x2B, 0x2B, 0x2B),
+            markup_area: Color32::from_rgb(0x1B, 0x1B, 0x1B),
+            markup_edge: Color32::from_rgb(0x3A, 0x3A, 0x3A),
+            resolved_text: Color32::from_rgb(0x5B, 0xC0, 0x8A),
+            author_colors: [
+                Color32::from_rgb(0x7F, 0xA8, 0xF2),
+                Color32::from_rgb(0xE5, 0x78, 0x6B),
+                Color32::from_rgb(0x6F, 0xBF, 0x73),
+                Color32::from_rgb(0xC0, 0x8F, 0xE0),
+                Color32::from_rgb(0xF0, 0xA0, 0x50),
+            ],
+            leader_colors: [
+                Color32::from_rgb(0x2F, 0x6F, 0xD0),
+                Color32::from_rgb(0xB0, 0x3A, 0x2E),
+                Color32::from_rgb(0x2E, 0x7D, 0x32),
+                Color32::from_rgb(0x8E, 0x44, 0xAD),
+                Color32::from_rgb(0xE0, 0x7B, 0x1F),
+            ],
             menu: Color32::from_rgb(0x2B, 0x2B, 0x2B),
             blue: Color32::from_rgb(0x6C, 0x9B, 0xEA),
             red: Color32::from_rgb(0xEE, 0x6A, 0x6A),
             green: Color32::from_rgb(0x5B, 0xC0, 0x8A),
             orange: Color32::from_rgb(0xF0, 0xA0, 0x50),
+            // A little lighter than the light theme's red, so it reads against the dark window.
+            close_hover: Color32::from_rgb(0xD6, 0x3C, 0x2C),
+            close_pressed: Color32::from_rgb(0xB3, 0x30, 0x23),
+            on_close: Color32::WHITE,
         }
     }
     pub fn get(ctx: &egui::Context) -> Tokens {
@@ -369,10 +436,15 @@ pub fn install_fonts(ctx: &egui::Context) {
     install_fonts_for(ctx, false);
 }
 
-/// [`install_fonts`] with the CJK fallback order for the interface language: the Chinese face
-/// first for Chinese (#8), the Japanese one otherwise. The new fonts apply from the next frame.
+/// [`install_fonts`] with the Chinese or Japanese CJK fallback order. The new fonts apply from the
+/// next frame.
 pub fn install_fonts_for(ctx: &egui::Context, prefer_hans: bool) {
     install_fonts_with(ctx, prefer_hans, false);
+}
+
+/// [`install_fonts_for`] with the CJK fallback order for a Korean interface.
+pub fn install_fonts_language(ctx: &egui::Context, prefer_hans: bool, prefer_korean: bool) {
+    install_fonts_language_with(ctx, prefer_hans, prefer_korean, false);
 }
 
 /// [`install_fonts_for`], also adding an installed CJK font after the embedded faces when
@@ -383,11 +455,27 @@ pub fn install_fonts_with(ctx: &egui::Context, prefer_hans: bool, system_cjk: bo
     install_fonts_extra(ctx, prefer_hans, system_cjk, &[]);
 }
 
+/// [`install_fonts_with`] with the CJK font order selected for the interface language.
+pub fn install_fonts_language_with(ctx: &egui::Context, prefer_hans: bool, prefer_korean: bool, system_cjk: bool) {
+    install_fonts_language_extra(ctx, prefer_hans, prefer_korean, system_cjk, &[]);
+}
+
 /// [`install_fonts_with`], also adding document-font `faces` as last-resort fallbacks (#565): the
 /// faces that cover text the interface fonts cannot draw (an input method's composition, or a
 /// file name in the window caption).
 pub fn install_fonts_extra(ctx: &egui::Context, prefer_hans: bool, system_cjk: bool, faces: &[Arc<wordcraft_fonts::FontFace>]) {
-    let mut fonts = font_definitions(prefer_hans, system_cjk);
+    install_fonts_language_extra(ctx, prefer_hans, false, system_cjk, faces);
+}
+
+/// [`install_fonts_extra`] with the CJK font order selected for the interface language.
+pub fn install_fonts_language_extra(
+    ctx: &egui::Context,
+    prefer_hans: bool,
+    prefer_korean: bool,
+    system_cjk: bool,
+    faces: &[Arc<wordcraft_fonts::FontFace>],
+) {
+    let mut fonts = font_definitions_language(prefer_hans, prefer_korean, system_cjk);
     add_fallback_faces(&mut fonts, faces);
     ctx.set_fonts(fonts);
 }
@@ -438,6 +526,11 @@ pub fn faces_for_preedit(
 
 /// The interface fonts; see [`install_fonts_with`].
 pub fn font_definitions(prefer_hans: bool, system_cjk: bool) -> FontDefinitions {
+    font_definitions_language(prefer_hans, false, system_cjk)
+}
+
+/// The interface fonts, ordered for the preferred CJK writing system.
+pub fn font_definitions_language(prefer_hans: bool, prefer_korean: bool, system_cjk: bool) -> FontDefinitions {
     let mut fonts = FontDefinitions::default();
     let add = |fonts: &mut FontDefinitions, name: &str, bytes: &'static [u8]| {
         fonts.font_data.insert(name.into(), Arc::new(FontData::from_static(bytes)));
@@ -464,7 +557,7 @@ pub fn font_definitions(prefer_hans: bool, system_cjk: bool) -> FontDefinitions 
             }
         }
     };
-    let cjk = wordcraft_fonts::ui_cjk_fonts(prefer_hans);
+    let cjk = wordcraft_fonts::ui_cjk_fonts_for(prefer_hans, prefer_korean);
     for f in &cjk {
         // The same static bytes the document fonts use: one copy in the binary.
         add_cjk(&mut fonts, format!("{} {}", f.family, f.style), FontData::from_static(f.bytes));
@@ -473,7 +566,7 @@ pub fn font_definitions(prefer_hans: bool, system_cjk: bool) -> FontDefinitions 
     // without its Chinese face, #241, or with faces lacking catalog characters, #486): an
     // installed CJK font after them, so the menus don't show boxes or `?`.
     #[cfg(not(target_arch = "wasm32"))]
-    if system_cjk && let Some(f) = system_cjk_font(prefer_hans) {
+    if system_cjk && let Some(f) = system_cjk_font(prefer_hans, prefer_korean) {
         let mut data = FontData::from_static(&f.bytes);
         data.index = f.index;
         add_cjk(&mut fonts, format!("system {}", f.family), data);
@@ -489,24 +582,31 @@ pub fn font_definitions(prefer_hans: bool, system_cjk: bool) -> FontDefinitions 
 /// ([`cjk_font_text`](crate::i18n::Lang::cjk_font_text)). The font is picked for the catalogs'
 /// missing characters, or for the language names when only those are missing.
 #[cfg(not(target_arch = "wasm32"))]
-fn system_cjk_font(hans: bool) -> Option<&'static wordcraft_fonts::SystemUiFont> {
+fn system_cjk_font(hans: bool, korean: bool) -> Option<&'static wordcraft_fonts::SystemUiFont> {
     static ZH: std::sync::OnceLock<Option<wordcraft_fonts::SystemUiFont>> = std::sync::OnceLock::new();
     static OTHER: std::sync::OnceLock<Option<wordcraft_fonts::SystemUiFont>> = std::sync::OnceLock::new();
-    (if hans { &ZH } else { &OTHER })
-        .get_or_init(|| {
-            let embedded = wordcraft_fonts::ui_cjk_fonts(hans);
-            let (catalogs, names) = crate::i18n::Lang::cjk_font_text(hans);
-            let mut needed = wordcraft_fonts::ui_uncovered_cjk(&catalogs, &embedded);
+    static KO: std::sync::OnceLock<Option<wordcraft_fonts::SystemUiFont>> = std::sync::OnceLock::new();
+    (if hans {
+        &ZH
+    } else if korean {
+        &KO
+    } else {
+        &OTHER
+    })
+    .get_or_init(|| {
+        let embedded = wordcraft_fonts::ui_cjk_fonts_for(hans, korean);
+        let (catalogs, names) = crate::i18n::Lang::cjk_font_text_for(hans, korean);
+        let mut needed = wordcraft_fonts::ui_uncovered_cjk(&catalogs, &embedded);
+        if needed.is_empty() {
+            needed = wordcraft_fonts::ui_uncovered_cjk(&[&names], &embedded);
             if needed.is_empty() {
-                needed = wordcraft_fonts::ui_uncovered_cjk(&[&names], &embedded);
-                if needed.is_empty() {
-                    return None;
-                }
+                return None;
             }
-            log::debug!("interface: {} CJK characters lack an embedded glyph", needed.len());
-            wordcraft_fonts::system_cjk_ui_font(hans, &needed)
-        })
-        .as_ref()
+        }
+        log::debug!("interface: {} CJK characters lack an embedded glyph", needed.len());
+        wordcraft_fonts::system_cjk_ui_font_for(hans, korean, &needed)
+    })
+    .as_ref()
 }
 
 pub fn medium(size: f32) -> FontId {
@@ -692,6 +792,17 @@ mod tests {
         (x.max(y) + 0.05) / (x.min(y) + 0.05)
     }
 
+    /// #1885: the ✕ on a window's close box reads on its hover and pressed reds in both themes.
+    #[test]
+    fn close_box_glyph_reads_on_its_reds() {
+        for t in [super::Tokens::light(), super::Tokens::dark()] {
+            for (name, bg) in [("close_hover", t.close_hover), ("close_pressed", t.close_pressed)] {
+                let r = contrast(t.on_close, bg);
+                assert!(r >= 4.5, "dark={}: on_close on {name} is {r:.2}:1", t.dark);
+            }
+        }
+    }
+
     /// #655: text and knobs on filled accent controls (Share, avatar, AutoSave, keytips) reach 4.5:1
     /// on the accent and on its hover shade, in both themes.
     #[test]
@@ -724,6 +835,37 @@ mod tests {
             assert!(lum(t.ruler) > lum(t.ruler_margin), "dark={}: ruler text area is darker than its margins", t.dark);
             let r = contrast(t.ruler_tick, t.ruler);
             assert!(r >= 4.5, "dark={}: ruler numbers on the text area are {r:.2}:1", t.dark);
+        }
+    }
+
+    /// #2045: comment and revision balloons were drawn on a hard-coded white card, so the light
+    /// text of the dark theme was near-invisible. Every text colour a balloon uses reaches 4.5:1
+    /// on the card, and the author stripes and borders 3:1 on the card and the markup area.
+    #[test]
+    fn comment_balloons_are_readable() {
+        for t in [super::Tokens::light(), super::Tokens::dark()] {
+            for (name, card) in [("card", t.balloon), ("selected card", t.checked)] {
+                for (what, fg) in [("text", t.text), ("dim text", t.text_dim), ("resolved label", t.resolved_text)] {
+                    let r = contrast(fg, card);
+                    assert!(r >= 4.5, "dark={}: {what} on the {name} is {r:.2}:1", t.dark);
+                }
+            }
+            // The light stripes are unchanged; only the dark theme's were unreadable.
+            for (i, c) in t.author_colors.iter().enumerate().filter(|_| t.dark) {
+                for (name, bg) in [("card", t.balloon), ("selected card", t.checked), ("markup area", t.markup_area)] {
+                    let r = contrast(*c, bg);
+                    assert!(r >= 3.0, "dark={}: author colour {i} on the {name} is {r:.2}:1", t.dark);
+                }
+            }
+            // The leader's on-page part is drawn at 70% on white paper in both themes, no fainter than before (#2045).
+            for (i, c) in t.leader_colors.iter().enumerate() {
+                let on_paper = |a: u8| u8::try_from((u16::from(a) * 7 + 255 * 3) / 10).unwrap_or(255);
+                let blended = egui::Color32::from_rgb(on_paper(c.r()), on_paper(c.g()), on_paper(c.b()));
+                let r = contrast(blended, egui::Color32::WHITE);
+                assert!(r >= 2.1, "dark={}: leader colour {i} on the page is {r:.2}:1", t.dark);
+            }
+            let r = contrast(t.markup_edge, t.markup_area);
+            assert!(r >= 1.1, "dark={}: the markup area edge is invisible ({r:.2}:1)", t.dark);
         }
     }
 

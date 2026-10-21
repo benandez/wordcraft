@@ -4,16 +4,17 @@ use std::collections::HashMap;
 
 use wordcraft_doc::para::cap_alt;
 use wordcraft_doc::props::{
-    Align, Border, BorderStyle, Borders, CellProps, CharProps, HeightRule, Highlight, LineSpacing, NumRef, ParaProps, Rgb, RowProps, TabAlign,
-    TabLeader, TabStop, TableFloat, TableLook, TableProps, TextColor, TextDirection, Underline, VAlign, VMerge, VertAlign,
+    Align, Border, BorderStyle, Borders, CellProps, CharProps, CombineBrackets, EastAsianLayout, HeightRule, Highlight, LineSpacing, NumRef,
+    ParaProps, Rgb, RowProps, TabAlign, TabLeader, TabStop, TableFloat, TableLook, TableProps, TextColor, TextDirection, Underline, VAlign, VMerge,
+    VertAlign,
 };
 use wordcraft_doc::section::{
     Columns, DocGrid, DocGridType, LineNumberRestart, LineNumbering, MAX_CHAR_SPACE, MAX_GRID_PITCH, NotePos, NoteProps, NoteRestart, NumFormat,
-    SectionProps, SectionStart,
+    PageVAlign, SectionProps, SectionStart,
 };
 
 use super::drawing_color::adjust_lum;
-use crate::units::{int, measure, on_off, tw, u32_of};
+use crate::units::{int, line_multiple, measure, on_off, tw, u32_of};
 
 /// A text frame (`w:framePr` without a drop cap, ECMA-376 §17.3.1.11), sizes and offsets in
 /// points (clamped), names kept as OOXML writes them.
@@ -43,6 +44,9 @@ use crate::xml::El;
 pub struct PropCtx {
     pub major_font: String,
     pub minor_font: String,
+    /// The theme's complex-script fonts (`a:cs`), which the `…Bidi` theme slots name.
+    pub major_cs: String,
+    pub minor_cs: String,
     /// The theme's colour scheme (dk1, lt1, dk2, lt2, accent1..6, hlink, folHlink); empty when the
     /// package has none, and then `w:themeColor` falls back to the fixed colour.
     pub theme_colors: Vec<Rgb>,
@@ -82,7 +86,10 @@ impl PropCtx {
     }
 
     fn theme_font(&self, t: &str) -> Option<String> {
-        let f = if t.starts_with("major") { &self.major_font } else { &self.minor_font };
+        let (latin, cs) = if t.starts_with("major") { (&self.major_font, &self.major_cs) } else { (&self.minor_font, &self.minor_cs) };
+        // Measured in Word: `minorBidi`/`majorBidi` name the complex-script font, and an empty one
+        // names nothing, so the font beside it or the inherited one applies.
+        let f = if t.ends_with("Bidi") { cs } else { latin };
         (!f.is_empty()).then(|| f.clone())
     }
 
@@ -201,11 +208,8 @@ impl PropCtx {
                 "w:szCs" => c.size_cs = k.attr("w:val").and_then(|v| measure(v, 2.0)).filter(|v| *v > 0.0).map(|v| v.clamp(1.0, 1638.0)),
                 "w:highlight" => c.highlight = k.attr("w:val").map(Highlight::from_ooxml),
                 "w:u" => {
-                    if let Some(v) = k.attr("w:val") {
-                        c.underline = Some(Underline::from_ooxml(v));
-                    } else {
-                        c.underline = Some(Underline::Single);
-                    }
+                    // w:val has no default in the schema: without it Word draws no underline
+                    c.underline = k.attr("w:val").map(Underline::from_ooxml);
                     c.underline_color =
                         self.theme_color(k, "w:themeColor", "w:themeTint", "w:themeShade").or_else(|| k.attr("w:color").and_then(Rgb::parse));
                 }
@@ -218,10 +222,15 @@ impl PropCtx {
                         _ => VertAlign::Baseline,
                     })
                 }
+                "w:eastAsianLayout" => {
+                    let l = east_asian_layout(k);
+                    c.east_asian_layout = (l != EastAsianLayout::default()).then_some(l);
+                }
                 "w:lang" => {
                     c.lang = k.attr("w:val").filter(|v| !v.is_empty() && v.len() < 64).map(str::to_string);
                     c.lang_bidi = k.attr("w:bidi").filter(|v| !v.is_empty() && v.len() < 64).map(str::to_string);
                 }
+                "w14:ligatures" => c.ligatures = k.attr("w14:val").and_then(wordcraft_doc::props::Ligatures::from_ooxml),
                 n if n.starts_with("w14:") => {
                     let fx = c.text_effects.get_or_insert_with(Default::default);
                     super::wordart::read(k, &self.theme, fx);
@@ -260,8 +269,11 @@ impl PropCtx {
                 "w:autoSpaceDN" => p.auto_space_dn = Some(on_off(k)),
                 "w:snapToGrid" => p.snap_to_grid = Some(on_off(k)),
                 "w:framePr" => {
-                    if matches!(k.attr("w:dropCap"), Some("drop") | Some("margin")) {
+                    if let Some(kind @ ("drop" | "margin")) = k.attr("w:dropCap") {
                         p.drop_cap = Some(k.attr("w:lines").and_then(u32_of).unwrap_or(3).clamp(1, 10) as u8);
+                        p.drop_cap_margin = (kind == "margin").then_some(true);
+                        p.drop_cap_distance =
+                            tw(k, "w:hSpace").filter(|d| d.is_finite() && *d > 0.0).map(|d| d.min(wordcraft_doc::resolve::MAX_DROP_CAP_DISTANCE));
                     } else {
                         p.frame = Some(text_frame(k));
                     }
@@ -306,7 +318,8 @@ impl PropCtx {
                         p.line_spacing = match rule.as_str() {
                             "exact" => measure(line, 20.0).map(|v| LineSpacing::Exactly(v.abs())),
                             "atleast" => measure(line, 20.0).map(|v| LineSpacing::AtLeast(v.abs())),
-                            _ => measure(line, 240.0).map(|v| LineSpacing::Multiple(v.abs().clamp(0.06, 132.0))),
+                            // Strict OOXML writes the height with a unit (`13.90pt`, #2329).
+                            _ => line_multiple(line).map(|v| LineSpacing::Multiple(v.abs().clamp(0.06, 132.0))),
                         };
                     }
                 }
@@ -366,14 +379,18 @@ fn tab_stop(t: &El) -> Option<TabStop> {
         "clear" => TabAlign::Clear,
         _ => TabAlign::Left,
     };
-    let leader = match t.attr("w:leader").unwrap_or("none") {
+    Some(TabStop { pos, align, leader: tab_leader(t.attr("w:leader").unwrap_or("none")) })
+}
+
+/// A tab stop's or positional tab's `w:leader` (`ST_TabTlc`, `ST_PTabLeader`).
+pub(crate) fn tab_leader(v: &str) -> TabLeader {
+    match v {
         "dot" => TabLeader::Dot,
         "hyphen" => TabLeader::Hyphen,
         "underscore" | "heavy" => TabLeader::Underscore,
         "middleDot" => TabLeader::MiddleDot,
         _ => TabLeader::None,
-    };
-    Some(TabStop { pos, align, leader })
+    }
 }
 
 /// `w:shd/@w:fill` (a solid fill colour; `auto` = none), ignoring theme fills ([`PropCtx::shd_fill`]).
@@ -416,7 +433,11 @@ pub fn borders(e: &El) -> Borders {
 
 /// Margins element (`w:tblCellMar`, `w:tcMar`) → [top, left, bottom, right].
 pub fn margins(e: &El) -> [f32; 4] {
-    let get = |names: &[&str]| names.iter().find_map(|n| e.child(n)).and_then(|c| tw(c, "w:w")).unwrap_or(0.0).clamp(0.0, 1584.0);
+    margin_sides(e).map(|side| side.unwrap_or(0.0))
+}
+
+fn margin_sides(e: &El) -> [Option<f32>; 4] {
+    let get = |names: &[&str]| names.iter().find_map(|n| e.child(n)).and_then(|c| tw(c, "w:w")).map(|v| v.clamp(0.0, 1584.0));
     [get(&["w:top"]), get(&["w:left", "w:start"]), get(&["w:bottom"]), get(&["w:right", "w:end"])]
 }
 
@@ -510,10 +531,22 @@ pub fn trpr(e: &El) -> RowProps {
             }
             "w:tblHeader" => r.header = on_off(k),
             "w:cantSplit" => r.cant_split = on_off(k),
+            "w:gridBefore" => r.grid_before = k.attr("w:val").and_then(u32_of).unwrap_or(0).min(63),
+            "w:gridAfter" => r.grid_after = k.attr("w:val").and_then(u32_of).unwrap_or(0).min(63),
+            "w:wBefore" => r.w_before = gap_width(k),
+            "w:wAfter" => r.w_after = gap_width(k),
             _ => {}
         }
     }
     r
+}
+
+/// `w:wBefore`/`w:wAfter` in points: only a width in twips (`dxa`) is kept.
+fn gap_width(k: &El) -> Option<f32> {
+    match k.attr("w:type") {
+        None | Some("dxa") => tw(k, "w:w").filter(|v| *v >= 0.0).map(|v| v.min(crate::units::MAX_LEN_PT)),
+        _ => None,
+    }
 }
 
 /// `w:tcPr`; returns the props and whether the cell is a legacy `hMerge` continuation.
@@ -539,14 +572,24 @@ pub fn tcpr(pc: &PropCtx, e: &El) -> (CellProps, bool) {
             "w:shd" => c.shading = pc.shd_fill(k),
             "w:noWrap" => c.no_wrap = on_off(k),
             "w:hideMark" => c.hide_mark = on_off(k),
-            "w:tcMar" => c.margins = Some(margins(k)),
-            "w:textDirection" => c.text_direction = TextDirection::from_ooxml(k.attr("w:val").unwrap_or("")),
+            "w:tcMar" => {
+                let sides = margin_sides(k);
+                if sides.iter().all(Option::is_some) {
+                    c.margins = Some(sides.map(|side| side.unwrap_or(0.0)));
+                } else {
+                    c.partial_margins = Some(sides);
+                }
+            }
+            "w:textDirection" => {
+                c.text_direction = TextDirection::from_ooxml(k.attr("w:val").unwrap_or(""));
+                c.text_direction_set = k.attr("w:val") == Some("lrTb");
+            }
             "w:vAlign" => {
-                c.valign = match k.attr("w:val") {
+                c.valign = Some(match k.attr("w:val") {
                     Some("center") => VAlign::Center,
                     Some("bottom") => VAlign::Bottom,
                     _ => VAlign::Top,
-                }
+                })
             }
             _ => {}
         }
@@ -629,14 +672,19 @@ pub fn sectpr(e: &El) -> (SectionProps, Vec<HfRef>) {
             }
             "w:footnotePr" => s.footnote_pr = note_pr(k, true),
             "w:endnotePr" => s.endnote_pr = note_pr(k, true),
+            "w:formProt" => s.form_prot = Some(on_off(k)),
             "w:titlePg" => s.title_page = on_off(k),
             "w:bidi" => s.rtl = on_off(k),
-            "w:textDirection" => s.text_direction = wordcraft_doc::props::TextDirection::from_ooxml(k.attr("w:val").unwrap_or("")),
+            "w:textDirection" => {
+                s.text_direction = wordcraft_doc::props::TextDirection::from_ooxml(k.attr("w:val").unwrap_or(""));
+                s.text_direction_set = k.attr("w:val") == Some("lrTb");
+            }
             "w:pgNumType" => {
                 s.page_num_start = k.attr("w:start").and_then(u32_of);
                 if let Some(f) = k.attr("w:fmt") {
                     s.page_num_format = NumFormat::from_ooxml(f);
                 }
+                s.page_num_set = s.page_num_start.is_none() && s.page_num_format == NumFormat::Decimal;
             }
             "w:lnNumType" => {
                 let mut l = LineNumbering::default();
@@ -656,9 +704,10 @@ pub fn sectpr(e: &El) -> (SectionProps, Vec<HfRef>) {
             }
             "w:vAlign" => {
                 s.valign = match k.attr("w:val") {
-                    Some("center") | Some("both") => VAlign::Center,
-                    Some("bottom") => VAlign::Bottom,
-                    _ => VAlign::Top,
+                    Some("center") => PageVAlign::Center,
+                    Some("both") => PageVAlign::Justify,
+                    Some("bottom") => PageVAlign::Bottom,
+                    _ => PageVAlign::Top,
                 }
             }
             "w:pgBorders" => s.page_borders = Some(borders(k)),
@@ -713,5 +762,24 @@ fn table_float(e: &El) -> TableFloat {
         v_align: align("w:tblpYSpec"),
         dist: [dist("w:leftFromText"), dist("w:topFromText"), dist("w:rightFromText"), dist("w:bottomFromText")],
         overlap: true,
+    }
+}
+
+/// `w:eastAsianLayout` (ISO/IEC 29500-1 §17.3.2.10). Attributes the schema doesn't allow (an id
+/// out of `xsd:int`, an unknown bracket, an on/off that isn't one) are left unset.
+fn east_asian_layout(e: &El) -> EastAsianLayout {
+    let flag = |name: &str| {
+        e.attr(name).and_then(|v| match v.trim() {
+            "1" | "true" | "on" => Some(true),
+            "0" | "false" | "off" => Some(false),
+            _ => None,
+        })
+    };
+    EastAsianLayout {
+        id: e.attr("w:id").and_then(int).and_then(|v| i32::try_from(v).ok()),
+        combine: flag("w:combine"),
+        combine_brackets: e.attr("w:combineBrackets").and_then(|v| CombineBrackets::from_ooxml(v.trim())),
+        vert: flag("w:vert"),
+        vert_compress: flag("w:vertCompress"),
     }
 }

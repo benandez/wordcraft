@@ -5,7 +5,7 @@ use wordcraft_doc::props::TextDirection;
 use wordcraft_doc::{Document, Path, Pos, StoryRef};
 use wordcraft_geom::{Point, Rect};
 
-use crate::para::ParaLayout;
+use crate::para::{PARA_MARK_WIDTH, ParaLayout};
 use crate::{DocLayout, Page, Placed};
 
 /// Caret geometry on a page: a bar from (`x`, `top`) to (`x + width`, `top + height`). It is
@@ -447,6 +447,7 @@ impl DocLayout {
             let first = para.lines.get(*l0)?;
             let l = para.lines.get(li)?;
             let cx = para.x_of(li, pos.off)?;
+            let cx = para.caret_limit(li).map_or(cx, |m| cx.min(m));
             // In the lines' own frame (turned text turns it onto the page).
             let top = l.top - first.top;
             // Caret spans the text height (ascent + descent), not the full line spacing.
@@ -642,8 +643,8 @@ impl DocLayout {
                         // Selection continuing past the paragraph end shows the paragraph mark.
                         if li + 1 == para.lines.len() && path != b.path {
                             let ex = l.end_x();
-                            let x0 = if l.rtl { ex - 5.0 } else { ex };
-                            put(Rect::new(x0, top, 5.0, l.height));
+                            let x0 = if l.rtl { ex - PARA_MARK_WIDTH } else { ex };
+                            put(Rect::new(x0, top, PARA_MARK_WIDTH, l.height));
                         }
                         continue;
                     }
@@ -652,7 +653,7 @@ impl DocLayout {
                     // Selection continuing past the paragraph end shows the paragraph mark.
                     let last_line = li + 1 == para.lines.len();
                     if last_line && path != b.path {
-                        x1 += 5.0;
+                        x1 += PARA_MARK_WIDTH;
                     }
                     if path == b.path && to >= l.stop && li + 1 < para.lines.len() && b.off > l.stop {
                         x1 = para.x_of(li, l.stop).unwrap_or(x1);
@@ -754,7 +755,7 @@ impl DocLayout {
     pub fn cell_at(&self, page: usize, x: f32, y: f32) -> Option<(StoryRef, Path, usize, usize)> {
         let p = self.pages.get(page)?;
         p.items.iter().rev().find_map(|it| match it {
-            Placed::Cell { rect, table, row, cell, story, covered: false } if rect.contains(wordcraft_geom::Point::new(x, y)) => {
+            Placed::Cell { rect, table, row, cell, story, covered: false, .. } if rect.contains(wordcraft_geom::Point::new(x, y)) => {
                 Some((*story, table.clone(), *row, *cell))
             }
             _ => None,

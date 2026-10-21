@@ -22,7 +22,7 @@
 	Accept	Принять
 	Accept All Changes	Принять все изменения
 	Accept This Change	Принять это изменение
-	Accessibility	Специальные возможности
+	Accessibility	Доступность
 	Add	Добавить
 	Add a comment	Добавить комментарий
 	Add a Table	Добавить таблицу
@@ -85,6 +85,9 @@
 	Book Title	Название книги
 	Bookmark	Закладка
 	Bookmark name:	Имя закладки:
+	Delete Bookmark	Удалить закладку
+	Hidden bookmarks	Скрытые закладки
+	Sort by:	Сортировать по:
 	Border Painter	Кисть границ
 	Border\nPainter	Кисть\nграниц
 	Borders	Границы
@@ -189,6 +192,8 @@
 	Delete Style	Удалить стиль
 	Delete Table	Удалить таблицу
 	Design	Дизайн
+	In the margin	На полях
+	Only for the selected text	Только для выделенного текста
 	No document is open. Create a document or open one first.	Нет открытого документа. Сначала создайте или откройте документ.
 	Search	Поиск
 	Title Bar	Строка заголовка
@@ -382,6 +387,8 @@
 	Labels	Наклейки
 	Landscape	Альбомная
 	Language	Язык
+	{language} (no dictionary)	{language} (нет словаря)
+	No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations.	Орфографический словарь для языка «{language}» не установлен, поэтому текст не проверяется. WordCraft ищет словарь Hunspell {name} в папке WORDCRAFT_DICTIONARIES и в обычных системных расположениях.
 	Lasso	Лассо
 	Last Column	Последний столбец
 	Last commit	Последний коммит
@@ -435,10 +442,14 @@
 	Modify Style	Изменить стиль
 	Modify…	Изменить…
 	Multilevel List	Многоуровневый список
+	Multilevel List Library	Библиотека многоуровневых списков
+	Article I.	Статья I.
+	Chapter 1	Глава 1
+	Section 1.01	Раздел 1.01
 	Multiple Pages	Несколько страниц
 	Name (A–Z)	Имя (А–Я)
 	Name:	Имя:
-	Narrow  0.5" all	Узкие  0,5" со всех сторон
+	Narrow  {size} all	Узкие  {size} со всех сторон
 	Navigation	Навигация
 	Navigation Pane	Область навигации
 	New	Создать
@@ -467,7 +478,7 @@
 	Nonbreaking Space	Неразрывный пробел
 	None	Нет
 	Normal	Обычный
-	Normal  1" all	Обычные  1" со всех сторон
+	Normal  {size} all	Обычные  {size} со всех сторон
 	Normal Indent	Обычный отступ
 	Normal Style	Обычный стиль
 	Normal Table	Обычная таблица
@@ -686,6 +697,8 @@
 	Space before/after:	Интервал перед/после:
 	Spacing	Интервал
 	Spacing (pt):	Интервал (пт):
+	Kerning for fonts:	Кернинг шрифтов:
+	Points and above	пт и более
 	Speech	Речь
 	Spelling & Grammar	Орфография и грамматика
 	Spelling &\nGrammar	Орфография\nи грамматика
@@ -1613,6 +1626,7 @@ preview	Title	Пример
 	Apply to:	Применить к:
 	Whole document	Ко всему документу
 	This section	К этому разделу
+	Selected text	К выделенному тексту
 	Fill	Заливка
 	Setting:	Тип:
 	3-D	Объёмная
@@ -1759,6 +1773,8 @@ preview	Title	Пример
 	Customize Ribbon	Настройка ленты
 	Add to Quick Access Toolbar	Добавить на панель быстрого доступа
 	Remove from Quick Access Toolbar	Удалить с панели быстрого доступа
+	Hide Quick Access Toolbar	Скрыть панель быстрого доступа
+	Show Quick Access Toolbar	Показать панель быстрого доступа
 	Customize the Ribbon…	Настроить ленту…
 	Customize Quick Access Toolbar…	Настроить панель быстрого доступа…
 	More Commands…	Другие команды…
@@ -1802,6 +1818,11 @@ preview	Title	Пример
 	Add Font…	Добавить шрифт…
 	Added Fonts	Добавленные шрифты
 	Remove Added Font	Удалить добавленный шрифт
+	Load System Installed Fonts…	Загрузить установленные системные шрифты…
+	All system fonts are already available.	Все системные шрифты уже доступны.
+	Local font access is not supported by your browser.	Ваш браузер не поддерживает доступ к локальным шрифтам.
+	Local font access was denied.	Доступ к локальным шрифтам отклонен.
+	Loaded {count} system fonts.	Загружено системных шрифтов: {count}.
 	Print Markup	Печатать исправления и примечания
 	Comments beside each page and tracked changes in PDFs, prints and images; a comment list at the end of web pages, Markdown and text.	Примечания рядом с каждой страницей и отслеживаемые изменения в PDF, при печати и в изображениях; список примечаний в конце веб-страниц, Markdown и текста.
 	Recent Colors	Последние цвета
@@ -2073,6 +2094,8 @@ preview	Title	Пример
 	Math AutoCorrect	Автозамена математическими символами
 	More >>	Больше >>
 	Moves	Перемещения
+	Moved from:	Перемещено из:
+	Moved to:	Перемещено в:
 	New document	Новый документ
 	No changes (read only)	Без изменений (только чтение)
 	Only allow this kind of editing:	Разрешить только такой способ редактирования:
@@ -2175,6 +2198,7 @@ preview	Title	Пример
 	{name} already exists. Choose Save again to replace it.	{name} уже существует. Чтобы заменить его, снова выберите «Сохранить».
 	This folder can't be read: {error}	Не удаётся прочитать папку: {error}
 	Showing the first {count} items.	Показаны первые элементы: {count}.
+	No items to show.	Нет элементов для показа.
 	File name:	Имя файла:
 	Browse in WordCraft…	Обзор в WordCraft…
 	Open a file with WordCraft's own browser when the system file dialog doesn't appear.	Открыть файл во встроенном обозревателе WordCraft, если системное диалоговое окно выбора файлов не появляется.
@@ -2368,6 +2392,7 @@ preview	Title	Пример
 	Hyphenation zone:	Зона переноса слов:
 	Italian	Итальянский
 	Croatian	Хорватский
+	Indonesian	Индонезийский
 	Japanese	Японский
 	Korean	Корейский
 	Limit consecutive hyphens to:	Максимум последовательных переносов:
@@ -2462,6 +2487,53 @@ preview	Title	Пример
 	AutoFit Column by Double-Clicking	Автоподбор ширины столбца двойным щелчком
 	Region:	Регион:
 	Automatic ({region})	Автоматически ({region})
+	Odd Banded Rows	Нечётные чередующиеся строки
+	Even Banded Rows	Чётные чередующиеся строки
+	Odd Banded Columns	Нечётные чередующиеся столбцы
+	Even Banded Columns	Чётные чередующиеся столбцы
+	Top Left Cell	Левая верхняя ячейка
+	Top Right Cell	Правая верхняя ячейка
+	Bottom Left Cell	Левая нижняя ячейка
+	Bottom Right Cell	Правая нижняя ячейка
+	Inside Horizontal Border	Внутренняя горизонтальная граница
+	Inside Vertical Border	Внутренняя вертикальная граница
+	Text of the nearest paragraph with a given style (running headers)	Текст ближайшего абзаца с заданным стилем (живые колонтитулы)
+	Style name:	Имя стиля:
+# Mail merge: filter and sort recipients (#778)
+	Filter Recipients	Фильтр получателей
+	Sort Recipients	Сортировка получателей
+	Filter and Sort	Фильтр и сортировка
+	And	И
+	Or	Или
+	Comparison	Сравнение
+	Compare to	Значение
+	Add Condition	Добавить условие
+	Remove condition	Удалить условие
+	Sort by	Сортировать по
+	Then by	Затем по
+	Ascending	По возрастанию
+	Descending	По убыванию
+	Equal to	Равно
+	Not equal to	Не равно
+	Less than	Меньше
+	Greater than	Больше
+	Less than or equal	Меньше или равно
+	Greater than or equal	Больше или равно
+	Is blank	Пусто
+	Is not blank	Не пусто
+	Contains	Содержит
+	Does not contain	Не содержит
+	{count} of {total} recipients will be merged.	Получателей для слияния: {count} из {total}.
+	Find in list:	Найти в списке:
+	Any field	Любое поле
+	Matches: {count}	Совпадений: {count}
+	Show only records that will be merged	Показывать только записи для слияния
+	Take the last match on the page	Брать последнее совпадение на странице
+	Show its list number	Показывать его номер в списке
+	Show its number relative to this field	Показывать его номер относительно этого поля
+	Show its number with all higher levels	Показывать его номер со всеми верхними уровнями
+	Number only, without the label's words	Только номер, без слов метки
+	Add whether it is above or below	Добавлять, выше он или ниже
 	Start-up	Запуск
 	Show the Start screen when WordCraft starts	Показывать начальный экран при запуске WordCraft
 	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Вкл.: WordCraft открывается на странице Файл › Главная с пустым документом, шаблонами и недавними документами. Выкл.: открывается пустой документ.
@@ -2520,6 +2592,24 @@ preview	Title	Пример
 	Suggested	Предлагаемые
 	Set Proofing Language…	Выбрать язык проверки правописания…
 	Language Preferences…	Языковые параметры…
+	Printer	Принтер
+	Select a printer	Выберите принтер
+	Refresh printers	Обновить принтеры
+	Two-sided printing	Двусторонняя печать
+	Printer default	По умолчанию принтера
+	One-sided	Односторонняя
+	Two-sided: long edge	Двусторонняя: длинный край
+	Two-sided: short edge	Двусторонняя: короткий край
+	Grayscale	Оттенки серого
+	Finding printers…	Поиск принтеров…
+	No printers found. Configure a system printer or export a PDF.	Принтеры не найдены. Настройте системный принтер или экспортируйте PDF.
+	Printer discovery failed.	Не удалось найти принтеры.
+	Submitting print job…	Отправка задания на печать…
+	Print job submitted.	Задание на печать отправлено.
+	Print job submitted: {receipt}	Задание на печать отправлено: {receipt}
+	Print failed: the printing worker stopped.	Печать не удалась: процесс печати остановлен.
+	Print settings	Параметры печати
+	Submit print job	Отправить задание на печать
 
 # Cross-reference dialog (#1003)
 	For which item:	Для какого элемента:
@@ -2535,3 +2625,75 @@ preview	Title	Пример
 	Hunspell .aff and .dic files here (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) are used before the system's.	Файлы Hunspell .aff и .dic из этой папки (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) используются раньше системных.
 	{language}: {file}	{language}: {file}
 	{language}: no dictionary found	{language}: словарь не найден
+
+# Backstage › Recover (#586)
+	Recover	Восстановить
+
+# Page Setup › Mirror margins (#1239)
+	Mirror margins	Зеркальные поля
+
+# Insert Hyperlink › Place in This Document (#1370)
+	Existing File or Web Page	Файл или веб-страница
+	Link to:	Связать с:
+	Place in This Document	Место в документе
+# Table Layout › Sort dialog (#1205)
+	Column {n}	Столбец {n}
+	Header row	Строка заголовка
+	No header row	Без строки заголовка
+	My list has	Мой список содержит
+# Table Layout › Formula dialog (#1210)
+	Formula:	Формула:
+	Paste function:	Вставить функцию:
+# Reading Mode column widths (#1040)
+	Narrow	Узкая
+	Medium	Средняя
+# Split Cells and Convert Text to Table (#2592)
+	Merge cells before split	Объединить ячейки перед разбиением
+	Table size	Размер таблицы
+	AutoFit behavior	Автоподбор ширины столбцов
+	Initial column width:	Исходная ширина столбцов:
+	AutoFit to contents	Автоподбор по содержимому
+	AutoFit to window	Автоподбор по ширине окна
+	Separate text at	Разделитель
+	Commas	Запятые
+	Other:	Другой:
+	The number must be between 1 and {max}.	Число должно быть от 1 до {max}.
+	The measurement must be between {min} and {max}.	Размер должен быть от {min} до {max}.
+	Recently Used Fonts	Недавно использованные шрифты
+	All Fonts	Все шрифты
+	Spike	Копилка
+	Insert Spike	Вставить из копилки
+# Add Font status (#1789)
+	Added 1 font	Добавлен 1 шрифт
+	Added {n} fonts	Добавлено шрифтов: {n}
+	{added}; {count} couldn't be read: {names}	{added}; не удалось прочитать ({count}): {names}
+	{names} and {n} more	{names} и ещё {n}
+	{added}; {n} skipped (limit {max})	{added}; пропущено: {n} (лимит {max})
+	nothing is selected	ничего не выделено
+	select a picture or shape first	сначала выделите рисунок или фигуру
+	select recipients first	сначала выберите получателей
+	select two or more pictures or shapes first (Shift+click)	выделите два или больше рисунков или фигур (Shift+щелчок)
+	text boxes can't go inside a text box	надпись нельзя поместить внутрь надписи
+	the cursor isn't in a table	курсор не в таблице
+	{name} options	{name}: параметры
+
+# Drop Cap menu and Drop Cap Options (#2601)
+	Dropped	В тексте
+	In margin	На поле
+	Drop Cap Options…	Параметры буквицы…
+	Lines to drop:	Высота в строках:
+	Distance from text:	Расстояние от текста:
+	Distance from text	Расстояние от текста
+
+# Drop Cap disabled reasons (#2601)
+	the paragraph is empty	абзац пуст
+	the paragraph starts with a space	абзац начинается с пробела
+
+# Picture Format › Size: the Size dialog, sizes typed in any unit (#2573)
+	Lock aspect ratio	Сохранять пропорции
+	Relative to original picture size	Относительно исходного размера рисунка
+	Original size	Исходный размер
+	{width} × {height} pixels	{width} × {height} пикс.
+	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Введите размер в любых единицах, например 5 cm или 300 px. Другая сторона изменится вместе с ней, и рисунок сохранит пропорции.
+
+	Import…	Импорт…

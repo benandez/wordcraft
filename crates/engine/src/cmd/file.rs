@@ -66,21 +66,26 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("file.rename", "Rename Document", "File › Info", rename).params(r#"{"name": string (document name without its extension)}"#).pure(),
         CommandSpec::new("file.new", "New", "File", new).key("Mod+N").params(r#"{"template"?: "blank|sample|letter|resume|report"}"#).pure(),
         CommandSpec::new("file.open", "Open", "File", open)
-            .key("Mod+O / Mod+F12")
+            .key("Mod+O / Mod+F12 / Mod+Alt+F2")
             .params(r#"{"path": string, "data"?: base64 (the file's bytes; `path` then only names it), "password"?: string (for a password-protected Word document)}"#)
             .pure(),
         CommandSpec::new("file.save", "Save", "File", save)
-            .key("Mod+S / Shift+F12")
+            .key("Mod+S / Shift+F12 / Alt+Shift+F2")
             .params(r#"{"path"?: string, "password"?: string (encrypt this and later saves with it, as file.encrypt does), "markup"?: bool (Print Markup for a PDF, PNG, HTML, Markdown or text copy: comments shown; default file.printMarkup), "format"?: "wordml2003" (an .xml file as a Word 2003 XML Document) | "flatopc" (as a Word XML Document, the default; saving over a Word 2003 XML file keeps that format)}"#)
             .pure(),
-        CommandSpec::new("file.saveAs", "Save As", "File", save_as).key("F12").params(r#"{"path": string, "password"?: string, "markup"?: bool, "format"?: string (as file.save)}"#).pure(),
+        CommandSpec::new("file.saveAs", "Save As", "File", save_as).key(super::mac_or("F12 / Mod+Shift+S", "F12 / Alt+F2")).params(r#"{"path": string, "password"?: string, "markup"?: bool, "format"?: string (as file.save)}"#).pure(),
         // Pure: the password must not land in Repeat or a recorded macro, and it isn't an edit
         // to undo; it marks the document as changed itself.
         CommandSpec::new("file.encrypt", "Encrypt with Password", "File › Info › Protect Document", encrypt)
             .params(r#"{"password": string (Word documents are saved encrypted with it) | null or "" (saved unencrypted)}"#)
             .pure(),
         CommandSpec::new("file.exportPdf", "Export PDF", "File › Export", |s, v| {
-            let path = p::req_str(v, "path")?;
+            // No path (the command search, say): the app asks where to save, as File › Export
+            // does, instead of failing on the required parameter (#2313).
+            let Some(path) = p::str(v, "path") else {
+                s.ui_requests.push(json!({"open": "exportPdf"}));
+                return Ok(json!({"exported": false}));
+            };
             let path = if path.to_ascii_lowercase().ends_with(".pdf") { path.to_string() } else { format!("{path}.pdf") };
             let opts = export_options(s, v);
             crate::io::save_path_with(std::path::Path::new(&path), &s.doc, None, &opts).map_err(CmdError::Failed)?;
@@ -100,20 +105,21 @@ pub fn specs() -> Vec<CommandSpec> {
         .pure(),
         CommandSpec::new("file.printPdf", "Print to PDF", "File › Print", crate::print::print_pdf_to_file)
             .params(
-                r#"{"path": string, "range"?: "all" | "current" | "selection" (the pages the selection touches) | "custom", "pages"?: "1-3,5" (implies custom), "parity"?: "all" | "odd" | "even", "copies"?: 1-999, "collate"?: bool (default true)}"#,
+                r#"{"path": string, "range"?: "all" | "current" | "selection" (the pages the selection touches) | "custom", "pages"?: "1-3,5" (implies custom), "parity"?: "all" | "odd" | "even", "copies"?: 1-999, "collate"?: bool (default true), "paper"?: "none" | "Letter" | "Legal" | "A4" | … (a Layout › Size name: scale every page to this paper, centred; the document keeps its size)}"#,
             )
             .pure(),
         CommandSpec::new("file.print", "Print", "File", |s, _| {
             s.ui_requests.push(json!({"open": "print"}));
             sel_result(s)
         })
-        .key("Mod+P / Mod+Shift+F12 / Mod+F2")
+        .key("Mod+P / Mod+Shift+F12 / Mod+F2 / Mod+Alt+I")
         .pure(),
         CommandSpec::new("file.close", "Close", "File", |s, _| {
             s.ui_requests.push(json!({"close": true}));
             sel_result(s)
         })
         .key("Mod+W / Mod+F4")
+        .params(r#"{"force"?: bool (desktop app's control channel and MCP bridge only: without it a document with unsaved changes is an error and stays open; with it the changes are discarded. Headless sessions never ask)}"#)
         .pure(),
         CommandSpec::new("file.properties", "Properties", "File › Info", properties)
             .params(r#"{"title"?, "subject"?, "author"?, "keywords"?, "comments"?, "category"?, "custom"?: {name: string | null (removes)}}"#),
@@ -146,7 +152,7 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("document.inspect", "Inspect Document", "Agents", inspect).params(r#"{"text"?: bool}"#).pure(),
         CommandSpec::new("document.text", "Document Text", "Agents", |s, v| {
             let story = super::story_param(s, v);
-            Ok(json!({"text": s.doc.plain_text(story)}))
+            Ok(json!({"text": s.doc.final_text(story)}))
         })
         .pure(),
         CommandSpec::new("document.paragraph", "Paragraph Details", "Agents", paragraph).params(r#"{"path": [n], "story"?: Story}"#).pure(),
@@ -182,19 +188,21 @@ fn new(s: &mut Session, v: &Value) -> CmdResult {
         "letter" => crate::sample::letter(),
         "resume" => crate::sample::resume(),
         "report" => crate::sample::report(),
-        // The Normal template: the region's paper (#838), written in the editing language (the
-        // templates' text is English).
-        _ => {
-            let mut d = s.blank_document();
-            if let Some(lang) = &s.editing_lang {
-                d.styles.default_chr.lang = Some(lang.clone());
-            }
-            d
-        }
+        _ => normal_document(s),
     };
     s.set_document(doc);
     s.path = None;
     sel_result(s)
+}
+
+/// A blank document on the Normal template: the region's paper (#838), written in the editing
+/// language (the templates' text is English).
+fn normal_document(s: &Session) -> Document {
+    let mut d = s.blank_document();
+    if let Some(lang) = &s.editing_lang {
+        d.styles.default_chr.lang = Some(lang.clone());
+    }
+    d
 }
 
 fn open(s: &mut Session, v: &Value) -> CmdResult {
@@ -205,7 +213,15 @@ fn open(s: &mut Session, v: &Value) -> CmdResult {
     let password = p::str(v, "password");
     let (mut doc, encrypted) = if let Some(data) = p::str(v, "data") {
         let bytes = super::insert::base64_decode(data).ok_or_else(|| CmdError::Params("bad base64".into()))?;
-        crate::io::open_bytes_in(path, &bytes, password, &s.region()).map_err(CmdError::Failed)?
+        // An empty file (File Explorer's New › Microsoft Word Document makes one) opens as a new
+        // blank document that saves back to it (#1384).
+        if bytes.is_empty() {
+            (normal_document(s), false)
+        } else {
+            crate::io::open_bytes_in(path, &bytes, password, &s.region()).map_err(CmdError::Failed)?
+        }
+    } else if crate::io::is_empty_file(std::path::Path::new(path)) {
+        (normal_document(s), false)
     } else {
         crate::io::open_path_in(std::path::Path::new(path), password, &s.region()).map_err(CmdError::Failed)?
     };
@@ -241,6 +257,9 @@ fn encrypt(s: &mut Session, v: &Value) -> CmdResult {
         _ => return Err(CmdError::Params("`password` must be a string, or null to remove the password".into())),
     };
     if password != s.password {
+        if password.is_some() {
+            s.clear_recovery_before_password()?;
+        }
         s.password = password;
         s.dirty = true;
     }
@@ -263,6 +282,7 @@ fn save(s: &mut Session, v: &Value) -> CmdResult {
             return Err(CmdError::Params("only Word documents (.docx, .docm, .dotx, .dotm) can be saved with a password".into()));
         }
         wordcraft_docx::check_password(pw).map_err(|e| CmdError::Params(e.to_string()))?;
+        s.clear_recovery_before_password()?;
         s.password = Some(crate::io::Password::new(pw));
     }
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
@@ -319,7 +339,11 @@ pub fn export_options(s: &Session, v: &Value) -> crate::io::ExportOptions {
 }
 
 fn export_png(s: &mut Session, v: &Value) -> CmdResult {
-    let path = p::req_str(v, "path")?;
+    // No path: the app asks where to save, as file.exportPdf does (#2313).
+    let Some(path) = p::str(v, "path") else {
+        s.ui_requests.push(json!({"open": "exportPng"}));
+        return Ok(json!({"exported": false}));
+    };
     let page = p::u64(v, "page").unwrap_or(1).max(1) as usize - 1;
     let scale = p::f32(v, "scale").unwrap_or(2.0).clamp(0.1, 8.0);
     let l = s.export_layout_with(export_options(s, v).markup);

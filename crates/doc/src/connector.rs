@@ -38,6 +38,9 @@ pub struct ShapeExtra {
     /// 100000ths of the shorter side, at most [`MAX_CORNER`]; `None` draws [`DEFAULT_CORNER`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub corner: Option<u32>,
+    /// The outline dash pattern; absent in older saved documents means solid.
+    #[serde(skip_serializing_if = "crate::line_dash::LineDash::is_solid")]
+    pub dash: crate::line_dash::LineDash,
 }
 
 fn is_zero(v: &u32) -> bool {
@@ -100,6 +103,8 @@ pub fn sites(kind: ShapeKind, w: f32, h: f32) -> Vec<(f32, f32)> {
             vec![(cx, 0.0), (cx - dx, cy - dy), (0.0, cy), (cx - dx, cy + dy), (cx, h), (cx + dx, cy + dy), (w, cy), (cx + dx, cy - dy)]
         }
         ShapeKind::Triangle => vec![(cx, 0.0), (cx / 2.0, cy), (0.0, h), (cx, h), (w, h), (cx + cx / 2.0, cy)],
+        // The corners, the legs' midpoints and the hypotenuse's.
+        ShapeKind::RightTriangle => vec![(0.0, 0.0), (0.0, cy), (0.0, h), (cx, h), (w, h), (cx, cy)],
         ShapeKind::Line | ShapeKind::StraightConnector | ShapeKind::ElbowConnector | ShapeKind::CurvedConnector => vec![(0.0, 0.0), (w, h)],
         _ => vec![(cx, 0.0), (0.0, cy), (cx, h), (w, cy)],
     }

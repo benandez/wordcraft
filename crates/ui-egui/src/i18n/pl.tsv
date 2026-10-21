@@ -83,6 +83,9 @@
 	Bold	Pogrubienie
 	Bookmark	Zakładka
 	Bookmark name:	Nazwa zakładki:
+	Delete Bookmark	Usuń zakładkę
+	Hidden bookmarks	Ukryte zakładki
+	Sort by:	Sortuj według:
 	Border Painter	Pędzel krawędzi
 	Border\nPainter	Pędzel\nkrawędzi
 	Borders	Krawędzie
@@ -322,6 +325,7 @@
 	Immersive	Czytanie immersyjne
 	Immersive Reader	Czytnik immersyjny
 	Immersive\nReader	Czytnik\nimmersyjny
+	In the margin	Na marginesie
 	Increase Font Size	Zwiększ rozmiar czcionki
 	Increase Indent	Zwiększ wcięcie
 	Indent	Wcięcie
@@ -372,6 +376,8 @@
 	Labels	Etykiety
 	Landscape	Pozioma
 	Language	Język
+	{language} (no dictionary)	{language} (brak słownika)
+	No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations.	Nie zainstalowano słownika pisowni dla języka: {language}, więc tekst nie jest sprawdzany. WordCraft szuka słownika Hunspell {name} w folderze WORDCRAFT_DICTIONARIES i w typowych lokalizacjach systemowych.
 	Lasso	Lasso
 	Last Column	Ostatnia kolumna
 	Last commit	Ostatni commit
@@ -425,10 +431,14 @@
 	More templates →	Więcej szablonów →
 	Move or Resize	Przenieś lub zmień rozmiar
 	Multilevel List	Lista wielopoziomowa
+	Multilevel List Library	Biblioteka list wielopoziomowych
+	Article I.	Artykuł I.
+	Chapter 1	Rozdział 1
+	Section 1.01	Sekcja 1.01
 	Multiple Pages	Wiele stron
 	Name (A–Z)	Nazwa (A–Z)
 	Name:	Nazwa:
-	Narrow  0.5" all	Wąskie  wszystkie 0,5"
+	Narrow  {size} all	Wąskie  wszystkie {size}
 	Navigation	Nawigacja
 	Navigation Pane	Okienko nawigacji
 	New	Nowy
@@ -457,7 +467,7 @@
 	Nonbreaking Hyphen	Łącznik nierozdzielający
 	Nonbreaking Space	Spacja nierozdzielająca
 	None	Brak
-	Normal  1" all	Normalne  wszystkie 1"
+	Normal  {size} all	Normalne  wszystkie {size}
 	Normal Style	Styl Normalny
 	Not available right now	W tej chwili niedostępne
 	Not saved	Niezapisany
@@ -472,6 +482,7 @@
 	Office 2003 Default	Domyślny pakietu Office 2003
 	One	Jedna
 	One Page	Jedna strona
+	Only for the selected text	Tylko dla zaznaczonego tekstu
 	Open	Otwórz
 	OpenDocument Text (*.odt)	Tekst OpenDocument (*.odt)
 	Optional Hyphen	Łącznik opcjonalny
@@ -685,6 +696,8 @@
 	Space before/after:	Odstęp przed/po:
 	Spacing	Odstępy
 	Spacing (pt):	Odstępy (pt):
+	Kerning for fonts:	Kerning czcionek:
+	Points and above	pkt i więcej
 	Speech	Mowa
 	Spelling & Grammar	Pisownia i gramatyka
 	Spelling &\nGrammar	Pisownia\ni gramatyka
@@ -1322,6 +1335,7 @@
 	This font has no characters to show.	Ta czcionka nie zawiera znaków do pokazania.
 	This point forward	Od tego miejsca
 	This section	Ta sekcja
+	Selected text	Zaznaczony tekst
 	Title from the document properties	Tytuł z właściwości dokumentu
 	Total	Razem
 	Track Changes Options	Opcje śledzenia zmian
@@ -1400,6 +1414,8 @@
 	Put the default commands back on the Quick Access Toolbar?	Przywrócić domyślne polecenia na pasku narzędzi Szybki dostęp?
 	Remove every custom tab and group and show all tabs again?	Usunąć wszystkie niestandardowe karty i grupy oraz ponownie pokazać wszystkie karty?
 	Remove from Quick Access Toolbar	Usuń z paska narzędzi Szybki dostęp
+	Hide Quick Access Toolbar	Ukryj pasek narzędzi Szybki dostęp
+	Show Quick Access Toolbar	Pokaż pasek narzędzi Szybki dostęp
 	Rename…	Zmień nazwę…
 	Reset…	Resetuj…
 	Ribbon	Wstążka
@@ -1571,6 +1587,7 @@
 	Issue	Numer
 	Italian	Włoski
 	Croatian	Chorwacki
+	Indonesian	Indonezyjski
 	Japanese	Japoński
 	Journal	Czasopismo naukowe
 	Korean	Koreański
@@ -1879,6 +1896,8 @@
 	Move Up	Przenieś w górę
 	Move with Text	Przenoś z tekstem
 	Moves	Przeniesienia
+	Moved from:	Przeniesiono z:
+	Moved to:	Przeniesiono do:
 	New comments and tracked changes are recorded under this name and these initials.	Nowe komentarze i śledzone zmiany są zapisywane pod tą nazwą i tymi inicjałami.
 	New document	Nowy dokument
 	New word	Nowy wyraz
@@ -1942,6 +1961,11 @@
 	Regular expressions	Wyrażenia regularne
 	Relationship	Relacja
 	Remove Added Font	Usuń dodaną czcionkę
+	Load System Installed Fonts…	Wczytaj zainstalowane czcionki systemowe…
+	All system fonts are already available.	Wszystkie czcionki systemowe są już dostępne.
+	Local font access is not supported by your browser.	Twoja przeglądarka nie obsługuje dostępu do czcionek lokalnych.
+	Local font access was denied.	Odmówiono dostępu do czcionek lokalnych.
+	Loaded {count} system fonts.	Wczytano {count} czcionek systemowych.
 	Remove Content Control	Usuń formant zawartości
 	Remove row	Usuń wiersz
 	Remove series	Usuń serię
@@ -1992,6 +2016,7 @@
 	Show changes in:	Pokaż zmiany w:
 	Show the mini toolbar when text is selected	Pokazuj minipasek narzędzi po zaznaczeniu tekstu
 	Showing the first {count} items.	Pokazano pierwsze elementy: {count}.
+	No items to show.	Brak elementów do wyświetlenia.
 	Shows a tree: each item below the item it belongs to.	Pokazuje drzewo: każdy element pod elementem, do którego należy.
 	Shows items around a central idea: the first item is the centre.	Pokazuje elementy wokół głównej idei: pierwszy element jest w środku.
 	Shows items of equal weight as blocks in rows.	Pokazuje równorzędne elementy jako bloki w wierszach.
@@ -2088,6 +2113,45 @@
 	Hindi	Hindi
 	Context	Kontekstowe
 	System	Systemowe
+	Odd Banded Rows	Nieparzyste wiersze naprzemienne
+	Even Banded Rows	Parzyste wiersze naprzemienne
+	Odd Banded Columns	Nieparzyste kolumny naprzemienne
+	Even Banded Columns	Parzyste kolumny naprzemienne
+	Top Left Cell	Lewa górna komórka
+	Top Right Cell	Prawa górna komórka
+	Bottom Left Cell	Lewa dolna komórka
+	Bottom Right Cell	Prawa dolna komórka
+	Inside Horizontal Border	Wewnętrzna krawędź pozioma
+	Inside Vertical Border	Wewnętrzna krawędź pionowa
+# Mail merge: filter and sort recipients (#778)
+	Filter Recipients	Filtruj adresatów
+	Sort Recipients	Sortuj adresatów
+	Filter and Sort	Filtrowanie i sortowanie
+	And	I
+	Or	Lub
+	Comparison	Porównanie
+	Compare to	Porównaj z
+	Add Condition	Dodaj warunek
+	Remove condition	Usuń warunek
+	Sort by	Sortuj według
+	Then by	Następnie według
+	Ascending	Rosnąco
+	Descending	Malejąco
+	Equal to	Równe
+	Not equal to	Różne od
+	Less than	Mniejsze niż
+	Greater than	Większe niż
+	Less than or equal	Mniejsze lub równe
+	Greater than or equal	Większe lub równe
+	Is blank	Jest puste
+	Is not blank	Nie jest puste
+	Contains	Zawiera
+	Does not contain	Nie zawiera
+	{count} of {total} recipients will be merged.	Adresaci do scalenia: {count} z {total}.
+	Find in list:	Znajdź na liście:
+	Any field	Dowolne pole
+	Matches: {count}	Dopasowania: {count}
+	Show only records that will be merged	Pokaż tylko rekordy, które zostaną scalone
 	Book Title	Tytuł książki
 	Category	Kategoria
 	Contributors	Współtwórcy
@@ -2121,6 +2185,14 @@
 	Correct accidental usage of cAPS LOCK key	Poprawiaj przypadkowe użycie klawisza cAPS LOCK
 	Region:	Region:
 	Automatic ({region})	Automatycznie ({region})
+	Text of the nearest paragraph with a given style (running headers)	Tekst najbliższego akapitu o danym stylu (żywa pagina)
+	Style name:	Nazwa stylu:
+	Take the last match on the page	Weź ostatnie dopasowanie na stronie
+	Show its list number	Pokaż jego numer na liście
+	Show its number relative to this field	Pokaż jego numer względem tego pola
+	Show its number with all higher levels	Pokaż jego numer ze wszystkimi wyższymi poziomami
+	Number only, without the label's words	Tylko numer, bez słów etykiety
+	Add whether it is above or below	Dodaj, czy jest wyżej, czy niżej
 
 # Style, table style, watermark, paper size and equation gallery names, from #750 by @olekkut
 	AaBbCcDd	AaBbCcDd
@@ -2514,6 +2586,39 @@ preview	Title	Tytuł
 	Suggested	Sugerowane
 	Set Proofing Language…	Ustaw język sprawdzania…
 	Language Preferences…	Preferencje językowe…
+	APA	APA
+	Chicago	Chicago
+	GB/T 7714	GB/T 7714
+	GOST (name sort)	GOST (sortowanie według nazwiska)
+	GOST (title sort)	GOST (sortowanie według tytułu)
+	Harvard (Anglia)	Harvard (Anglia)
+	IEEE	IEEE
+	ISO 690 (author-date)	ISO 690 (autor–data)
+	ISO 690 (numerical)	ISO 690 (numeryczny)
+	MLA	MLA
+	SIST02	SIST02
+	Turabian	Turabian
+	Large	Duży
+	Limit and	Granica i
+	Log	Logarytm
+	Printer	Drukarka
+	Select a printer	Wybierz drukarkę
+	Refresh printers	Odśwież drukarki
+	Two-sided printing	Drukowanie dwustronne
+	Printer default	Domyślne drukarki
+	One-sided	Jednostronne
+	Two-sided: long edge	Dwustronne: długa krawędź
+	Two-sided: short edge	Dwustronne: krótka krawędź
+	Grayscale	Odcienie szarości
+	Finding printers…	Wyszukiwanie drukarek…
+	No printers found. Configure a system printer or export a PDF.	Nie znaleziono drukarek. Skonfiguruj drukarkę systemową lub wyeksportuj PDF.
+	Printer discovery failed.	Nie udało się znaleźć drukarek.
+	Submitting print job…	Wysyłanie zadania drukowania…
+	Print job submitted.	Zadanie drukowania wysłane.
+	Print job submitted: {receipt}	Zadanie drukowania wysłane: {receipt}
+	Print failed: the printing worker stopped.	Drukowanie nie powiodło się: proces drukowania został zatrzymany.
+	Print settings	Ustawienia drukowania
+	Submit print job	Wyślij zadanie drukowania
 
 # Cross-reference dialog (#1003)
 	For which item:	Dla którego elementu:
@@ -2527,3 +2632,75 @@ preview	Title	Tytuł
 	Hunspell .aff and .dic files here (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) are used before the system's.	Pliki Hunspell .aff i .dic z tego folderu (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) mają pierwszeństwo przed systemowymi.
 	{language}: {file}	{language}: {file}
 	{language}: no dictionary found	{language}: nie znaleziono słownika
+
+# Backstage › Recover (#586)
+	Recover	Odzyskaj
+
+# Page Setup › Mirror margins (#1239)
+	Mirror margins	Marginesy lustrzane
+
+# Insert Hyperlink › Place in This Document (#1370)
+	Existing File or Web Page	Istniejący plik lub strona sieci Web
+	Link to:	Połącz z:
+	Place in This Document	Miejsce w tym dokumencie
+# Table Layout › Sort dialog (#1205)
+	Column {n}	Kolumna {n}
+	Header row	Wiersz nagłówka
+	No header row	Bez wiersza nagłówka
+	My list has	Moja lista ma
+# Table Layout › Formula dialog (#1210)
+	Formula:	Formuła:
+	Paste function:	Wklej funkcję:
+# Reading Mode column widths (#1040)
+	Narrow	Wąska
+	Medium	Średnia
+# Split Cells and Convert Text to Table (#2592)
+	Merge cells before split	Scal komórki przed podziałem
+	Table size	Rozmiar tabeli
+	AutoFit behavior	Autodopasowanie
+	Initial column width:	Początkowa szerokość kolumn:
+	AutoFit to contents	Dopasuj do zawartości
+	AutoFit to window	Dopasuj do okna
+	Separate text at	Oddziel tekst przy
+	Commas	Przecinki
+	Other:	Inny:
+	The number must be between 1 and {max}.	Liczba musi być z zakresu od 1 do {max}.
+	The measurement must be between {min} and {max}.	Miara musi być z zakresu od {min} do {max}.
+	Recently Used Fonts	Ostatnio używane czcionki
+	All Fonts	Wszystkie czcionki
+	Spike	Zbieracz
+	Insert Spike	Wstaw ze zbieracza
+# Add Font status (#1789)
+	Added 1 font	Dodano 1 czcionkę
+	Added {n} fonts	Dodano czcionek: {n}
+	{added}; {count} couldn't be read: {names}	{added}; nie udało się odczytać ({count}): {names}
+	{names} and {n} more	{names} i {n} więcej
+	{added}; {n} skipped (limit {max})	{added}; pominięto: {n} (limit {max})
+	nothing is selected	nic nie jest zaznaczone
+	select a picture or shape first	najpierw zaznacz obraz lub kształt
+	select recipients first	najpierw wybierz adresatów
+	select two or more pictures or shapes first (Shift+click)	zaznacz co najmniej dwa obrazy lub kształty (Shift+kliknięcie)
+	text boxes can't go inside a text box	pola tekstowego nie można umieścić w polu tekstowym
+	the cursor isn't in a table	kursor nie jest w tabeli
+	{name} options	{name}: opcje
+
+# Drop Cap menu and Drop Cap Options (#2601)
+	Dropped	W tekście
+	In margin	Na marginesie
+	Drop Cap Options…	Opcje inicjału…
+	Lines to drop:	Wysokość w wierszach:
+	Distance from text:	Odległość od tekstu:
+	Distance from text	Odległość od tekstu
+
+# Drop Cap disabled reasons (#2601)
+	the paragraph is empty	akapit jest pusty
+	the paragraph starts with a space	akapit zaczyna się od spacji
+
+# Picture Format › Size: the Size dialog, sizes typed in any unit (#2573)
+	Lock aspect ratio	Zablokuj proporcje
+	Relative to original picture size	Względem oryginalnego rozmiaru obrazu
+	Original size	Rozmiar oryginalny
+	{width} × {height} pixels	{width} × {height} pikseli
+	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Wpisz rozmiar w dowolnej jednostce, np. 5 cm lub 300 px. Druga strona dopasuje się, więc obraz zachowa proporcje.
+
+	Import…	Importuj…

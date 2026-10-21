@@ -1,8 +1,8 @@
 //! Table Design and Table Layout tabs.
 
+use super::table_formula::parse_number;
 use serde_json::{Value, json};
 use wordcraft_doc::collate::{SortKey, sort_key};
-use wordcraft_doc::locale_number::{format_number, parse_number};
 use wordcraft_doc::props::{Align, Border, BorderStyle, Borders, HeightRule, Rgb, TextDirection, VAlign};
 use wordcraft_doc::{Block, Document, Paragraph, Path, Pos, RevisionKind, StoryRef, Table, para_block};
 
@@ -42,13 +42,8 @@ pub fn specs() -> Vec<CommandSpec> {
             fix_caret(s, &tp, r, 0)
         })),
         t(CommandSpec::new("table.merge", "Merge Cells", "Table Layout › Merge", merge)),
-        t(CommandSpec::new("table.split", "Split Cells", "Table Layout › Merge", |s, v| {
-            let n = p::u64(v, "columns").unwrap_or(2).clamp(1, 63) as usize;
-            let (tp, r, c) = cell(s)?;
-            s.doc.table_mut(s.sel.focus.story, &tp)?.split_cell(r, c, n);
-            fix_caret(s, &tp, r, c)
-        })
-        .params(r#"{"columns"?: n}"#)),
+        t(CommandSpec::new("table.split", "Split Cells", "Table Layout › Merge", split)
+            .params(r#"{"columns"?: n (2), "rows"?: n (1), "mergeFirst"?: bool (true: several selected cells are merged first)}"#)),
         t(CommandSpec::new("table.splitTable", "Split Table", "Table Layout › Merge", split_table)),
         t(CommandSpec::new("table.style", "Table Styles", "Table Design › Table Styles", |s, v| {
             let st = p::req_str(v, "style")?;
@@ -92,7 +87,7 @@ pub fn specs() -> Vec<CommandSpec> {
                 x => return Err(CmdError::Params(format!("unknown alignment `{x}`"))),
             };
             with_cells(s, |cl| {
-                cl.props.valign = va;
+                cl.props.valign = Some(va);
                 for b in &mut cl.blocks {
                     if let Block::Para(p) = std::sync::Arc::make_mut(b) {
                         p.props.align = Some(h);
@@ -123,10 +118,12 @@ pub fn specs() -> Vec<CommandSpec> {
         })),
         t(CommandSpec::new("table.columnWidth", "Table Column Width", "Table Layout › Cell Size", |s, v| {
             let w = p::req_f32(v, "width")?.clamp(6.0, 1584.0);
-            let (_, r, c) = cell(s)?;
-            with_table(s, |t| set_column_width(t, r, c, w))
+            let cells = selected_cells(s);
+            with_table(s, |t| set_column_widths(t, &cells, w))
         })
-        .params(r#"{"width": pt} (the caret cell's column; the table's preferred width is cleared so the column gets exactly this)"#)),
+        .params(
+            r#"{"width": pt} (every column the selection covers, the caret cell's without one; the table's preferred width is cleared so the columns get exactly this)"#,
+        )),
         t(CommandSpec::new("table.rowHeight", "Table Row Height", "Table Layout › Cell Size", |s, v| {
             let h = p::req_f32(v, "height")?.clamp(1.0, 1584.0);
             let rule = match p::str(v, "rule") {
@@ -134,15 +131,18 @@ pub fn specs() -> Vec<CommandSpec> {
                 Some("exact") => HeightRule::Exact,
                 Some(x) => return Err(CmdError::Params(format!("unknown height rule `{x}`"))),
             };
-            let (_, r, _) = cell(s)?;
+            let mut rows: Vec<usize> = selected_cells(s).into_iter().map(|(r, _)| r).collect();
+            rows.dedup();
             with_table(s, |t| {
-                if let Some(row) = t.rows.get_mut(r) {
-                    row.props.height = Some(h);
-                    row.props.height_rule = rule;
+                for r in &rows {
+                    if let Some(row) = t.rows.get_mut(*r) {
+                        row.props.height = Some(h);
+                        row.props.height_rule = rule;
+                    }
                 }
             })
         })
-        .params(r#"{"height": pt, "rule"?: "atLeast|exact"}"#)),
+        .params(r#"{"height": pt, "rule"?: "atLeast|exact"} (every row the selection covers, the caret's without one)"#)),
         t(CommandSpec::new("table.repeatHeader", "Repeat Header Rows", "Table Layout › Data", |s, v| {
             let (_, r, _) = cell(s)?;
             let on = p::bool(v, "value");
@@ -201,7 +201,8 @@ pub fn specs() -> Vec<CommandSpec> {
         t(CommandSpec::new("table.properties", "Properties", "Table Layout › Table", properties).params(
             r#"{"align"?: "left|center|right", "rtl"?: bool, "width"?: pt|null, "widthPct"?: percent, "indent"?: pt, "rowHeight"?: pt|null, "rowHeightRule"?: "atLeast|exact", "allowBreak"?: bool, "headerRow"?: bool, "columnWidth"?: pt, "cellWidth"?: pt|null, "valign"?: "top|center|bottom"} (row, column and cell settings apply to the caret's; without settings it returns the current ones)"#,
         )),
-        CommandSpec::new("table.fromText", "Convert Text to Table", "Insert › Tables", from_text).params(r#"{"separator"?: "tab|comma"}"#),
+        CommandSpec::new("table.fromText", "Convert Text to Table", "Insert › Tables", from_text)
+            .params(r#"{"separator"?: "tab|comma|paragraph|other", "char"?: string (with other), "columns"?: n, "autofit"?: "initial|fixed|contents|window", "width"?: pt (initial column width, 0 = Auto, at most 1584)}"#),
         CommandSpec::new("table.quick", "Quick Tables", "Insert › Tables", quick_table).params(r#"{"kind"?: "calendar|tabular|matrix"}"#),
     ]
 }
@@ -256,6 +257,25 @@ pub(crate) fn sync_cell_widths(t: &mut Table) {
 
 /// Set the width of the grid column cell `c` of row `r` starts in. The table's preferred width
 /// goes, so the layout doesn't scale the column back.
+/// Give every grid column the `cells` (row, cell) pairs touch the width `w`.
+fn set_column_widths(t: &mut Table, cells: &[(usize, usize)], w: f32) {
+    let mut cols: Vec<usize> = cells.iter().map(|&(r, c)| t.grid_col(r, c)).collect();
+    cols.sort_unstable();
+    cols.dedup();
+    let mut any = false;
+    for g in cols {
+        if let Some(x) = t.grid.get_mut(g) {
+            *x = w;
+            any = true;
+        }
+    }
+    if any {
+        t.props.width = None;
+        t.props.width_pct = None;
+        sync_cell_widths(t);
+    }
+}
+
 fn set_column_width(t: &mut Table, r: usize, c: usize, w: f32) {
     let g = t.grid_col(r, c);
     if let Some(x) = t.grid.get_mut(g) {
@@ -372,7 +392,7 @@ fn properties(s: &mut Session, v: &Value) -> CmdResult {
                     cl.props.width = w;
                 }
                 if let Some(va) = valign {
-                    cl.props.valign = va;
+                    cl.props.valign = Some(va);
                 }
             }
         }
@@ -392,7 +412,7 @@ fn with_table(s: &mut Session, f: impl Fn(&mut Table)) -> CmdResult {
 }
 
 /// Selected cells: (row, cell) pairs covered by the selection (at least the caret's cell).
-fn selected_cells(s: &Session) -> Vec<(usize, usize)> {
+pub fn selected_cells(s: &Session) -> Vec<(usize, usize)> {
     // Whole cells selected (a column, say): just those, by grid column, so merged cells count.
     if let Some(range) = s.cell_range()
         && s.sel.focus.path.cell().is_some_and(|(tp, _, _)| tp == range.table)
@@ -566,6 +586,35 @@ fn del_col(s: &mut Session, _: &Value) -> CmdResult {
     fix_caret(s, &tp, r, c.saturating_sub(1))
 }
 
+/// Backspace with whole cells selected (#1844): whole rows go like Delete Rows (every row: the
+/// table, like Delete Table), whole columns like Delete Columns, with their undo and Track
+/// Changes. `None` for any other block of cells, and for a single cell of a table with more
+/// (Backspace then clears them).
+pub(crate) fn backspace_cells(s: &mut Session) -> Option<CmdResult> {
+    let cr = s.cell_range()?.clone();
+    let (tp, _, _) = s.sel.focus.path.cell()?;
+    if cr.story != s.sel.focus.story || cr.table != tp {
+        return None;
+    }
+    let t = s.doc.table(cr.story, &tp)?;
+    // One cell of several is just that cell, also in a one-row or one-column table (Word's cell
+    // selection doesn't take the end-of-row mark): Backspace clears it.
+    let cells: usize = t.rows.iter().map(|row| row.cells.len()).sum();
+    if cells > 1 && cr.cells(t).len() <= 1 {
+        return None;
+    }
+    let (last_row, last_col) = (t.rows.len().saturating_sub(1), t.cols().saturating_sub(1));
+    let r = if cr.cols == (0, last_col) {
+        del_row(s, &Value::Null)
+    } else if cr.rows == (0, last_row) {
+        del_col(s, &Value::Null)
+    } else {
+        return None;
+    };
+    s.column = None;
+    Some(r)
+}
+
 fn del_table(s: &mut Session, _: &Value) -> CmdResult {
     let (tp, _, _) = cell(s)?;
     let story = s.sel.focus.story;
@@ -658,6 +707,81 @@ fn merge(s: &mut Session, _: &Value) -> CmdResult {
     fix_caret(s, &tp, r0, c0)
 }
 
+/// The selected cells as Split Cells sees them: one entry per cell, a vertically merged cell
+/// once (its top row), each as (top row, grid column).
+pub fn split_targets(s: &Session) -> Vec<(usize, usize)> {
+    let Ok((tp, _, _)) = cell(s) else { return Vec::new() };
+    let Some(t) = s.doc.table(s.sel.focus.story, &tp) else { return Vec::new() };
+    let mut v: Vec<(usize, usize)> = selected_cells(s)
+        .into_iter()
+        .filter(|&(r, c)| t.rows.get(r).is_some_and(|row| c < row.cells.len()))
+        .map(|(r, c)| (t.vertical_extent(r, c).map_or(r, |(top, _)| top), t.grid_col(r, c)))
+        .collect();
+    v.sort_unstable();
+    v.dedup();
+    v
+}
+
+/// Split Cells: the caret's cell, or the selected cells (merged first unless `mergeFirst` is
+/// false), into `columns` × `rows` cells.
+fn split(s: &mut Session, v: &Value) -> CmdResult {
+    let cols = p::u64(v, "columns").unwrap_or(2).clamp(1, 63) as usize;
+    let rows = p::u64(v, "rows").unwrap_or(1).clamp(1, 63) as usize;
+    let mut cells = split_targets(s);
+    let merge_first = cells.len() > 1 && p::bool(v, "mergeFirst").unwrap_or(true);
+    if merge_first {
+        // As in Word: the merged cell splits into at most the rows it covered.
+        let mut sel_rows: Vec<usize> = selected_cells(s).iter().map(|&(r, _)| r).collect();
+        sel_rows.sort_unstable();
+        sel_rows.dedup();
+        if rows > sel_rows.len() {
+            return Err(CmdError::Params(format!("The number must be between 1 and {}.", sel_rows.len())));
+        }
+        merge(s, &json!({}))?;
+        cells.clear();
+    } else if cells.len() > 1 && rows > 1 {
+        // Word greys out the row count when the cells split one by one.
+        return Err(CmdError::Params("several cells split one by one keep their rows: `rows` must be 1".into()));
+    }
+    let (tp, r, c) = cell(s)?;
+    let t = s.doc.table_mut(s.sel.focus.story, &tp)?;
+    if cells.is_empty() {
+        cells.push((t.vertical_extent(r, c).map_or(r, |(top, _)| top), t.grid_col(r, c)));
+    }
+    // As in Word: a merged cell splits into 1 to its height rows; it never adds rows.
+    if let [(top, g)] = cells[..]
+        && let Some((_, k)) = t.cell_at_grid(top, g).and_then(|ci| t.vertical_extent(top, ci))
+        && k > 1
+        && rows > k
+    {
+        return Err(CmdError::Params(format!("The number must be between 1 and {k}.")));
+    }
+    // Rightmost grid column first, bottom up: a split only adds grid columns inside the cell it
+    // splits, so the cells still to split keep their grid places. Each is found again by its grid
+    // column when its turn comes.
+    let first = cells.first().copied();
+    cells.sort_unstable_by_key(|&(top, g)| std::cmp::Reverse((g, top)));
+    for &(top, g) in &cells {
+        let Some(ci) = t.cell_at_grid(top, g) else { continue };
+        // 1 × 1 on a cell that was already merged down changes nothing in Word, at any height; a
+        // cell just merged by Merge cells before split stays one cell.
+        let height = t.vertical_extent(top, ci).map_or(1, |(_, k)| k);
+        if !merge_first && cols == 1 && rows == 1 && height > 1 {
+            continue;
+        }
+        if height > 1 && rows > 1 && !height.is_multiple_of(rows) {
+            return Err(CmdError::Params(format!("The number must be a divisor of {height}.")));
+        }
+        if !t.split_cell_grid(top, ci, cols, rows) {
+            return Err(CmdError::Failed(format!("can't split into {rows} rows: the table would get too many rows")));
+        }
+    }
+    // The caret goes to the first part of the first cell (the top of a merged cell).
+    let (top, g) = first.unwrap_or((r, 0));
+    let c = t.cell_at_grid(top, g).unwrap_or(c);
+    fix_caret(s, &tp, top, c)
+}
+
 fn split_table(s: &mut Session, _: &Value) -> CmdResult {
     let (tp, r, _) = cell(s)?;
     if r == 0 {
@@ -721,7 +845,7 @@ fn borders(s: &mut Session, v: &Value) -> CmdResult {
     })
 }
 
-fn cell_text(c: &wordcraft_doc::Cell) -> String {
+pub(crate) fn cell_text(c: &wordcraft_doc::Cell) -> String {
     c.blocks.iter().filter_map(|b| b.as_para().map(|p| p.plain_text())).collect::<Vec<_>>().join("\n")
 }
 
@@ -791,55 +915,63 @@ fn to_text(s: &mut Session, v: &Value) -> CmdResult {
     sel_result(s)
 }
 
-/// `=SUM(ABOVE)`, `=SUM(LEFT)`, `=AVERAGE(ABOVE)`, `=COUNT(...)`, `=MAX`, `=MIN`, `=PRODUCT`.
+/// Table Layout › Data › Formula: inserts a formula field at the caret, evaluated now and again
+/// by Update Field. What a formula can use is described in [`super::table_formula`]. A formula
+/// that doesn't evaluate (an unknown function, a syntax error) is an error and inserts nothing.
 fn formula(s: &mut Session, v: &Value) -> CmdResult {
     let (tp, r, c) = cell(s)?;
-    let f = p::str(v, "formula").unwrap_or("=SUM(ABOVE)").to_ascii_uppercase();
-    let t = s.doc.table(s.sel.focus.story, &tp).cloned().ok_or_else(|| CmdError::Failed("no table".into()))?;
-    let story = s.sel.focus.story;
-    // Each cell's number is read in that cell's language (`3,50` in Polish is three and a half).
-    let sources: Vec<&wordcraft_doc::Cell> = if f.contains("LEFT") {
-        t.rows.get(r).map(|row| row.cells.iter().take(c).collect()).unwrap_or_default()
-    } else {
-        t.rows.iter().take(r).filter_map(|row| row.cells.get(c)).collect()
-    };
+    let raw = p::str(v, "formula").unwrap_or("=SUM(ABOVE)");
+    let t = s.doc.table(s.sel.focus.story, &tp).ok_or_else(|| CmdError::Failed("no table".into()))?;
     let default_lang = super::default_lang(s);
-    let nums: Vec<f64> = sources
-        .iter()
-        .filter_map(|x| parse_number(cell_text(x).trim(), cell_lang(&s.doc, x).or_else(|| default_lang.clone()).as_deref()))
-        .filter(|x| x.is_finite())
-        .collect();
-    // The result is written in the language of the formula's cell, else of the numbers it adds.
-    let out_lang = s
-        .doc
-        .para(story, &s.sel.focus.path)
-        .filter(|p| !p.plain_text().trim().is_empty())
-        .and_then(|p| super::para_lang(&s.doc, p))
-        .or_else(|| sources.iter().find_map(|x| cell_lang(&s.doc, x)))
-        .or(default_lang);
-    let val = if f.starts_with("=AVERAGE") {
-        if nums.is_empty() { 0.0 } else { nums.iter().sum::<f64>() / nums.len() as f64 }
-    } else if f.starts_with("=COUNT") {
-        nums.len() as f64
-    } else if f.starts_with("=MAX") {
-        nums.iter().copied().fold(f64::MIN, f64::max)
-    } else if f.starts_with("=MIN") {
-        nums.iter().copied().fold(f64::MAX, f64::min)
-    } else if f.starts_with("=PRODUCT") {
-        nums.iter().product()
-    } else {
-        nums.iter().sum()
-    };
-    let text = format_number(val, out_lang.as_deref());
+    let instr = auto_formula_instr(t, r, c, raw, default_lang.as_deref());
+    let text = super::table_formula::evaluate_field_with(t, Some(&s.doc), default_lang.as_deref(), r, c, &instr)?;
     let props = s.typing_props();
     let at = s.sel.focus.clone();
     let end = s.doc.insert_object(
         &at,
-        wordcraft_doc::InlineObject::Field { instr: f.clone(), result: text.clone(), locked: false, code: false },
+        wordcraft_doc::InlineObject::Field {
+            instr: instr.clone(),
+            result: text.clone(),
+            locked: false,
+            dirty: false,
+            code: false,
+            form: String::new(),
+        },
         &props,
     )?;
     s.sel = Selection::caret(end);
-    Ok(json!({"result": text}))
+    Ok(json!({"result": text, "formula": instr}))
+}
+
+/// A formula as a field stores it: upper case, with one leading `=`. A `\#` numeric picture is
+/// kept as typed.
+pub(crate) fn formula_instr(raw: &str) -> String {
+    let body = raw.trim();
+    let body = body.strip_prefix('=').unwrap_or(body);
+    match super::table_formula::split_switch(body) {
+        (formula, Some(switch)) => format!("={} {switch}", formula.trim().to_ascii_uppercase()),
+        (formula, None) => format!("={}", formula.trim().to_ascii_uppercase()),
+    }
+}
+
+/// A bare function name (`=SUM`, no parentheses) takes its direction from the cell: ABOVE when a
+/// cell above holds a number, else LEFT.
+fn auto_formula_instr(t: &Table, r: usize, c: usize, raw: &str, lang: Option<&str>) -> String {
+    let instr = formula_instr(raw);
+    let body = instr.strip_prefix('=').unwrap_or(&instr);
+    if !body.contains('(') && matches!(body, "SUM" | "AVERAGE" | "COUNT" | "MAX" | "MIN" | "PRODUCT") {
+        let g = t.grid_col(r, c);
+        let has_above = (0..r).rev().any(|row| {
+            t.cell_at_grid(row, g)
+                .and_then(|ci| t.rows.get(row)?.cells.get(ci))
+                .and_then(|cl| super::table_formula::cell_number_in(cl, lang))
+                .is_some()
+        });
+        let dir = if has_above { "ABOVE" } else { "LEFT" };
+        format!("={body}({dir})")
+    } else {
+        instr
+    }
 }
 
 /// Ctrl+A in a table, as in Word: the cell, then its row, then the table. A nested table that
@@ -1068,19 +1200,90 @@ pub(crate) fn row_ends(doc: &Document, story: StoryRef, tp: &Path, r: usize) -> 
     Some((Pos { story, path: first, off: 0 }, Pos { story, path: last, off: len }))
 }
 
-fn from_text(s: &mut Session, v: &Value) -> CmdResult {
-    let sep = if p::str(v, "separator") == Some("comma") { ',' } else { '\t' };
+/// The paragraphs Convert Text to Table would convert: the selected ones, as text. Refused
+/// rather than dropping content when a table lies between them.
+pub fn text_table_lines(s: &Session) -> Result<Vec<String>, CmdError> {
     let (a, b) = s.sel.ordered();
     if a.path.parent() != b.path.parent() || a.story != b.story {
         return Err(CmdError::Failed("select paragraphs to convert".into()));
     }
     let lines: Vec<String> =
         (a.path.last()..=b.path.last()).filter_map(|i| s.doc.para(a.story, &a.path.with_last(i)).map(|p| p.plain_text())).collect();
-    let cols = lines.iter().map(|l| l.split(sep).count()).max().unwrap_or(1).clamp(1, 63);
+    // Refuse rather than drop content: a table between the paragraphs would be removed with them.
+    if lines.len() != b.path.last() - a.path.last() + 1 {
+        return Err(CmdError::Failed("select only paragraphs to convert".into()));
+    }
+    Ok(lines)
+}
+
+/// The cells Convert Text to Table makes of `lines`, row by row, and the column count. `sep`
+/// `None` separates at paragraphs: each paragraph is a cell, `columns` (default 1) to a row.
+/// Otherwise each paragraph starts a row; `columns` defaults to the most fields in one, and a
+/// paragraph with more fields than that carries on over the next rows.
+pub fn text_table_cells(lines: &[String], sep: Option<char>, columns: Option<usize>) -> (Vec<Vec<&str>>, usize) {
+    let Some(sep) = sep else {
+        let cols = columns.unwrap_or(1).clamp(1, wordcraft_doc::table::MAX_COLS);
+        return (lines.chunks(cols).map(|ch| ch.iter().map(String::as_str).collect()).collect(), cols);
+    };
+    let cols = columns.unwrap_or_else(|| lines.iter().map(|l| l.split(sep).count()).max().unwrap_or(1)).max(1);
+    let mut rows = Vec::new();
+    for l in lines {
+        let fields: Vec<&str> = l.split(sep).collect();
+        rows.extend(fields.chunks(cols.min(wordcraft_doc::table::MAX_COLS)).map(<[&str]>::to_vec));
+    }
+    (rows, cols)
+}
+
+/// Word's largest Initial column width, 22 in, in points.
+const MAX_INITIAL_WIDTH: f64 = 22.0 * 72.0;
+
+fn from_text(s: &mut Session, v: &Value) -> CmdResult {
+    let sep = match p::str(v, "separator") {
+        None | Some("tab") => Some('\t'),
+        Some("comma") => Some(','),
+        Some("paragraph") => None,
+        Some("other") => match p::str(v, "char").and_then(|c| c.chars().next()) {
+            Some(c) if c != '\n' && c != '\r' => Some(c),
+            _ => return Err(CmdError::Params("`char` (the separating character) is required with `other`".into())),
+        },
+        Some(x) => return Err(CmdError::Params(format!("unknown separator `{x}`"))),
+    };
+    let fit = match p::str(v, "autofit") {
+        None | Some("initial") => None,
+        Some(m @ ("fixed" | "contents" | "window")) => Some(m),
+        Some(x) => return Err(CmdError::Params(format!("unknown AutoFit behavior `{x}`"))),
+    };
+    // Initial column width: 0 (or none) is Auto, the text width shared out; Word takes 0 to 22 in.
+    let col_width = match v.get("width") {
+        // Only the Initial column width uses it; AutoFit sizes the columns itself.
+        _ if matches!(fit, Some("contents" | "window")) => 0.0,
+        None | Some(Value::Null) => 0.0,
+        Some(w) => match w.as_f64() {
+            Some(w) if (0.0..=MAX_INITIAL_WIDTH).contains(&w) => w as f32,
+            _ => return Err(CmdError::Params("`width` must be between 0 and 1584 pt (22 in)".into())),
+        },
+    };
+    let columns = p::u64(v, "columns").map(|n| n.clamp(1, wordcraft_doc::table::MAX_COLS as u64) as usize);
+    let (a, b) = s.sel.ordered();
+    let lines = text_table_lines(s)?;
+    let (cells, cols) = text_table_cells(&lines, sep, columns);
+    // A table has at most 63 columns; a longer row would lose its last fields.
+    if cols > wordcraft_doc::table::MAX_COLS {
+        return Err(CmdError::Failed("a table can have at most 63 columns".into()));
+    }
+    if cells.len() > wordcraft_doc::table::MAX_ROWS {
+        return Err(CmdError::Failed(format!("a table can have at most {} rows", wordcraft_doc::table::MAX_ROWS)));
+    }
     let width = super::page::sect(s).text_width();
-    let mut t = Table::new(lines.len().max(1), cols, width);
-    for (r, l) in lines.iter().enumerate() {
-        for (c, txt) in l.split(sep).enumerate() {
+    let mut t = Table::new(cells.len().max(1), cols, width);
+    if col_width > 0.0 {
+        // Every column gets that preferred width, even past the margins (layout fits the table
+        // to the text width, as Word draws it); the table itself has no preferred width.
+        t.grid.iter_mut().for_each(|w| *w = col_width);
+        t.rows.iter_mut().flat_map(|row| row.cells.iter_mut()).for_each(|c| c.props.width = Some(col_width));
+    }
+    for (r, l) in cells.iter().enumerate() {
+        for (c, txt) in l.iter().enumerate() {
             if let Some(cl) = t.rows.get_mut(r).and_then(|row| row.cells.get_mut(c)) {
                 cl.blocks = vec![para_block(Paragraph::with_text(txt.trim(), Default::default()))];
             }
@@ -1093,7 +1296,10 @@ fn from_text(s: &mut Session, v: &Value) -> CmdResult {
     let mut first = a.path.0.clone();
     first.extend([0, 0, 0]);
     s.sel = Selection::caret(Pos { story: a.story, path: Path(first), off: 0 });
-    sel_result(s)
+    match fit {
+        Some(mode) => autofit(s, &json!({ "mode": mode })),
+        None => sel_result(s),
+    }
 }
 
 fn quick_table(s: &mut Session, v: &Value) -> CmdResult {

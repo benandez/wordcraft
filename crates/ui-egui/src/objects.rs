@@ -5,8 +5,9 @@
 //! everything else.
 //!
 //! While dragging, nothing is laid out: the preview is the object drawn alone, once, when the
-//! drag starts (#1010: a cut of the page would carry along whatever is behind it). The drop is
-//! one command, one relayout.
+//! drag starts (#1010: a cut of the page would carry along whatever is behind it). The page it
+//! was on is drawn again without it (see [`dragged_off_page`]), so it is not left behind where it
+//! was. The drop is one command, one relayout.
 //!
 //! Moving one snaps it to alignment guides ([`crate::guides`]): the page's edges and centre, the
 //! margins and the other floating objects on the page, shown as thin lines while dragging. Alt
@@ -42,6 +43,9 @@ pub struct ObjectDrag {
     /// Smallest size it can be resized to, points.
     min: f32,
     picture: bool,
+    /// A selected Behind Text picture overlaps text; wait for a drag threshold before taking the
+    /// gesture so a simple click can still put the caret in that text.
+    pending_behind: bool,
     /// Dragging a connector's end (false: its start, true: its end) to this page point.
     end: Option<(bool, (f32, f32))>,
     /// Ctrl/⌘ is held: dropping leaves the original and puts a copy at the new place.
@@ -146,9 +150,31 @@ fn screen(pages: &[Rect], scale: f32, page: usize, r: wordcraft_geom::Rect) -> O
 /// Pressing, dragging, releasing or double-clicking on an object (or a frame handle). Returns
 /// true when it was about an object, so the text doesn't also get it.
 pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect], layout: &DocLayout, scale: f32, at: Pos2) -> bool {
+    if let Some(taken) = crate::crop::pointer(app, ui, resp, pages, layout, scale, at) {
+        return taken;
+    }
     if let Some(mut d) = app.canvas.obj_drag.take() {
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
             return true; // cancelled: dropped without a change
+        }
+        if d.pending_behind {
+            if !ui.input(|i| i.pointer.primary_down()) {
+                // No drag threshold was crossed: let the text click finish normally.
+                app.canvas.cancel_text_drag();
+                return false;
+            }
+            let shift = ui.input(|i| i.modifiers.shift);
+            d.drag.update(at, pages, scale, d.min, d.picture != shift);
+            if !d.drag.moved {
+                app.canvas.obj_drag = Some(d);
+                return false;
+            }
+            let pos = d.object.pos();
+            let end = Pos { off: pos.off + OBJ.len_utf8(), ..pos.clone() };
+            let _ = app.run("select.range", json!({"anchor": pos, "focus": end}));
+            // The text click path has been tracking the pointer until it became a drag.
+            app.canvas.cancel_text_drag();
+            d.pending_behind = false;
         }
         if let Some((which, _)) = d.end {
             if ui.input(|i| i.pointer.primary_down()) {
@@ -206,6 +232,7 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
             object,
             min: 0.0,
             picture: false,
+            pending_behind: false,
             end: Some((which, (0.0, 0.0))),
             guides: Vec::new(),
             preview: None,
@@ -213,7 +240,13 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
         });
         return true;
     }
-    let Some((object, grab)) = grab_at(app, layout, pages, scale, at) else { return false };
+    let grabbed = grab_at(app, layout, pages, scale, at).or_else(|| pressed.then(|| behind_drag_at(app, layout, pages, scale, at)).flatten());
+    let Some((object, grab)) = grabbed else { return false };
+    // Double-click a SmartArt graphic (selected by the first click) to edit its text.
+    if resp.double_clicked() && wordcraft_engine::cmd::smart_art::selected_smart_art(&app.session).is_some() {
+        let _ = app.run("smartArt.textPane", json!({"value": true}));
+        return true;
+    }
     // Shift/Ctrl+click adds an object to the selected ones (or takes it out), for Group.
     let adding = ui.input(|i| i.modifiers.shift || i.modifiers.command);
     // Ctrl on the object that is already selected starts a copy-drag instead.
@@ -221,6 +254,24 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
     if pressed && adding && grab == Grab::Move && selected(app).is_some() && !(again && !ui.input(|i| i.modifiers.shift)) {
         let _ = app.run("select.addObject", json!({"pos": object.pos()}));
         return true;
+    }
+    if pressed && grab == Grab::Move && object.behind() && behind_draggable(app, &object) {
+        let (min, picture) = match app.session.doc.para_at(&object.pos()).and_then(|p| p.object_at(object.pos().off)) {
+            Some(o) => (wordcraft_engine::cmd::objects::min_size(o), matches!(o, InlineObject::Image { .. })),
+            None => return false,
+        };
+        app.canvas.obj_drag = Some(ObjectDrag {
+            drag: Drag::new(grab, object.page, object.rect, object.spin.deg, at),
+            object,
+            min,
+            picture,
+            pending_behind: true,
+            end: None,
+            guides: Vec::new(),
+            preview: None,
+            copy: false,
+        });
+        return false;
     }
     if pressed {
         let pos = object.pos();
@@ -238,6 +289,7 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
                 object,
                 min,
                 picture,
+                pending_behind: false,
                 end: None,
                 guides: Vec::new(),
                 preview: None,
@@ -246,6 +298,18 @@ pub fn pointer(app: &mut WordApp, ui: &Ui, resp: &egui::Response, pages: &[Rect]
         }
     }
     true
+}
+
+/// The object a move has taken off its page (which page, and where it is in the document): the
+/// page is rendered again without it while the preview follows the pointer, so the object is not
+/// left behind where it was. Only for a move — resizing and turning show the object itself, and
+/// dragging a connector's end onto a shape still shows that connector.
+pub(crate) fn dragged_off_page(drag: Option<&ObjectDrag>) -> Option<(usize, Pos)> {
+    let d = drag?;
+    if !d.drag.moved || d.end.is_some() || d.drag.grab != Grab::Move {
+        return None;
+    }
+    Some((d.object.page, d.object.pos()))
 }
 
 /// Snap a moved object's bounds (rotated ones by their turned box) to the guides of the page
@@ -348,6 +412,18 @@ fn grab_at(app: &WordApp, layout: &DocLayout, pages: &[Rect], scale: f32, at: Po
     });
     handle.or_else(|| {
         let (page, x, y) = crate::canvas::page_at(pages, layout, scale, at)?;
+        // A Behind Text picture is normally hit only where no body text is present, so text above
+        // it remains easy to edit. Once the picture is selected (for example with the arrow keys
+        // or the Selection Pane), let its own frame win inside the frame so the user can drag it
+        // directly without first finding an uncovered patch.
+        let selected_picture = selected(app)
+            .filter(|(_, obj)| behind_body_drag(obj))
+            .and_then(|(pos, _)| layout.object(&pos, app.session.page_hint))
+            .filter(|o| o.behind() && o.page == page && movable(app, o) && o.rect.expand(EDGE / scale.max(0.01)).contains(o.unspin(x, y)))
+            .map(|o| (o, Grab::Move));
+        if selected_picture.is_some() {
+            return selected_picture;
+        }
         // Selectable: body objects (table cells too) or the header/footer's own objects;
         // notes' objects aren't yet.
         layout.object_at_in(page, x, y, EDGE / scale.max(0.01), story).map(|o| (o, Grab::Move))
@@ -358,6 +434,38 @@ fn grab_at(app: &WordApp, layout: &DocLayout, pages: &[Rect], scale: f32, at: Po
 /// header/footer.
 fn movable(app: &WordApp, o: &ObjectHit) -> bool {
     o.path.depth() == 0 && selectable_story(app, o.story)
+}
+
+/// Whether a Behind Text object of this kind is grabbed by pressing its body. Pictures, shapes and
+/// groups yes; a text box no (its inside is its text, so only its border grabs it). Used so one can
+/// be dragged over the text it sits behind.
+fn behind_body_drag(obj: &InlineObject) -> bool {
+    matches!(obj, InlineObject::Image { .. } | InlineObject::Group { .. } | InlineObject::Shape { story: None, .. })
+}
+
+/// Whether the object at `o` is a Behind Text picture, shape or group that grabbing its body moves.
+fn behind_draggable(app: &WordApp, o: &ObjectHit) -> bool {
+    app.session.doc.para_at(&o.pos()).and_then(|p| p.object_at(o.pos().off)).is_some_and(behind_body_drag)
+}
+
+/// The topmost Behind Text picture, shape or group of the story being edited under `at`, even
+/// where text covers it. A press over one couldn't grab it before (text won), so a drag did
+/// nothing; with this it starts a frame drag once the pointer moves, while a plain click still
+/// edits the text it sits behind (see `pending_behind`).
+fn behind_drag_at(app: &WordApp, layout: &DocLayout, pages: &[Rect], scale: f32, at: Pos2) -> Option<(ObjectHit, Grab)> {
+    let story = active_story(app, layout);
+    let (page, x, y) = crate::canvas::page_at(pages, layout, scale, at)?;
+    let edge = EDGE / scale.max(0.01);
+    layout
+        .find_object(page, |o| {
+            o.page == page
+                && o.story == story
+                && o.behind()
+                && movable(app, o)
+                && behind_draggable(app, o)
+                && o.rect.expand(edge).contains(o.unspin(x, y))
+        })
+        .map(|o| (o, Grab::Move))
 }
 
 /// Whether a drag shows the object's pixels (moved, or scaled for an unturned picture) rather
@@ -407,6 +515,9 @@ fn drop(app: &mut WordApp, d: &ObjectDrag) {
 
 /// Draw the frame of the active object, or the drag preview.
 pub fn paint(app: &WordApp, painter: &Painter, t: &Tokens, layout: &DocLayout, pages: &[Rect], scale: f32) {
+    if crate::crop::paint(app, painter, t, layout, pages, scale) {
+        return;
+    }
     if let Some(d) = app.canvas.obj_drag.as_ref().filter(|d| d.end.is_some()) {
         paint_end_drag(app, d, painter, t, layout, pages, scale);
         return;
@@ -505,6 +616,9 @@ fn paint_end_drag(app: &WordApp, d: &ObjectDrag, painter: &Painter, t: &Tokens, 
 
 /// The pointer over an object or a handle (or dragging): its cursor.
 pub fn cursor(app: &WordApp, layout: &DocLayout, pages: &[Rect], scale: f32, at: Pos2) -> Option<egui::CursorIcon> {
+    if let Some(c) = crate::crop::cursor(app, layout, pages, scale, at) {
+        return Some(c);
+    }
     if let Some(d) = &app.canvas.obj_drag {
         return Some(if d.end.is_some() {
             egui::CursorIcon::Crosshair
@@ -523,6 +637,10 @@ pub fn cursor(app: &WordApp, layout: &DocLayout, pages: &[Rect], scale: f32, at:
 /// Keys for a selected object: arrows nudge a floating one; typing or Enter goes into a text box.
 /// Returns true if handled.
 pub fn key(app: &mut WordApp, key: egui::Key, m: egui::Modifiers) -> bool {
+    // Crop mode takes Esc and Enter (leaving it, the crop kept).
+    if crate::crop::key(app, key) {
+        return true;
+    }
     if selected(app).is_none() {
         return false;
     }
@@ -651,6 +769,55 @@ mod tests {
         let r = shape(&mut h);
         assert!((r.x + r.w / 2.0 - centre - 1.5).abs() < 0.01, "{r:?}");
     }
+    /// #1738: a floating shape dragged from page 1 onto page 2 leaves the view where it is, even
+    /// though the command that drops it (`arrange.bounds`) is not a view command.
+    #[test]
+    fn dropping_a_shape_on_another_page_keeps_the_view_where_it_is() {
+        use egui::{Event, PointerButton};
+        let mut a = WordApp::new(wordcraft_engine::Session::new(Document::new()), crate::Services::default());
+        a.run("view.commentsPane", json!({"value": false})).unwrap();
+        a.run("insert.shape", json!({"kind": "rectangle", "width": 100, "height": 50})).unwrap();
+        a.run("arrange.bounds", json!({"page": 0, "x": 100, "y": 250})).unwrap();
+        let end = Pos::body(0, wordcraft_doc::para::OBJ.len_utf8());
+        a.run("caret.set", json!({"pos": end})).unwrap();
+        a.run("text.insert", json!({"text": "one"})).unwrap();
+        a.run("text.newParagraph", json!({})).unwrap();
+        a.run("para.pageBreakBefore", json!({})).unwrap();
+        a.run("text.insert", json!({"text": "two"})).unwrap();
+        a.run("view.zoom", json!({"value": 30})).unwrap();
+        a.run("select.range", json!({"anchor": Pos::body(0, 0), "focus": end})).unwrap();
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).with_step_dt(1.0 / 60.0).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            a,
+        );
+        for _ in 0..6 {
+            h.step();
+        }
+        let r = h.state_mut().session.layout().object(&Pos::body(0, 0), 0).unwrap().rect;
+        let from = crate::canvas::page_to_screen(h.state_mut(), 0, r.x + r.w / 2.0, r.y + r.h / 2.0).unwrap();
+        let to = crate::canvas::page_to_screen(h.state_mut(), 1, 200.0, 300.0).unwrap();
+        let button =
+            |at: Pos2, pressed: bool| Event::PointerButton { pos: at, button: PointerButton::Primary, pressed, modifiers: Default::default() };
+        h.event(Event::PointerMoved(from));
+        h.event(button(from, true));
+        h.step();
+        for k in 1..=4 {
+            h.event(Event::PointerMoved(from + (to - from) * (k as f32 / 4.0)));
+            h.step();
+        }
+        h.state_mut().canvas.scroll_to_caret = false;
+        h.event(button(to, false));
+        h.step();
+        h.step();
+        let landed = h.state_mut().session.layout().object_at(1, 200.0, 300.0, 0.0).is_some();
+        assert!(landed, "the shape landed on page 2");
+        assert!(!h.state().canvas.scroll_to_caret, "the drop scrolled to the caret");
+    }
+
     /// A floating rectangle shape, `w` × `h`.
     fn floating_rect(w: f32, h: f32) -> InlineObject {
         InlineObject::Shape {
@@ -811,5 +978,122 @@ mod tests {
         assert_eq!(dark, 0, "no text from behind the shape in its preview");
         button(&h, end, false);
         steps(&mut h, 3);
+    }
+
+    /// A 100×60 pt rectangle filled E2EFDA: [`fill_pixels`] counts the page's pixels of that colour.
+    fn filled_shape() -> InlineObject {
+        InlineObject::Shape {
+            kind: ShapeKind::Rectangle,
+            w: 100.0,
+            h: 60.0,
+            fill: Some(wordcraft_doc::props::Rgb(0xE2, 0xEF, 0xDA)),
+            stroke: None,
+            stroke_width: 0.0,
+            float: Default::default(),
+            story: None,
+            freeform: None,
+            effects: Default::default(),
+            extra: Default::default(),
+        }
+    }
+
+    /// How many pixels of the first page have the fill colour: how many copies of the shape the
+    /// page shows.
+    fn fill_pixels(app: &mut WordApp, opts: &wordcraft_render::RenderOptions) -> usize {
+        let layout = app.session.layout();
+        let img = wordcraft_render::render_page(&app.session.doc, &layout.pages[0], 1.0, opts);
+        img.to_straight().as_chunks::<4>().0.iter().filter(|p| (p[0], p[1], p[2]) == (0xE2, 0xEF, 0xDA)).count()
+    }
+
+    /// A shape dragged on the page is left out of it: the preview under the pointer stands in for
+    /// it, so the page must not draw it where it was as well (`DisplayOptions::hide_object`).
+    ///
+    /// Judged by pixels: the page raster has none of its fill colour once it is left out, and a
+    /// thousand or so while it isn't. Without this, "it stays where it was while it is dragged"
+    /// would come back with nothing to catch it.
+    #[test]
+    fn a_dragged_inline_object_is_left_out_of_its_page() {
+        let (mut app, hit) = app_with(filled_shape());
+        let pos = hit.pos();
+        let on = wordcraft_render::RenderOptions::default();
+        let before = fill_pixels(&mut app, &on);
+        assert!(before > 1000, "the shape is on its page to begin with: {before} px");
+        let mut hidden = on.clone();
+        hidden.display.hide_object = Some(pos);
+        assert_eq!(fill_pixels(&mut app, &hidden), 0, "a dragged object is left out of its page");
+    }
+
+    /// The same for an object that is already floating: it is drawn as a `Placed::Shape` of its
+    /// own rather than inside a line, so leaving it out goes by the object the shape carries.
+    #[test]
+    fn a_dragged_floating_shape_is_left_out_of_its_page() {
+        let (mut app, hit) = app_with(filled_shape());
+        let pos = hit.pos();
+        let end = Pos { off: pos.off + wordcraft_doc::para::OBJ.len_utf8(), ..pos.clone() };
+        let _ = app.run("select.range", serde_json::json!({"anchor": pos, "focus": end}));
+        app.run("arrange.bounds", serde_json::json!({"page": 0, "x": 100.0, "y": 150.0})).expect("floats it");
+        let hit = app.session.layout().object(&pos, 0).expect("laid out");
+        assert!(hit.floating(), "arrange.bounds makes it float");
+
+        let on = wordcraft_render::RenderOptions::default();
+        let before = fill_pixels(&mut app, &on);
+        assert!(before > 1000, "the floating shape is on its page to begin with: {before} px");
+        let mut hidden = on.clone();
+        hidden.display.hide_object = Some(pos);
+        assert_eq!(fill_pixels(&mut app, &hidden), 0, "a dragged floating shape is left out of its page");
+    }
+
+    /// A floating shape dragged onto the next page lands there — the page the preview shows —
+    /// even dropped at the very top of it, where the anchor is the page's first paragraph. The
+    /// shape's wrap holds that paragraph on the old page, so once the shape moves the paragraph
+    /// can slide back and take the shape with it; the drop must re-anchor until it stays.
+    #[test]
+    fn a_shape_dragged_onto_the_next_page_is_dropped_there() {
+        use egui::{Event, PointerButton};
+        let mut a = WordApp::new(wordcraft_engine::Session::new(Document::new()), crate::Services::default());
+        a.run("view.commentsPane", json!({"value": false})).unwrap();
+        for i in 0..40 {
+            if i > 0 {
+                a.run("text.newParagraph", json!({})).unwrap();
+            }
+            a.run("text.insert", json!({"text": format!("Paragraph {i} has words enough to run over two or three lines of the page.")})).unwrap();
+        }
+        a.run("caret.docStart", json!({})).unwrap();
+        a.run("insert.shape", json!({"kind": "rectangle"})).unwrap();
+        a.run("arrange.bounds", json!({"page": 0, "x": 100, "y": 250, "width": 100, "height": 50})).unwrap();
+        assert!(a.session.layout().pages.len() > 1, "a second page to drag onto");
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 1800.0)).with_step_dt(1.0 / 60.0).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            a,
+        );
+        for _ in 0..6 {
+            h.step();
+        }
+        let shape =
+            |h: &mut egui_kittest::Harness<'_, WordApp>| h.state_mut().session.layout().find_object(0, |o| o.text_box.is_none()).expect("a shape");
+        let r = shape(&mut h).rect;
+        let from = crate::canvas::page_to_screen(h.state_mut(), 0, r.x + r.w / 2.0, r.y + r.h / 2.0).expect("the shape's page is on screen");
+        let to = crate::canvas::page_to_screen(h.state_mut(), 1, 150.0, 120.0).expect("the next page is on screen");
+        let button =
+            |at: Pos2, pressed: bool| Event::PointerButton { pos: at, button: PointerButton::Primary, pressed, modifiers: Default::default() };
+        h.event(Event::PointerMoved(from));
+        h.event(button(from, true));
+        h.step();
+        for at in [from + egui::vec2(0.0, 40.0), to] {
+            h.event(Event::PointerMoved(at));
+            h.step();
+        }
+        assert_eq!(h.state().canvas.obj_drag.as_ref().expect("dragging").drag.to_page, 1, "the preview is on the page under the pointer");
+        h.event(button(to, false));
+        for _ in 0..3 {
+            h.step();
+        }
+        let o = shape(&mut h);
+        assert_eq!(o.page, 1, "dropped on the page under the pointer, not thrown back");
+        assert!((o.rect.x - 100.0).abs() < 0.5, "kept its place across: {:?}", o.rect);
     }
 }

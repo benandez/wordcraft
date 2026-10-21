@@ -96,6 +96,7 @@
 	Ignore web and file addresses	Omitir direcciones web y de archivo
 	Ignore words in capitals	Omitir palabras en mayúsculas
 	Ignore words with numbers	Omitir palabras con números
+	In the margin	En el margen
 	Inches	Pulgadas
 	Formatting exceptions	Excepciones de formato
 	Include level number from:	Incluir número de nivel de:
@@ -123,6 +124,7 @@
 	Number alignment:	Alineación del número:
 	Number format	Formato de número
 	Number style for this level:	Estilo de número para este nivel:
+	Only for the selected text	Solo para el texto seleccionado
 	Outside border	Borde exterior
 	Overtype	Sobrescribir
 	Overtype (typing replaces the characters after the caret)	Sobrescribir (lo que escribes reemplaza los caracteres tras el cursor)
@@ -166,6 +168,9 @@
 	Bold	Negrita
 	Bookmark	Marcador
 	Bookmark name:	Nombre del marcador:
+	Delete Bookmark	Eliminar marcador
+	Hidden bookmarks	Marcadores ocultos
+	Sort by:	Ordenar por:
 	Book Title	Título de libro
 	Border Painter	Pincel de bordes
 	Border\nPainter	Pincel de\nbordes
@@ -193,6 +198,7 @@
 	Use the Insert key to switch overtype on and off	Usar la tecla Insert para activar y desactivar la sobrescritura
 	Whole document	Todo el documento
 	This section	Esta sección
+	Selected text	Texto seleccionado
 	Fill	Relleno de color
 	Setting:	Valor:
 	3-D	3D
@@ -520,6 +526,8 @@
 	Labels	Etiquetas
 	Landscape	Horizontal
 	Language	Idioma
+	{language} (no dictionary)	{language} (sin diccionario)
+	No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations.	No hay un diccionario ortográfico instalado para {language}, así que no se revisa. WordCraft busca el diccionario Hunspell {name} en la carpeta WORDCRAFT_DICTIONARIES y en las ubicaciones habituales del sistema.
 	Lasso	Lazo
 	Last Column	Última columna
 	Last commit	Último commit
@@ -575,10 +583,14 @@
 	More templates →	Más plantillas →
 	Move or Resize	Mover o cambiar tamaño
 	Multilevel List	Lista multinivel
+	Multilevel List Library	Biblioteca de listas multinivel
+	Article I.	Artículo I.
+	Chapter 1	Capítulo 1
+	Section 1.01	Sección 1.01
 	Multiple Pages	Varias páginas
 	Name (A–Z)	Nombre (A–Z)
 	Name:	Nombre:
-	Narrow  0.5" all	Estrecho  0,5" en todos
+	Narrow  {size} all	Estrecho  {size} en todos
 	Navigation	Navegación
 	Navigation Pane	Panel de navegación
 	New	Nuevo
@@ -607,7 +619,7 @@
 	Nonbreaking Hyphen	Guion no separable
 	Nonbreaking Space	Espacio de no separación
 	None	Ninguno
-	Normal  1" all	Normal  1" en todos
+	Normal  {size} all	Normal  {size} en todos
 	Normal Style	Estilo normal
 	Not available right now	No disponible por ahora
 	Not saved	Sin guardar
@@ -860,6 +872,8 @@
 	Space before/after:	Espacio antes y después:
 	Spacing	Espaciado
 	Spacing (pt):	Espaciado (pt):
+	Kerning for fonts:	Interletraje para fuentes:
+	Points and above	puntos o más
 	Speech	Voz
 	Spelling & Grammar	Ortografía y gramática
 	Spelling &\nGrammar	Ortografía y\ngramática
@@ -1516,6 +1530,8 @@
 	Math AutoCorrect	Autocorrección matemática
 	More >>	Más >>
 	Moves	Movimientos
+	Moved from:	Movido desde:
+	Moved to:	Movido a:
 	New document	Documento nuevo
 	No changes (read only)	Sin cambios (solo lectura)
 	Only allow this kind of editing:	Permitir solo este tipo de edición:
@@ -1575,6 +1591,8 @@
 	Customize Ribbon	Personalizar cinta de opciones
 	Add to Quick Access Toolbar	Agregar a la barra de herramientas de acceso rápido
 	Remove from Quick Access Toolbar	Quitar de la barra de herramientas de acceso rápido
+	Hide Quick Access Toolbar	Ocultar la barra de herramientas de acceso rápido
+	Show Quick Access Toolbar	Mostrar la barra de herramientas de acceso rápido
 	Customize the Ribbon…	Personalizar la cinta de opciones…
 	Customize Quick Access Toolbar…	Personalizar barra de herramientas de acceso rápido…
 	More Commands…	Más comandos…
@@ -1594,6 +1612,11 @@
 	Add Font…	Agregar fuente…
 	Added Fonts	Fuentes agregadas
 	Remove Added Font	Quitar fuente agregada
+	Load System Installed Fonts…	Cargar fuentes del sistema instaladas…
+	All system fonts are already available.	Todas las fuentes del sistema ya están disponibles.
+	Local font access is not supported by your browser.	Su navegador no admite el acceso a fuentes locales.
+	Local font access was denied.	Se denegó el acceso a las fuentes locales.
+	Loaded {count} system fonts.	Se cargaron {count} fuentes del sistema.
 	Recent Colors	Colores recientes
 	More Colors…	Más colores…
 	Standard	Estándar
@@ -2073,6 +2096,7 @@
 	Hyphenation zone:	Zona de separación:
 	Italian	Italiano
 	Croatian	Croata
+	Indonesian	Indonesio
 	Japanese	Japonés
 	Korean	Coreano
 	Limit consecutive hyphens to:	Limitar guiones consecutivos a:
@@ -2445,6 +2469,53 @@ preview	Title	Título
 	Other Large Operators	Otros operadores grandes
 	Region:	Región:
 	Automatic ({region})	Automático ({region})
+	Odd Banded Rows	Filas impares con bandas
+	Even Banded Rows	Filas pares con bandas
+	Odd Banded Columns	Columnas impares con bandas
+	Even Banded Columns	Columnas pares con bandas
+	Top Left Cell	Celda superior izquierda
+	Top Right Cell	Celda superior derecha
+	Bottom Left Cell	Celda inferior izquierda
+	Bottom Right Cell	Celda inferior derecha
+	Inside Horizontal Border	Borde horizontal interior
+	Inside Vertical Border	Borde vertical interior
+	Text of the nearest paragraph with a given style (running headers)	Texto del párrafo más cercano con un estilo dado (encabezados variables)
+	Style name:	Nombre del estilo:
+# Mail merge: filter and sort recipients (#778)
+	Filter Recipients	Filtrar destinatarios
+	Sort Recipients	Ordenar destinatarios
+	Filter and Sort	Filtrar y ordenar
+	And	Y
+	Or	O
+	Comparison	Comparación
+	Compare to	Comparar con
+	Add Condition	Agregar condición
+	Remove condition	Quitar condición
+	Sort by	Ordenar por
+	Then by	Luego por
+	Ascending	Ascendente
+	Descending	Descendente
+	Equal to	Igual a
+	Not equal to	Distinto de
+	Less than	Menor que
+	Greater than	Mayor que
+	Less than or equal	Menor o igual que
+	Greater than or equal	Mayor o igual que
+	Is blank	Está vacío
+	Is not blank	No está vacío
+	Contains	Contiene
+	Does not contain	No contiene
+	{count} of {total} recipients will be merged.	Se combinarán {count} de {total} destinatarios.
+	Find in list:	Buscar en la lista:
+	Any field	Cualquier campo
+	Matches: {count}	Coincidencias: {count}
+	Show only records that will be merged	Mostrar solo los registros que se combinarán
+	Take the last match on the page	Tomar la última coincidencia de la página
+	Show its list number	Mostrar su número de lista
+	Show its number relative to this field	Mostrar su número respecto a este campo
+	Show its number with all higher levels	Mostrar su número con todos los niveles superiores
+	Number only, without the label's words	Solo el número, sin las palabras de la etiqueta
+	Add whether it is above or below	Añadir si está arriba o abajo
 	Start-up	Inicio de la aplicación
 	Show the Start screen when WordCraft starts	Mostrar la pantalla de inicio al abrir WordCraft
 	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Activado: WordCraft se abre en Archivo › Inicio, con un documento en blanco, las plantillas y tus documentos recientes. Desactivado: abre un documento en blanco.
@@ -2496,6 +2567,24 @@ preview	Title	Título
 	Suggested	Sugerencias
 	Set Proofing Language…	Establecer idioma de revisión…
 	Language Preferences…	Preferencias de idioma…
+	Printer	Impresora
+	Select a printer	Selecciona una impresora
+	Refresh printers	Actualizar impresoras
+	Two-sided printing	Impresión a doble cara
+	Printer default	Valor predeterminado de la impresora
+	One-sided	Una cara
+	Two-sided: long edge	Doble cara: borde largo
+	Two-sided: short edge	Doble cara: borde corto
+	Grayscale	Escala de grises
+	Finding printers…	Buscando impresoras…
+	No printers found. Configure a system printer or export a PDF.	No se encontraron impresoras. Configura una impresora en el sistema o exporta un PDF.
+	Printer discovery failed.	No se pudieron encontrar impresoras.
+	Submitting print job…	Enviando trabajo de impresión…
+	Print job submitted.	Trabajo de impresión enviado.
+	Print job submitted: {receipt}	Trabajo de impresión enviado: {receipt}
+	Print failed: the printing worker stopped.	La impresión falló: el proceso de impresión se detuvo.
+	Print settings	Configuración de impresión
+	Submit print job	Enviar trabajo de impresión
 
 # Dictionaries folder (#1063)
 	Dictionaries	Diccionarios
@@ -2504,3 +2593,64 @@ preview	Title	Título
 	Hunspell .aff and .dic files here (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) are used before the system's.	Los archivos .aff y .dic de Hunspell de esta carpeta (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) se usan antes que los del sistema.
 	{language}: {file}	{language}: {file}
 	{language}: no dictionary found	{language}: no se encontró ningún diccionario
+
+# Backstage › Recover (#586)
+	Recover	Recuperar
+
+# Page Setup › Mirror margins (#1239)
+	Mirror margins	Márgenes simétricos
+
+# Insert Hyperlink › Place in This Document (#1370)
+	Existing File or Web Page	Archivo o página web existente
+	Link to:	Vincular a:
+	Place in This Document	Lugar de este documento
+# Table Layout › Sort dialog (#1205)
+	Column {n}	Columna {n}
+	Header row	Fila de encabezado
+	No header row	Sin fila de encabezado
+	My list has	Mi lista tiene
+# Table Layout › Formula dialog (#1210)
+	Formula:	Fórmula:
+	Paste function:	Pegar función:
+# Reading Mode column widths (#1040)
+	Narrow	Estrecha
+	Medium	Media
+# Split Cells and Convert Text to Table (#2592)
+	Merge cells before split	Combinar celdas antes de dividir
+	Table size	Tamaño de la tabla
+	AutoFit behavior	Autoajuste
+	Initial column width:	Ancho de columna inicial:
+	AutoFit to contents	Ajustar al contenido
+	AutoFit to window	Ajustar a la ventana
+	Separate text at	Separar texto en
+	Commas	Comas
+	Other:	Otro:
+	The number must be between 1 and {max}.	El número debe estar entre 1 y {max}.
+	The measurement must be between {min} and {max}.	La medida debe estar entre {min} y {max}.
+	Recently Used Fonts	Fuentes usadas recientemente
+	All Fonts	Todas las fuentes
+	Spike	Acumulador
+	Insert Spike	Insertar acumulador
+# Add Font status (#1789)
+	Added 1 font	1 fuente añadida
+	Added {n} fonts	{n} fuentes añadidas
+	{added}; {count} couldn't be read: {names}	{added}; no se pudieron leer {count}: {names}
+	{names} and {n} more	{names} y {n} más
+	{added}; {n} skipped (limit {max})	{added}; {n} omitidas (límite {max})
+
+# Drop Cap menu and Drop Cap Options (#2601)
+	Dropped	En texto
+	In margin	En margen
+	Drop Cap Options…	Opciones de letra capital…
+	Lines to drop:	Líneas que ocupa:
+	Distance from text:	Distancia del texto:
+	Distance from text	Distancia del texto
+
+# Picture Format › Size: the Size dialog, sizes typed in any unit (#2573)
+	Lock aspect ratio	Bloquear relación de aspecto
+	Relative to original picture size	Relativo al tamaño original de la imagen
+	Original size	Tamaño original
+	{width} × {height} pixels	{width} × {height} píxeles
+	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Escribe un tamaño en cualquier unidad, como 5 cm o 300 px. El otro lado se ajusta, así que la imagen conserva sus proporciones.
+
+	Import…	Importar…

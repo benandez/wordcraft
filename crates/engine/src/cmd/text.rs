@@ -55,7 +55,12 @@ fn autoformat(s: &mut Session, text: &str) -> Option<String> {
     let para = s.doc.para_at(f)?;
     let before = para.text.get(..f.off)?;
     let prev = before.chars().next_back();
-    let opening = prev.is_none_or(|p| p.is_whitespace() || "([{<\u{2014}\u{2013}".contains(p));
+    let opening = prev.is_none_or(|p| {
+        p.is_whitespace()
+            || "([{<\u{2014}\u{2013}\u{00AB}\u{2039}\u{201E}\u{201A}".contains(p)
+            || (c == '"' && p == '\u{2018}')
+            || (c == '\'' && p == '\u{201C}')
+    });
     match c {
         '"' => Some(if opening { "\u{201C}" } else { "\u{201D}" }.into()),
         '\'' => Some(if opening { "\u{2018}" } else { "\u{2019}" }.into()),
@@ -104,10 +109,10 @@ fn insert(s: &mut Session, v: &Value) -> CmdResult {
     // A list label ("a. ") becomes a list before AutoCorrect could capitalise it.
     let listed = text == " " && s.prefs.autocorrect.enabled && list_autoformat(s)?;
     if !listed {
-        super::tools::autocorrect(s)?;
+        super::tools::autocorrect(s).inspect_err(|_| s.autocap = None)?;
     }
     if text == " " && !listed && s.prefs.autocorrect.enabled && s.prefs.autocorrect.dashes {
-        dash_autoformat(s)?;
+        dash_autoformat(s).inspect_err(|_| s.autocap = None)?;
     }
     if let Some((para, sel)) = typed
         && s.doc.para_at(&f) != Some(&para)
@@ -117,8 +122,14 @@ fn insert(s: &mut Session, v: &Value) -> CmdResult {
             *p = para;
             p.touch();
             s.push_undo("AutoFormat", doc, sel);
+            // Undo right after it makes the capitalised word an exception.
+            let depth = s.undo_steps_so_far();
+            if let Some(c) = s.autocap.as_mut().filter(|c| c.depth == u64::MAX) {
+                c.depth = depth;
+            }
         }
     }
+    s.autocap.take_if(|c| c.depth == u64::MAX);
     sel_result(s)
 }
 
@@ -152,12 +163,18 @@ fn list_autoformat(s: &mut Session) -> Result<bool, CmdError> {
     // Bullets join an existing bullet list; typing "1. " always starts numbering again at 1,
     // as in Word.
     let found = if kind.is_bullet() { s.doc.numbering.find_kind(kind) } else { None };
-    let num = found.unwrap_or_else(|| s.doc.numbering.add_list(kind));
+    let num = match found {
+        Some(n) => n,
+        None => s.doc.numbering.try_add_list(kind)?,
+    };
     let para = s.doc.para_mut(f.story, &f.path)?;
     let len = para.len();
     para.delete(0, len)?;
     para.props.numbering = Some(NumRef { num, level: 0 });
-    para.props.style = Some("ListParagraph".into());
+    // A heading stays a heading (Word: "1. " in a Heading 1 gives a numbered Heading 1).
+    if para.props.style.as_deref().is_none_or(|st| st == "Normal") {
+        para.props.style = Some("ListParagraph".into());
+    }
     s.sel = Selection::caret(Pos { off: 0, ..f });
     Ok(true)
 }
@@ -173,7 +190,7 @@ fn dash_autoformat(s: &mut Session) -> Result<(), CmdError> {
     {
         // "word -- word" → "word – word" once the next word is typed.
         let p = s.doc.para_mut(f.story, &f.path)?;
-        let props = p.props_at(i + 1).clone();
+        let props = p.props_at(i + 1).clone().without_symbol();
         p.delete(i + 1, i + 3)?;
         p.insert_text(i + 1, "\u{2013}", &props)?;
         s.sel = Selection::caret(Pos { off: f.off + 1, ..f });
@@ -182,17 +199,17 @@ fn dash_autoformat(s: &mut Session) -> Result<(), CmdError> {
         && !before.trim_end()[i + 3..].contains(' ')
     {
         let p = s.doc.para_mut(f.story, &f.path)?;
-        let props = p.props_at(i + 1).clone();
+        let props = p.props_at(i + 1).clone().without_symbol();
         p.delete(i + 1, i + 2)?;
         p.insert_text(i + 1, "\u{2013}", &props)?;
         s.sel = Selection::caret(Pos { off: f.off + 2, ..f });
     } else if before.ends_with(' ')
         && let Some(i) = before.trim_end().rfind("--")
         && i > 0
-        && before.trim_end().get(i - 1..i).is_some_and(|c| c != " ")
+        && before.trim_end()[..i].chars().next_back().is_some_and(|c| c != ' ')
     {
         let p = s.doc.para_mut(f.story, &f.path)?;
-        let props = p.props_at(i).clone();
+        let props = p.props_at(i).clone().without_symbol();
         p.delete(i, i + 2)?;
         p.insert_text(i, "\u{2014}", &props)?;
         s.sel = Selection::caret(Pos { off: f.off + 1, ..f });
@@ -524,7 +541,7 @@ fn sample_text(s: &Session) -> Option<String> {
     if args.contains(['(', ')']) {
         return None;
     }
-    let count = |arg: &str| arg.parse::<usize>().ok().filter(|n| (1..=200).contains(n));
+    let count = |arg: &str| arg.trim().parse::<usize>().ok().filter(|n| (1..=200).contains(n));
     let counts = if args.is_empty() {
         Some((5, 3))
     } else if let Some((p, s)) = args.split_once(',') {
@@ -579,6 +596,7 @@ fn new_paragraph(s: &mut Session, _: &Value) -> CmdResult {
     // Enter finishes a word like a space does ("teh" → "the", sentence capitals, links).
     if s.sel.is_collapsed() && at.off > 0 {
         super::tools::autocorrect_word(s, true)?;
+        s.autocap.take_if(|c| c.depth == u64::MAX);
         at = s.sel.focus.clone();
     }
     let new = split_para(s, &at)?;
@@ -670,6 +688,9 @@ fn backspace_inner(s: &mut Session, _: &Value) -> CmdResult {
     let Some(para) = s.doc.para_at(&f) else { return sel_result(s) };
     if f.off > 0 {
         let a = Pos { off: para.backspace_from(f.off), ..f.clone() };
+        if let Some(c) = s.autocap.as_mut() {
+            c.note_backspace(&a, &f);
+        }
         s.sel = Selection { anchor: a, focus: f };
         delete_selection(s)?;
         return sel_result(s);
@@ -724,8 +745,9 @@ fn backspace_inner(s: &mut Session, _: &Value) -> CmdResult {
             s.sel = Selection::caret(at);
         }
         Some(Block::Table(_)) => {
-            // Move into the table's last cell.
-            let last = s.doc.para_paths(f.story).into_iter().rfind(|q| q.0.first() == prev_path.0.first() && q.0.len() > 1);
+            // Move into the table's last cell. The table is matched by its whole path: a table
+            // nested in a cell shares only its first index with the table around it.
+            let last = s.doc.para_paths(f.story).into_iter().rfind(|q| q.0.len() > prev_path.0.len() && q.0.starts_with(&prev_path.0));
             if let Some(q) = last {
                 let off = s.doc.para(f.story, &q).map(|x| x.len()).unwrap_or(0);
                 if s.doc.para_at(&f).is_some_and(|x| x.is_empty()) && s.doc.container(f.story, &f.path).is_some_and(|c| c.len() > i + 1) {
@@ -788,6 +810,10 @@ fn delete_inner(s: &mut Session, _: &Value) -> CmdResult {
             path.extend([0, 0, 0]);
             s.sel = Selection::caret(Pos { story: f.story, path: wordcraft_doc::Path(path), off: 0 });
         }
+    } else if f.story == StoryRef::Body && f.path.0.len() == 1 && !s.doc.settings.track_changes {
+        // The last paragraph: no paragraph to join, but a section break on its mark (the last
+        // section then holds no paragraph) still goes, as in Word (#2127).
+        s.doc.remove_section_break(f.path.last());
     }
     sel_result(s)
 }

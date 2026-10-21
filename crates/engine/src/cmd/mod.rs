@@ -39,6 +39,7 @@ pub mod smart_art;
 pub mod speech;
 pub mod table;
 pub mod table_draw;
+pub mod table_formula;
 pub mod table_mouse;
 pub mod table_resize;
 pub mod table_style;
@@ -135,7 +136,7 @@ pub fn sel_result(s: &Session) -> CmdResult {
 /// The paragraphs the selection covers: those between its ends (not the next one when it ends at
 /// that one's start, #418) or, for whole table cells that aren't one run of the text (part of a
 /// column), just the cells' own.
-pub(crate) fn selected_paths(s: &Session) -> Vec<wordcraft_doc::Path> {
+pub fn selected_paths(s: &Session) -> Vec<wordcraft_doc::Path> {
     if s.cell_range().is_some()
         && let Some(segs) = s.column_segments()
     {
@@ -286,9 +287,17 @@ fn insert_text(s: &mut Session, text: &str, enter: bool) -> Result<(), CmdError>
     if let Some(p) = controls::prepare_edit(s)? {
         props = p;
     }
+    // Pasted text is text: pending properties left by AutoCorrect don't give it a symbol's font (#2036).
+    if !enter {
+        props = props.without_symbol();
+    }
     delete_selection(s)?;
     // Typed text is new: never deleted, and not a formatting change of the text around it.
     props.fmt_change = None;
+    // Its direction comes from its own letters, as on screen, not from the run it's typed into:
+    // Latin typed into reopened Hebrew must not be saved as right-to-left (#1543). The DOCX
+    // writer marks the right-to-left pieces itself.
+    props.rtl = None;
     if s.doc.settings.track_changes {
         props.ins = Some(new_revision(s, RevisionKind::Insert));
         props.del = None;
@@ -360,9 +369,14 @@ pub fn split_para(s: &mut Session, at: &Pos) -> Result<Pos, CmdError> {
 
 /// [`split_para`]; without `enter` an empty list item is split like any other paragraph.
 fn split_para_as(s: &mut Session, at: &Pos, enter: bool) -> Result<Pos, CmdError> {
-    // `num: 0` means "explicitly not in a list", so it isn't a list item.
+    // `num: 0` means "explicitly not in a list", so it isn't a list item. The list may come from
+    // the paragraph's style (List Number 2 in a Word file) rather than the paragraph itself.
     let (at_end, style, empty_list) = match s.doc.para_at(at) {
-        Some(p) => (at.off >= p.len(), p.props.style.clone(), p.props.numbering.filter(|n| enter && n.num != 0 && p.is_empty())),
+        Some(p) => (
+            at.off >= p.len(),
+            p.props.style.clone(),
+            p.props.numbering.or_else(|| s.doc.styles.resolve_para(&p.props).numbering).filter(|n| enter && n.num != 0 && p.is_empty()),
+        ),
         None => return Err(CmdError::Failed("no paragraph at caret".into())),
     };
     if let Some(n) = empty_list {

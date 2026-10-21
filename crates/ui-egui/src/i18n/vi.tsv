@@ -141,6 +141,7 @@
 	Apply to:	Áp dụng cho:
 	Whole document	Toàn bộ tài liệu
 	This section	Phần này
+	Selected text	Văn bản đã chọn
 	Fill	Tô nền
 	Setting:	Thiết lập:
 	3-D	3-D
@@ -506,10 +507,14 @@
 	More templates →	Xem thêm mẫu →
 	Move or Resize	Di chuyển hoặc đổi kích thước
 	Multilevel List	Danh sách đa cấp
+	Multilevel List Library	Thư viện danh sách đa cấp
+	Article I.	Điều I.
+	Chapter 1	Chương 1
+	Section 1.01	Mục 1.01
 	Multiple Pages	Nhiều trang
 	Name (A–Z)	Tên (A–Z)
 	Name:	Tên:
-	Narrow  0.5" all	Hẹp  0,5" mọi cạnh
+	Narrow  {size} all	Hẹp  {size} mọi cạnh
 	Navigation	Điều hướng
 	Navigation Pane	Ngăn điều hướng
 	New	Mới
@@ -537,7 +542,7 @@
 	Nonbreaking Hyphen	Gạch nối không ngắt dòng
 	Nonbreaking Space	Khoảng trắng không ngắt dòng
 	None	Không có
-	Normal  1" all	Thường  1" mọi cạnh
+	Normal  {size} all	Thường  {size} mọi cạnh
 	Normal Style	Kiểu Thường
 	Not available right now	Hiện không khả dụng
 	Not saved	Chưa lưu
@@ -783,6 +788,8 @@
 	Space before/after:	Khoảng cách trước/sau:
 	Spacing	Khoảng cách
 	Spacing (pt):	Khoảng cách (pt):
+	Kerning for fonts:	Kerning cho phông chữ:
+	Points and above	điểm trở lên
 	Speech	Giọng nói
 	Spelling & Grammar	Chính tả & Ngữ pháp
 	Spelling &\nGrammar	Chính tả &\nngữ pháp
@@ -1389,6 +1396,8 @@
 	Customize Ribbon	Tùy chỉnh ribbon
 	Add to Quick Access Toolbar	Thêm vào thanh công cụ truy cập nhanh
 	Remove from Quick Access Toolbar	Gỡ khỏi thanh công cụ truy cập nhanh
+	Hide Quick Access Toolbar	Ẩn thanh công cụ truy cập nhanh
+	Show Quick Access Toolbar	Hiện thanh công cụ truy cập nhanh
 	Customize the Ribbon…	Tùy chỉnh ribbon…
 	Customize Quick Access Toolbar…	Tùy chỉnh thanh công cụ truy cập nhanh…
 	More Commands…	Lệnh khác…
@@ -2203,6 +2212,8 @@
 	Math AutoCorrect	Tự động sửa ký hiệu toán
 	More >>	Mở rộng >>
 	Moves	Nội dung đã di chuyển
+	Moved from:	Đã di chuyển từ:
+	Moved to:	Đã di chuyển đến:
 	New document	Tài liệu mới
 	No changes (read only)	Không cho phép thay đổi (chỉ đọc)
 	Only allow this kind of editing:	Chỉ cho phép kiểu chỉnh sửa sau:
@@ -2389,6 +2400,7 @@
 	{name} already exists. Choose Save again to replace it.	{name} đã tồn tại. Chọn Lưu lần nữa để thay thế.
 	This folder can't be read: {error}	Không thể đọc thư mục này: {error}
 	Showing the first {count} items.	Đang hiển thị {count} mục đầu tiên.
+	No items to show.	Không có mục nào để hiển thị.
 	File name:	Tên tệp:
 	Browse in WordCraft…	Duyệt trong WordCraft…
 	Open a file with WordCraft's own browser when the system file dialog doesn't appear.	Mở tệp bằng trình duyệt tệp của WordCraft khi hộp thoại tệp của hệ thống không xuất hiện.
@@ -2492,6 +2504,7 @@
 # Strings added on main after this catalog was drafted (merge of main)
 	Column width	Độ rộng cột
 	Croatian	Tiếng Croatia
+	Indonesian	Tiếng Indonesia
 	Edit Document	Sửa tài liệu
 	Envelope #10	Phong bì số 10
 	Envelope DL	Phong bì DL
@@ -2524,6 +2537,24 @@
 	Paper	Giấy
 	Paper size:	Khổ giấy:
 	The margins don't fit on a page this size; make the margins smaller first.	Lề không vừa với trang có kích thước này; hãy thu nhỏ lề trước.
+	Printer	Máy in
+	Select a printer	Chọn máy in
+	Refresh printers	Làm mới máy in
+	Two-sided printing	In hai mặt
+	Printer default	Mặc định của máy in
+	One-sided	In một mặt
+	Two-sided: long edge	Hai mặt: cạnh dài
+	Two-sided: short edge	Hai mặt: cạnh ngắn
+	Grayscale	Thang độ xám
+	Finding printers…	Đang tìm máy in…
+	No printers found. Configure a system printer or export a PDF.	Không tìm thấy máy in. Hãy thiết lập máy in hệ thống hoặc xuất PDF.
+	Printer discovery failed.	Không tìm được máy in.
+	Submitting print job…	Đang gửi lệnh in…
+	Print job submitted.	Đã gửi lệnh in.
+	Print job submitted: {receipt}	Đã gửi lệnh in: {receipt}
+	Print failed: the printing worker stopped.	In thất bại: tiến trình in đã dừng.
+	Print settings	Cài đặt in
+	Submit print job	Gửi lệnh in
 
 # Web Save before New/Open (#1510)
 	Saving {name} was cancelled, so it is still open and nothing was lost.	Đã hủy lưu {name}, nên tài liệu vẫn mở và không mất gì.
@@ -2556,3 +2587,155 @@
 	Hunspell .aff and .dic files here (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) are used before the system's.	Các tệp Hunspell .aff và .dic trong thư mục này (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) được dùng trước các tệp của hệ thống.
 	{language}: {file}	{language}: {file}
 	{language}: no dictionary found	{language}: không tìm thấy từ điển
+
+# Show only the selected text's comment (#1066)
+	In the margin	Trong lề
+	Only for the selected text	Chỉ cho văn bản được chọn
+
+# STYLEREF field (#882)
+	Style name:	Tên kiểu:
+	Text of the nearest paragraph with a given style (running headers)	Văn bản của đoạn gần nhất có kiểu đã cho (đầu trang chạy)
+
+# Mail merge Filter and Sort (#885)
+	Add Condition	Thêm điều kiện
+	And	Và
+	Ascending	Tăng dần
+	Compare to	So sánh với
+	Comparison	Phép so sánh
+	Contains	Chứa
+	Descending	Giảm dần
+	Does not contain	Không chứa
+	Equal to	Bằng
+	Filter Recipients	Lọc người nhận
+	Filter and Sort	Lọc và sắp xếp
+	Greater than	Lớn hơn
+	Greater than or equal	Lớn hơn hoặc bằng
+	Is blank	Trống
+	Is not blank	Không trống
+	Less than	Nhỏ hơn
+	Less than or equal	Nhỏ hơn hoặc bằng
+	Not equal to	Khác
+	Or	Hoặc
+	Remove condition	Xóa điều kiện
+	Sort Recipients	Sắp xếp người nhận
+	Sort by	Sắp xếp theo
+	Then by	Sau đó theo
+	{count} of {total} recipients will be merged.	Sẽ phối {count} trên {total} người nhận.
+	Find in list:	Tìm trong danh sách:
+	Any field	Trường bất kỳ
+	Matches: {count}	Kết quả khớp: {count}
+	Show only records that will be merged	Chỉ hiện các bản ghi sẽ được phối
+
+# Backstage › Recover (#586)
+	Recover	Khôi phục
+
+# STYLEREF switch labels (#1294)
+	Add whether it is above or below	Thêm là ở phía trên hay phía dưới
+	Number only, without the label's words	Chỉ số, không kèm chữ của nhãn
+	Show its list number	Hiện số danh sách của nó
+	Show its number relative to this field	Hiện số của nó tương đối với trường này
+	Show its number with all higher levels	Hiện số của nó kèm mọi cấp cao hơn
+	Take the last match on the page	Lấy kết quả khớp cuối cùng trên trang
+
+# Bookmark dialog (#1277)
+	Delete Bookmark	Xóa dấu trang
+	Hidden bookmarks	Dấu trang ẩn
+	Sort by:	Sắp xếp theo:
+
+# Page Setup › Mirror margins (#1239)
+	Mirror margins	Lề đối xứng
+
+# Insert Hyperlink › Place in This Document (#1370)
+	Existing File or Web Page	Tệp hoặc trang web hiện có
+	Link to:	Liên kết tới:
+	Place in This Document	Vị trí trong tài liệu này
+
+# Missing dictionary on the status bar (#1441)
+	No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations.	Chưa cài từ điển chính tả cho {language}, nên ngôn ngữ này không được kiểm tra. WordCraft tìm từ điển Hunspell {name} trong thư mục WORDCRAFT_DICTIONARIES và ở các vị trí thông thường của hệ thống.
+	{language} (no dictionary)	{language} (không có từ điển)
+# Table style parts in the Modify Table Style dialog (#714)
+	Odd Banded Rows	Hàng xen kẽ lẻ
+	Even Banded Rows	Hàng xen kẽ chẵn
+	Odd Banded Columns	Cột xen kẽ lẻ
+	Even Banded Columns	Cột xen kẽ chẵn
+	Top Left Cell	Ô trên cùng bên trái
+	Top Right Cell	Ô trên cùng bên phải
+	Bottom Left Cell	Ô dưới cùng bên trái
+	Bottom Right Cell	Ô dưới cùng bên phải
+	Inside Horizontal Border	Viền ngang bên trong
+	Inside Vertical Border	Viền dọc bên trong
+# Load system installed fonts on the web (#1390)
+	Load System Installed Fonts…	Tải phông chữ đã cài trên hệ thống…
+	All system fonts are already available.	Tất cả phông chữ hệ thống đã có sẵn.
+	Local font access is not supported by your browser.	Trình duyệt của bạn không hỗ trợ truy cập phông chữ cục bộ.
+	Local font access was denied.	Quyền truy cập phông chữ cục bộ đã bị từ chối.
+	Loaded {count} system fonts.	Đã tải {count} phông chữ hệ thống.
+# Table Layout › Sort dialog (#1205)
+	Column {n}	Cột {n}
+	Header row	Hàng tiêu đề
+	No header row	Không có hàng tiêu đề
+	My list has	Danh sách của tôi có
+# Table Layout › Formula dialog (#1210)
+	Formula:	Công thức:
+	Paste function:	Dán hàm:
+# Added while landing (#1219): strings that landed after this catalog
+	Enter bookmark name:	Nhập tên dấu trang:
+	Find “{text}” in the document	Tìm “{text}” trong tài liệu
+	This document has no bookmarks.	Tài liệu này không có dấu trang.
+	Type a page number, or +2 / -1.	Nhập số trang, hoặc +2 / -1.
+	Wait for the print job to finish submitting before closing.	Hãy chờ lệnh in được gửi xong rồi mới đóng.
+# Template names in File › New (#1271)
+template	Letter	Thư
+# Reading Mode column widths (#1040)
+	Narrow	Hẹp
+	Medium	Trung bình
+# Split Cells and Convert Text to Table (#2592)
+	Merge cells before split	Gộp ô trước khi tách
+	Table size	Kích thước bảng
+	AutoFit behavior	Tự khớp
+	Initial column width:	Độ rộng cột ban đầu:
+	AutoFit to contents	Tự khớp nội dung
+	AutoFit to window	Tự khớp cửa sổ
+	Separate text at	Tách văn bản tại
+	Commas	Dấu phẩy
+	Other:	Khác:
+	The number must be between 1 and {max}.	Số phải nằm trong khoảng từ 1 đến {max}.
+	The measurement must be between {min} and {max}.	Số đo phải nằm trong khoảng từ {min} đến {max}.
+	Recently Used Fonts	Phông chữ dùng gần đây
+	All Fonts	Tất cả phông chữ
+	Spike	Bộ gom
+	Insert Spike	Chèn bộ gom
+# Add Font status (#1789)
+	Added 1 font	Đã thêm 1 phông chữ
+	Added {n} fonts	Đã thêm {n} phông chữ
+	{added}; {count} couldn't be read: {names}	{added}; không đọc được {count}: {names}
+	{names} and {n} more	{names} và {n} tệp nữa
+	{added}; {n} skipped (limit {max})	{added}; đã bỏ qua {n} (giới hạn {max})
+	nothing is selected	chưa chọn gì
+	select a picture or shape first	hãy chọn một hình ảnh hoặc hình dạng trước
+	select recipients first	hãy chọn người nhận trước
+	select two or more pictures or shapes first (Shift+click)	chọn hai hoặc nhiều hình ảnh hoặc hình dạng (Shift+nhấp)
+	text boxes can't go inside a text box	không thể đặt hộp văn bản vào trong hộp văn bản
+	the cursor isn't in a table	con trỏ không nằm trong bảng
+	{name} options	Tùy chọn của {name}
+
+# Drop Cap menu and Drop Cap Options (#2601)
+	Dropped	Trong văn bản
+	In margin	Trong lề
+	Drop Cap Options…	Tùy chọn chữ lớn đầu đoạn…
+	Lines to drop:	Số dòng chiếm:
+	Distance from text:	Khoảng cách tới văn bản:
+	Distance from text	Khoảng cách tới văn bản
+
+# Drop Cap disabled reasons (#2601)
+	the paragraph is empty	đoạn văn trống
+	the paragraph starts with a space	đoạn văn bắt đầu bằng dấu cách
+
+# Picture Format › Size: the Size dialog, sizes typed in any unit (#2573)
+	Lock aspect ratio	Khóa tỷ lệ khung hình
+	Relative to original picture size	So với kích thước gốc của ảnh
+	Original size	Kích thước gốc
+	{width} × {height} pixels	{width} × {height} điểm ảnh
+	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Nhập kích thước theo đơn vị bất kỳ, ví dụ 5 cm hoặc 300 px. Cạnh còn lại thay đổi theo, nên ảnh giữ nguyên tỷ lệ.
+
+	Import…	Nhập…

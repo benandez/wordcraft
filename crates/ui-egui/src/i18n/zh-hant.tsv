@@ -95,6 +95,7 @@
 	Ignore web and file addresses	忽略網址和檔案路徑
 	Ignore words in capitals	忽略全部大寫的單字
 	Ignore words with numbers	忽略包含數字的單字
+	In the margin	在頁邊
 	Inches	英寸
 	Formatting exceptions	格式例外
 	Include level number from:	包含的層級編號來自：
@@ -128,6 +129,7 @@
 	Number alignment:	編號對齊方式：
 	Number format	編號格式
 	Number style for this level:	此層級的編號樣式：
+	Only for the selected text	僅針對所選文字
 	Outside border	外側框線
 	Make WordCraft the default for Word documents…	將 WordCraft 設為 Word 文件的預設應用程式…
 	Opens .docx, .doc, .rtf and .odt files and Word templates with WordCraft from now on.	今後以 WordCraft 開啟 .docx、.doc、.rtf、.odt 檔案和 Word 範本。
@@ -184,6 +186,9 @@
 	Bold	粗體
 	Bookmark	書籤
 	Bookmark name:	書籤名稱：
+	Delete Bookmark	刪除書籤
+	Hidden bookmarks	隱藏書籤
+	Sort by:	排序依據：
 	Border Painter	框線複製
 	Border\nPainter	框線複製
 	Borders	框線
@@ -209,6 +214,7 @@
 	Use the Insert key to switch overtype on and off	使用 Insert 鍵切換取代模式
 	Whole document	整份文件
 	This section	本節
+	Selected text	選取的文字
 	Fill	填滿
 	Setting:	設定：
 	3-D	立體
@@ -509,6 +515,8 @@
 	Labels	標籤
 	Landscape	橫向
 	Language	語言
+	{language} (no dictionary)	{language}（無字典）
+	No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations.	未安裝{language}的拼字字典，因此不會檢查該語言。WordCraft 會在 WORDCRAFT_DICTIONARIES 資料夾和常見的系統位置尋找 Hunspell 字典 {name}。
 	Lasso	套索
 	Last Column	最後一欄
 	Last commit	最近提交
@@ -561,10 +569,14 @@
 	Modify…	修改…
 	Move or Resize	移動或調整大小
 	Multilevel List	多層次清單
+	Multilevel List Library	多層次清單庫
+	Article I.	第 I 條
+	Chapter 1	第 1 章
+	Section 1.01	第 1.01 節
 	Multiple Pages	多頁
 	Name (A–Z)	名稱（A–Z）
 	Name:	名稱：
-	Narrow  0.5" all	窄  四周 0.5"
+	Narrow  {size} all	窄  四周 {size}
 	Navigation	導覽
 	Navigation Pane	功能窗格
 	New	新增
@@ -591,7 +603,7 @@
 	Nonbreaking Hyphen	不分行連字號
 	Nonbreaking Space	不分行空格
 	None	無
-	Normal  1" all	一般  四周 1"
+	Normal  {size} all	一般  四周 {size}
 	Normal Style	內文樣式
 	Not available right now	目前無法使用
 	Not saved	未儲存
@@ -824,6 +836,8 @@
 	Space before/after:	段落前/後間距：
 	Spacing	間距
 	Spacing (pt):	間距（點）：
+	Kerning for fonts:	字型的字距調整：
+	Points and above	點及以上
 	Speech	語音
 	Spelling & Grammar	拼字及文法
 	Spelling &\nGrammar	拼字及文法
@@ -1477,6 +1491,8 @@
 	Math AutoCorrect	數學自動校正
 	More >>	更多 >>
 	Moves	移動
+	Moved from:	移動自:
+	Moved to:	移動到:
 	New document	新文件
 	No changes (read only)	不允許任何變更 (唯讀)
 	Only allow this kind of editing:	僅允許此類編輯:
@@ -1536,6 +1552,8 @@
 	Customize Ribbon	自訂功能區
 	Add to Quick Access Toolbar	新增至快速存取工具列
 	Remove from Quick Access Toolbar	從快速存取工具列移除
+	Hide Quick Access Toolbar	隱藏快速存取工具列
+	Show Quick Access Toolbar	顯示快速存取工具列
 	Customize the Ribbon…	自訂功能區…
 	Customize Quick Access Toolbar…	自訂快速存取工具列…
 	More Commands…	其他命令…
@@ -1555,6 +1573,11 @@
 	Add Font…	新增字型…
 	Added Fonts	已新增的字型
 	Remove Added Font	移除已新增的字型
+	Load System Installed Fonts…	載入系統已安裝字型…
+	All system fonts are already available.	所有系統字型已可用。
+	Local font access is not supported by your browser.	您的瀏覽器不支援存取本機字型。
+	Local font access was denied.	本機字型存取遭到拒絕。
+	Loaded {count} system fonts.	已載入 {count} 個系統字型。
 	Recent Colors	最近使用的色彩
 	More Colors…	其他色彩…
 	Standard	標準
@@ -2034,6 +2057,7 @@
 	Hyphenation zone:	斷字區：
 	Italian	義大利文
 	Croatian	克羅埃西亞文
+	Indonesian	印尼文
 	Japanese	日文
 	Korean	韓文
 	Limit consecutive hyphens to:	連續斷字數上限：
@@ -2080,6 +2104,53 @@
 	AutoFit Column by Double-Clicking	按兩下自動調整欄寬
 	Region:	地區：
 	Automatic ({region})	自動（{region}）
+	Odd Banded Rows	奇數帶狀列
+	Even Banded Rows	偶數帶狀列
+	Odd Banded Columns	奇數帶狀欄
+	Even Banded Columns	偶數帶狀欄
+	Top Left Cell	左上儲存格
+	Top Right Cell	右上儲存格
+	Bottom Left Cell	左下儲存格
+	Bottom Right Cell	右下儲存格
+	Inside Horizontal Border	內部水平框線
+	Inside Vertical Border	內部垂直框線
+	Text of the nearest paragraph with a given style (running headers)	具有指定樣式的最近段落文字（書眉）
+	Style name:	樣式名稱：
+# Mail merge: filter and sort recipients (#778)
+	Filter Recipients	篩選收件者
+	Sort Recipients	排序收件者
+	Filter and Sort	篩選與排序
+	And	且
+	Or	或
+	Comparison	比較
+	Compare to	比較值
+	Add Condition	新增條件
+	Remove condition	移除條件
+	Sort by	排序依據
+	Then by	次要依據
+	Ascending	遞增
+	Descending	遞減
+	Equal to	等於
+	Not equal to	不等於
+	Less than	小於
+	Greater than	大於
+	Less than or equal	小於或等於
+	Greater than or equal	大於或等於
+	Is blank	空白
+	Is not blank	非空白
+	Contains	包含
+	Does not contain	不包含
+	{count} of {total} recipients will be merged.	將合併 {total} 位收件者中的 {count} 位。
+	Find in list:	在清單中尋找：
+	Any field	任意欄位
+	Matches: {count}	相符項目：{count}
+	Show only records that will be merged	僅顯示將要合併的記錄
+	Take the last match on the page	取本頁最後一個相符項目
+	Show its list number	顯示其清單編號
+	Show its number relative to this field	顯示相對於此欄位的編號
+	Show its number with all higher levels	顯示含所有上層層級的編號
+	Number only, without the label's words	只要編號，不要標籤中的文字
+	Add whether it is above or below	註明位於上方還是下方
 	Start-up	啟動
 	Show the Start screen when WordCraft starts	啟動 WordCraft 時顯示開始畫面
 	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	開：WordCraft 開啟時顯示「檔案 › 常用」，其中有空白文件、範本和最近使用的文件。關：直接開啟空白文件。
@@ -2131,6 +2202,24 @@
 	Suggested	建議
 	Set Proofing Language…	設定校訂語言…
 	Language Preferences…	語言喜好設定…
+	Printer	印表機
+	Select a printer	選取印表機
+	Refresh printers	重新整理印表機
+	Two-sided printing	雙面列印
+	Printer default	印表機預設值
+	One-sided	單面
+	Two-sided: long edge	雙面：長邊
+	Two-sided: short edge	雙面：短邊
+	Grayscale	灰階
+	Finding printers…	正在尋找印表機…
+	No printers found. Configure a system printer or export a PDF.	找不到印表機。請在系統中設定印表機或匯出 PDF。
+	Printer discovery failed.	尋找印表機失敗。
+	Submitting print job…	正在提交列印工作…
+	Print job submitted.	列印工作已提交。
+	Print job submitted: {receipt}	列印工作已提交：{receipt}
+	Print failed: the printing worker stopped.	列印失敗：列印工作執行緒已停止。
+	Print settings	列印設定
+	Submit print job	提交列印工作
 
 # Dictionaries folder (#1063)
 	Dictionaries	字典
@@ -2139,3 +2228,64 @@
 	Hunspell .aff and .dic files here (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) are used before the system's.	此資料夾中的 Hunspell .aff 與 .dic 檔案 (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) 優先於系統中的檔案。
 	{language}: {file}	{language}：{file}
 	{language}: no dictionary found	{language}：找不到字典
+
+# Backstage › Recover (#586)
+	Recover	復原
+
+# Page Setup › Mirror margins (#1239)
+	Mirror margins	左右對稱邊界
+
+# Insert Hyperlink › Place in This Document (#1370)
+	Existing File or Web Page	現有的檔案或網頁
+	Link to:	連結至:
+	Place in This Document	這份文件中的位置
+# Table Layout › Sort dialog (#1205)
+	Column {n}	欄 {n}
+	Header row	有標題列
+	No header row	無標題列
+	My list has	清單包含
+# Table Layout › Formula dialog (#1210)
+	Formula:	公式：
+	Paste function:	貼上函數：
+# Reading Mode column widths (#1040)
+	Narrow	窄
+	Medium	中等
+# Split Cells and Convert Text to Table (#2592)
+	Merge cells before split	分割前合併儲存格
+	Table size	表格大小
+	AutoFit behavior	自動調整行為
+	Initial column width:	初始欄寬：
+	AutoFit to contents	依內容自動調整
+	AutoFit to window	依視窗自動調整
+	Separate text at	分隔文字於
+	Commas	逗號
+	Other:	其他：
+	The number must be between 1 and {max}.	數字必須介於 1 和 {max} 之間。
+	The measurement must be between {min} and {max}.	度量值必須介於 {min} 和 {max} 之間。
+	Recently Used Fonts	最近使用的字型
+	All Fonts	所有字型
+	Spike	收集區
+	Insert Spike	插入收集區
+# Add Font status (#1789)
+	Added 1 font	已新增 1 個字型
+	Added {n} fonts	已新增 {n} 個字型
+	{added}; {count} couldn't be read: {names}	{added}；{count} 個無法讀取：{names}
+	{names} and {n} more	{names} 等另外 {n} 個
+	{added}; {n} skipped (limit {max})	{added}；已略過 {n} 個（上限 {max}）
+
+# Drop Cap menu and Drop Cap Options (#2601)
+	Dropped	下沉
+	In margin	懸掛
+	Drop Cap Options…	首字放大選項…
+	Lines to drop:	放大行數：
+	Distance from text:	與本文距離：
+	Distance from text	與本文距離
+
+# Picture Format › Size: the Size dialog, sizes typed in any unit (#2573)
+	Lock aspect ratio	鎖定長寬比
+	Relative to original picture size	相對於原始圖片大小
+	Original size	原始大小
+	{width} × {height} pixels	{width} × {height} 像素
+	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	可用任何單位輸入大小，例如 5 cm 或 300 px。另一邊隨之調整，圖片保持原有比例。
+
+	Import…	匯入…

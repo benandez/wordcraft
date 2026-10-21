@@ -121,6 +121,7 @@
 	Ignore web and file addresses	Zanemari veb-adrese i putanje datoteka
 	Ignore words in capitals	Zanemari reči pisane velikim slovima
 	Ignore words with numbers	Zanemari reči sa brojevima
+	In the margin	Na margini
 	Inches	Inči
 	Formatting exceptions	Izuzeci formatiranja
 	Include level number from:	Uključi broj nivoa:
@@ -149,6 +150,7 @@
 	Number alignment:	Poravnanje broja:
 	Number format	Format broja
 	Number style for this level:	Stil broja za ovaj nivo:
+	Only for the selected text	Samo za izabrani tekst
 	Outside border	Spoljna ivica
 	In Default apps, choose WordCraft for the document types you want it to open.	U podrazumevanim aplikacijama izaberite WordCraft za vrste dokumenata koje želite da otvara.
 	Make WordCraft the default for Word documents…	Postavi WordCraft kao podrazumevanu aplikaciju za Word dokumente…
@@ -240,6 +242,9 @@
 	Bold	Podebljano
 	Bookmark	Obeleživač
 	Bookmark name:	Naziv obeleživača:
+	Delete Bookmark	Obriši obeleživač
+	Hidden bookmarks	Skriveni obeleživači
+	Sort by:	Sortiraj po:
 	Border Painter	Kopiranje ivica
 	Border\nPainter	Kopiranje\nivica
 	Borders	Ivice
@@ -265,6 +270,7 @@
 	Use the Insert key to switch overtype on and off	Taster Insert uključuje i isključuje prepisivanje
 	Whole document	Ceo dokument
 	This section	Ovaj odeljak
+	Selected text	Izabrani tekst
 	Fill	Ispuna
 	Setting:	Vrsta:
 	3-D	3D
@@ -556,6 +562,8 @@
 	Labels	Nalepnice
 	Landscape	Položeno
 	Language	Jezik
+	{language} (no dictionary)	{language} (nema rečnika)
+	No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations.	Pravopisni rečnik za {language} nije instaliran, pa se tekst ne proverava. WordCraft traži Hunspell rečnik {name} u fascikli WORDCRAFT_DICTIONARIES i na uobičajenim sistemskim lokacijama.
 	Lasso	Laso
 	Last Column	Zadnja kolona
 	Last commit	Zadnji commit
@@ -608,10 +616,14 @@
 	Modify…	Izmeni…
 	Move or Resize	Pomeri ili promeni veličinu
 	Multilevel List	Višenivoska lista
+	Multilevel List Library	Biblioteka višenivoskih lista
+	Article I.	Član I.
+	Chapter 1	Poglavlje 1
+	Section 1.01	Odeljak 1.01
 	Multiple Pages	Više strana
 	Name (A–Z)	Naziv (A–Š)
 	Name:	Naziv:
-	Narrow  0.5" all	Uske  0,5" svuda
+	Narrow  {size} all	Uske  {size} svuda
 	Navigation	Navigacija
 	Navigation Pane	Okno za navigaciju
 	New	Novo
@@ -638,7 +650,7 @@
 	Nonbreaking Hyphen	Nedeljiva crtica
 	Nonbreaking Space	Nedeljivi razmak
 	None	Nijedno
-	Normal  1" all	Normalne  1" svuda
+	Normal  {size} all	Normalne  {size} svuda
 	Normal Style	Normalan stil
 	Not available right now	Trenutno nedostupno
 	Not saved	Nije sačuvano
@@ -877,6 +889,8 @@
 	Space before: {pt} pt	Razmak pre: {pt} pt
 	Spacing	Razmak
 	Spacing (pt):	Razmak (pt):
+	Kerning for fonts:	Kerning fontova:
+	Points and above	pt i više
 	Speech	Govor
 	Spelling & Grammar	Pravopis i gramatika
 	Spelling &\nGrammar	Pravopis\ni gramatika
@@ -1486,6 +1500,8 @@
 	Math AutoCorrect	Automatska ispravka matematike
 	More >>	Više >>
 	Moves	Premeštanja
+	Moved from:	Premešteno odavde:
+	Moved to:	Premešteno ovde:
 	New document	Novi dokument
 	No changes (read only)	Bez izmena (samo za čitanje)
 	Only allow this kind of editing:	Dozvoli samo ovu vrstu uređivanja:
@@ -1545,6 +1561,8 @@
 	Customize Ribbon	Prilagodi traku
 	Add to Quick Access Toolbar	Dodaj na traku sa alatkama za brzi pristup
 	Remove from Quick Access Toolbar	Ukloni sa trake sa alatkama za brzi pristup
+	Hide Quick Access Toolbar	Sakrij traku sa alatkama za brzi pristup
+	Show Quick Access Toolbar	Prikaži traku sa alatkama za brzi pristup
 	Customize the Ribbon…	Prilagodi traku…
 	Customize Quick Access Toolbar…	Prilagodi traku sa alatkama za brzi pristup…
 	More Commands…	Još komandi…
@@ -1564,6 +1582,11 @@
 	Add Font…	Dodaj font…
 	Added Fonts	Dodati fontovi
 	Remove Added Font	Ukloni dodati font
+	Load System Installed Fonts…	Učitaj instalirane sistemske fontove…
+	All system fonts are already available.	Svi sistemski fontovi su već dostupni.
+	Local font access is not supported by your browser.	Vaš pregledač ne podržava pristup lokalnim fontovima.
+	Local font access was denied.	Pristup lokalnim fontovima je odbijen.
+	Loaded {count} system fonts.	Učitano sistemskih fontova: {count}.
 	Recent Colors	Nedavne boje
 	More Colors…	Još boja…
 	Standard	Standardne
@@ -2043,6 +2066,7 @@
 	Hyphenation zone:	Zona deljenja reči:
 	Italian	Italijanski
 	Croatian	Hrvatski
+	Indonesian	Indonežanski
 	Japanese	Japanski
 	Korean	Korejski
 	Limit consecutive hyphens to:	Najviše uzastopnih crtica:
@@ -2089,6 +2113,53 @@
 	AutoFit Column by Double-Clicking	Automatsko uklapanje kolone dvostrukim klikom
 	Region:	Region:
 	Automatic ({region})	Automatski ({region})
+	Odd Banded Rows	Neparni trakasti redovi
+	Even Banded Rows	Parni trakasti redovi
+	Odd Banded Columns	Neparne trakaste kolone
+	Even Banded Columns	Parne trakaste kolone
+	Top Left Cell	Gornja leva ćelija
+	Top Right Cell	Gornja desna ćelija
+	Bottom Left Cell	Donja leva ćelija
+	Bottom Right Cell	Donja desna ćelija
+	Inside Horizontal Border	Unutrašnja horizontalna ivica
+	Inside Vertical Border	Unutrašnja vertikalna ivica
+	Text of the nearest paragraph with a given style (running headers)	Tekst najbližeg pasusa sa zadatim stilom (tekuća zaglavlja)
+	Style name:	Naziv stila:
+# Mail merge: filter and sort recipients (#778)
+	Filter Recipients	Filtriraj primaoce
+	Sort Recipients	Sortiraj primaoce
+	Filter and Sort	Filtriranje i sortiranje
+	And	I
+	Or	Ili
+	Comparison	Poređenje
+	Compare to	Uporedi sa
+	Add Condition	Dodaj uslov
+	Remove condition	Ukloni uslov
+	Sort by	Sortiraj po
+	Then by	Zatim po
+	Ascending	Rastuće
+	Descending	Opadajuće
+	Equal to	Jednako
+	Not equal to	Nije jednako
+	Less than	Manje od
+	Greater than	Veće od
+	Less than or equal	Manje ili jednako
+	Greater than or equal	Veće ili jednako
+	Is blank	Prazno
+	Is not blank	Nije prazno
+	Contains	Sadrži
+	Does not contain	Ne sadrži
+	{count} of {total} recipients will be merged.	Primalaca za spajanje: {count} od {total}.
+	Find in list:	Pronađi na listi:
+	Any field	Bilo koje polje
+	Matches: {count}	Podudaranja: {count}
+	Show only records that will be merged	Prikaži samo zapise koji će biti objedinjeni
+	Take the last match on the page	Uzmi poslednje podudaranje na stranici
+	Show its list number	Prikaži njegov broj u listi
+	Show its number relative to this field	Prikaži njegov broj u odnosu na ovo polje
+	Show its number with all higher levels	Prikaži njegov broj sa svim višim nivoima
+	Number only, without the label's words	Samo broj, bez reči iz oznake
+	Add whether it is above or below	Dodaj da li je iznad ili ispod
 	Start-up	Pokretanje
 	Show the Start screen when WordCraft starts	Prikaži početni ekran pri pokretanju programa WordCraft
 	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Uključeno: WordCraft se otvara na Fajl › Početak, sa praznim dokumentom, šablonima i nedavnim dokumentima. Isključeno: otvara prazan dokument.
@@ -2140,6 +2211,24 @@
 	Suggested	Predlozi
 	Set Proofing Language…	Postavi jezik provere…
 	Language Preferences…	Jezičke postavke…
+	Printer	Štampač
+	Select a printer	Izaberite štampač
+	Refresh printers	Osveži štampače
+	Two-sided printing	Dvostrano štampanje
+	Printer default	Podrazumevano štampača
+	One-sided	Jednostrano
+	Two-sided: long edge	Dvostrano: duža ivica
+	Two-sided: short edge	Dvostrano: kraća ivica
+	Grayscale	Sivi tonovi
+	Finding printers…	Pronalaženje štampača…
+	No printers found. Configure a system printer or export a PDF.	Nisu pronađeni štampači. Podesite sistemski štampač ili izvezite PDF.
+	Printer discovery failed.	Pronalaženje štampača nije uspelo.
+	Submitting print job…	Slanje zadatka za štampanje…
+	Print job submitted.	Zadatak za štampanje je poslat.
+	Print job submitted: {receipt}	Zadatak za štampanje je poslat: {receipt}
+	Print failed: the printing worker stopped.	Štampanje nije uspelo: proces štampanja je zaustavljen.
+	Print settings	Podešavanja štampanja
+	Submit print job	Pošalji zadatak za štampanje
 
 # Dictionaries folder (#1063)
 	Dictionaries	Rečnici
@@ -2148,3 +2237,64 @@
 	Hunspell .aff and .dic files here (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) are used before the system's.	Hunspell .aff i .dic datoteke iz ove fascikle (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) koriste se pre sistemskih.
 	{language}: {file}	{language}: {file}
 	{language}: no dictionary found	{language}: rečnik nije pronađen
+
+# Backstage › Recover (#586)
+	Recover	Oporavi
+
+# Page Setup › Mirror margins (#1239)
+	Mirror margins	Preslikane margine
+
+# Insert Hyperlink › Place in This Document (#1370)
+	Existing File or Web Page	Postojeća datoteka ili veb stranica
+	Link to:	Veza ka:
+	Place in This Document	Mesto u ovom dokumentu
+# Table Layout › Sort dialog (#1205)
+	Column {n}	Kolona {n}
+	Header row	Red zaglavlja
+	No header row	Bez reda zaglavlja
+	My list has	Moja lista ima
+# Table Layout › Formula dialog (#1210)
+	Formula:	Formula:
+	Paste function:	Nalepi funkciju:
+# Reading Mode column widths (#1040)
+	Narrow	Uska
+	Medium	Srednja
+# Split Cells and Convert Text to Table (#2592)
+	Merge cells before split	Spoji ćelije pre deljenja
+	Table size	Veličina tabele
+	AutoFit behavior	Automatsko uklapanje
+	Initial column width:	Početna širina kolone:
+	AutoFit to contents	Automatski uklopi prema sadržaju
+	AutoFit to window	Automatski uklopi prema prozoru
+	Separate text at	Razdvoji tekst na
+	Commas	Zarezi
+	Other:	Drugo:
+	The number must be between 1 and {max}.	Broj mora biti između 1 i {max}.
+	The measurement must be between {min} and {max}.	Mera mora biti između {min} i {max}.
+	Recently Used Fonts	Nedavno korišćeni fontovi
+	All Fonts	Svi fontovi
+	Spike	Sakupljač
+	Insert Spike	Umetni iz sakupljača
+# Add Font status (#1789)
+	Added 1 font	Dodat je 1 font
+	Added {n} fonts	Dodato fontova: {n}
+	{added}; {count} couldn't be read: {names}	{added}; nije moguće pročitati ({count}): {names}
+	{names} and {n} more	{names} i još {n}
+	{added}; {n} skipped (limit {max})	{added}; preskočeno: {n} (ograničenje {max})
+
+# Drop Cap menu and Drop Cap Options (#2601)
+	Dropped	U tekstu
+	In margin	Na margini
+	Drop Cap Options…	Opcije ukrasnog slova…
+	Lines to drop:	Broj redova:
+	Distance from text:	Rastojanje od teksta:
+	Distance from text	Rastojanje od teksta
+
+# Picture Format › Size: the Size dialog, sizes typed in any unit (#2573)
+	Lock aspect ratio	Zaključaj odnos širine i visine
+	Relative to original picture size	U odnosu na originalnu veličinu slike
+	Original size	Originalna veličina
+	{width} × {height} pixels	{width} × {height} piksela
+	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Unesite veličinu u bilo kojoj jedinici, na primer 5 cm ili 300 px. Druga strana se prilagođava, pa slika zadržava svoje proporcije.
+
+	Import…	Uvezi…

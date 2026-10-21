@@ -87,6 +87,7 @@
 	Enter formatting for number:	Въведете форматиране за номера:
 	Follow number with:	След номера:
 	Formatting	Форматиране
+	In the margin	На полето
 	Include level number from:	Включване на номер на ниво от:
 	Ink	Мастило
 	Insertions and Deletions	Вмъквания и изтривания
@@ -100,6 +101,7 @@
 	Number alignment:	Подравняване на номера:
 	Number format	Формат на номера
 	Number style for this level:	Стил на номериране за това ниво:
+	Only for the selected text	Само за избрания текст
 	Outside border	Външна граница
 	Restart list after:	Рестартиране на списъка след:
 	Right border	Дясна граница
@@ -127,6 +129,9 @@
 	Bold	Получер
 	Bookmark	Отметка
 	Bookmark name:	Име на отметката:
+	Delete Bookmark	Изтриване на отметка
+	Hidden bookmarks	Скрити отметки
+	Sort by:	Сортиране по:
 	Border Painter	Рисуване на граници
 	Border\nPainter	Рисуване\nна граници
 	Borders	Граници
@@ -142,6 +147,7 @@
 	Apply to:	Прилагане към:
 	Whole document	Целия документ
 	This section	Този раздел
+	Selected text	Избрания текст
 	Fill	Запълване
 	Setting:	Настройка:
 	3-D	3-D
@@ -453,6 +459,8 @@
 	Labels	Етикети
 	Landscape	Пейзаж
 	Language	Език
+	{language} (no dictionary)	{language} (няма речник)
+	No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations.	Не е инсталиран правописен речник за {language}, затова текстът не се проверява. WordCraft търси речника Hunspell {name} в папката WORDCRAFT_DICTIONARIES и на обичайните места в системата.
 	Lasso	Ласо
 	Last Column	Последна колона
 	Last commit	Последно подаване
@@ -507,10 +515,14 @@
 	More templates →	Още шаблони →
 	Move or Resize	Преместване или преоразмеряване
 	Multilevel List	Многостепенен списък
+	Multilevel List Library	Библиотека с многостепенни списъци
+	Article I.	Член I.
+	Chapter 1	Глава 1
+	Section 1.01	Раздел 1.01
 	Multiple Pages	Няколко страници
 	Name (A–Z)	Име (А–Я)
 	Name:	Име:
-	Narrow  0.5" all	Тесни  0.5" навсякъде
+	Narrow  {size} all	Тесни  {size} навсякъде
 	Navigation	Навигация
 	Navigation Pane	Навигационен панел
 	New	Нов
@@ -538,7 +550,7 @@
 	Nonbreaking Hyphen	Непрекъсваемо тире
 	Nonbreaking Space	Непрекъсваем интервал
 	None	Няма
-	Normal  1" all	Нормални  1" навсякъде
+	Normal  {size} all	Нормални  {size} навсякъде
 	Normal Style	Нормален стил
 	Not available right now	В момента не е налично
 	Not saved	Не е запазено
@@ -784,6 +796,8 @@
 	Space before/after:	Разстояние преди/след:
 	Spacing	Разстояние
 	Spacing (pt):	Разстояние (пт):
+	Kerning for fonts:	Кернинг на шрифтове:
+	Points and above	пт и повече
 	Speech	Реч
 	Spelling & Grammar	Правопис и граматика
 	Spelling &\nGrammar	Правопис и\nграматика
@@ -1393,6 +1407,8 @@
 	Customize Ribbon	Персонализиране на лентата
 	Add to Quick Access Toolbar	Добавяне към лентата с инструменти за бърз достъп
 	Remove from Quick Access Toolbar	Премахване от лентата с инструменти за бърз достъп
+	Hide Quick Access Toolbar	Скриване на лентата с инструменти за бърз достъп
+	Show Quick Access Toolbar	Показване на лентата с инструменти за бърз достъп
 	Customize the Ribbon…	Персонализиране на лентата…
 	Customize Quick Access Toolbar…	Персонализиране на лентата с инструменти за бърз достъп…
 	More Commands…	Още команди…
@@ -1719,6 +1735,7 @@
 	Hyphenation zone:	Зона на сричкопренасяне:
 	Italian	Италиански
 	Croatian	Хърватски
+	Indonesian	Индонезийски
 	Japanese	Японски
 	Korean	Корейски
 	Limit consecutive hyphens to:	Ограничаване на последователните пренасяния до:
@@ -2202,6 +2219,8 @@
 	Math AutoCorrect	Автокорекция на математически изрази
 	More >>	Още >>
 	Moves	Премествания
+	Moved from:	Преместено от:
+	Moved to:	Преместено в:
 	New document	Нов документ
 	No changes (read only)	Без промени (само за четене)
 	Only allow this kind of editing:	Разрешаване само на този вид редактиране:
@@ -2234,6 +2253,11 @@
 	Add Font…	Добавяне на шрифт…
 	Added Fonts	Добавени шрифтове
 	Remove Added Font	Премахване на добавен шрифт
+	Load System Installed Fonts…	Зареждане на инсталирани системни шрифтове…
+	All system fonts are already available.	Всички системни шрифтове вече са налични.
+	Local font access is not supported by your browser.	Достъпът до локални шрифтове не се поддържа от браузъра ви.
+	Local font access was denied.	Достъпът до локални шрифтове беше отказан.
+	Loaded {count} system fonts.	Заредени са {count} системни шрифта.
 	Recent Colors	Последни цветове
 	More Colors…	Още цветове…
 	Standard	Стандартни
@@ -2388,6 +2412,7 @@
 	{name} already exists. Choose Save again to replace it.	{name} вече съществува. Изберете „Запазване“ отново, за да го замените.
 	This folder can't be read: {error}	Тази папка не може да бъде прочетена: {error}
 	Showing the first {count} items.	Показани са първите {count} елемента.
+	No items to show.	Няма елементи за показване.
 	File name:	Име на файла:
 	Browse in WordCraft…	Разглеждане в WordCraft…
 	Open a file with WordCraft's own browser when the system file dialog doesn't appear.	Отваряне на файл чрез собствения браузър на WordCraft, когато системният диалогов прозорец за файлове не се появява.
@@ -2439,6 +2464,54 @@
 	Pastes the clipboard's picture.	Поставя картината от клипборда.
 	Region:	Регион:
 	Automatic ({region})	Автоматично ({region})
+# Table style editor: every table style part (#714)
+	Odd Banded Rows	Нечетни редуващи се редове
+	Even Banded Rows	Четни редуващи се редове
+	Odd Banded Columns	Нечетни редуващи се колони
+	Even Banded Columns	Четни редуващи се колони
+	Top Left Cell	Горна лява клетка
+	Top Right Cell	Горна дясна клетка
+	Bottom Left Cell	Долна лява клетка
+	Bottom Right Cell	Долна дясна клетка
+	Inside Horizontal Border	Вътрешна хоризонтална граница
+	Inside Vertical Border	Вътрешна вертикална граница
+	Text of the nearest paragraph with a given style (running headers)	Текст на най-близкия абзац с даден стил (текущи колонтитули)
+	Style name:	Име на стил:
+# Mail merge: filter and sort recipients (#778)
+	Filter Recipients	Филтриране на получателите
+	Sort Recipients	Сортиране на получателите
+	Filter and Sort	Филтриране и сортиране
+	And	И
+	Or	Или
+	Comparison	Сравнение
+	Compare to	Стойност за сравнение
+	Add Condition	Добавяне на условие
+	Remove condition	Премахване на условието
+	Sort by	Сортиране по
+	Then by	След това по
+	Ascending	Възходящо
+	Descending	Низходящо
+	Equal to	Равно на
+	Not equal to	Не е равно на
+	Less than	По-малко от
+	Greater than	По-голямо от
+	Less than or equal	По-малко или равно на
+	Greater than or equal	По-голямо или равно на
+	Is blank	Празно
+	Is not blank	Не е празно
+	Contains	Съдържа
+	Does not contain	Не съдържа
+	{count} of {total} recipients will be merged.	Ще бъдат обединени {count} от {total} получатели.
+	Find in list:	Търсене в списъка:
+	Any field	Всяко поле
+	Matches: {count}	Съвпадения: {count}
+	Show only records that will be merged	Показване само на записите за сливане
+	Take the last match on the page	Взимай последното съвпадение на страницата
+	Show its list number	Показвай номера му в списъка
+	Show its number relative to this field	Показвай номера му спрямо това поле
+	Show its number with all higher levels	Показвай номера му с всички по-горни нива
+	Number only, without the label's words	Само номерът, без думите от етикета
+	Add whether it is above or below	Добавяй дали е отгоре или отдолу
 	Undo 1 Action	Отмяна на 1 действие
 	Undo Actions	Отмяна на действия
 	Undo History	История на отмяната
@@ -2510,6 +2583,24 @@
 	Suggested	Предложения
 	Set Proofing Language…	Задаване на езика за проверка…
 	Language Preferences…	Езикови предпочитания…
+	Printer	Принтер
+	Select a printer	Изберете принтер
+	Refresh printers	Опресняване на принтерите
+	Two-sided printing	Двустранен печат
+	Printer default	По подразбиране на принтера
+	One-sided	Едностранен
+	Two-sided: long edge	Двустранен: дълъг ръб
+	Two-sided: short edge	Двустранен: къс ръб
+	Grayscale	Нюанси на сивото
+	Finding printers…	Търсене на принтери…
+	No printers found. Configure a system printer or export a PDF.	Не са намерени принтери. Настройте системен принтер или експортирайте PDF.
+	Printer discovery failed.	Търсенето на принтери е неуспешно.
+	Submitting print job…	Изпращане на задание за печат…
+	Print job submitted.	Заданието за печат е изпратено.
+	Print job submitted: {receipt}	Заданието за печат е изпратено: {receipt}
+	Print failed: the printing worker stopped.	Печатът е неуспешен: процесът на печат спря.
+	Print settings	Настройки за печат
+	Submit print job	Изпращане на задание за печат
 
 # Cross-reference dialog (#1003)
 	For which item:	За кой елемент:
@@ -2525,3 +2616,75 @@
 	Hunspell .aff and .dic files here (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) are used before the system's.	Файловете .aff и .dic на Hunspell от тази папка (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) се използват преди системните.
 	{language}: {file}	{language}: {file}
 	{language}: no dictionary found	{language}: не е намерен речник
+
+# Backstage › Recover (#586)
+	Recover	Възстановяване
+
+# Page Setup › Mirror margins (#1239)
+	Mirror margins	Огледални полета
+
+# Insert Hyperlink › Place in This Document (#1370)
+	Existing File or Web Page	Съществуващ файл или уеб страница
+	Link to:	Връзка към:
+	Place in This Document	Място в този документ
+# Table Layout › Sort dialog (#1205)
+	Column {n}	Колона {n}
+	Header row	Заглавен ред
+	No header row	Без заглавен ред
+	My list has	Списъкът ми има
+# Table Layout › Formula dialog (#1210)
+	Formula:	Формула:
+	Paste function:	Поставяне на функция:
+# Reading Mode column widths (#1040)
+	Narrow	Тясна
+	Medium	Средна
+# Split Cells and Convert Text to Table (#2592)
+	Merge cells before split	Обединяване на клетките преди разделяне
+	Table size	Размер на таблицата
+	AutoFit behavior	Поведение при автопобиране
+	Initial column width:	Начална ширина на колоните:
+	AutoFit to contents	Автопобиране по съдържанието
+	AutoFit to window	Автопобиране по прозореца
+	Separate text at	Разделяне на текста при
+	Commas	Запетаи
+	Other:	Друго:
+	The number must be between 1 and {max}.	Числото трябва да е между 1 и {max}.
+	The measurement must be between {min} and {max}.	Размерът трябва да е между {min} и {max}.
+	Recently Used Fonts	Наскоро използвани шрифтове
+	All Fonts	Всички шрифтове
+	Spike	Натрупване
+	Insert Spike	Вмъкване на натрупаното
+# Add Font status (#1789)
+	Added 1 font	Добавен 1 шрифт
+	Added {n} fonts	Добавени шрифтове: {n}
+	{added}; {count} couldn't be read: {names}	{added}; не можаха да се прочетат ({count}): {names}
+	{names} and {n} more	{names} и още {n}
+	{added}; {n} skipped (limit {max})	{added}; пропуснати: {n} (ограничение {max})
+	nothing is selected	нищо не е избрано
+	select a picture or shape first	първо изберете картина или фигура
+	select recipients first	първо изберете получатели
+	select two or more pictures or shapes first (Shift+click)	изберете две или повече картини или фигури (Shift+щракване)
+	text boxes can't go inside a text box	текстови полета не могат да са в текстово поле
+	the cursor isn't in a table	курсорът не е в таблица
+	{name} options	{name}: опции
+
+# Drop Cap menu and Drop Cap Options (#2601)
+	Dropped	Вградена
+	In margin	В полето
+	Drop Cap Options…	Опции за главна буква…
+	Lines to drop:	Редове на буквата:
+	Distance from text:	Разстояние от текста:
+	Distance from text	Разстояние от текста
+
+# Drop Cap disabled reasons (#2601)
+	the paragraph is empty	абзацът е празен
+	the paragraph starts with a space	абзацът започва с интервал
+
+# Picture Format › Size: the Size dialog, sizes typed in any unit (#2573)
+	Lock aspect ratio	Заключване на пропорциите
+	Relative to original picture size	Спрямо оригиналния размер на картината
+	Original size	Оригинален размер
+	{width} × {height} pixels	{width} × {height} пиксела
+	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Въведете размер в произволна единица, например 5 cm или 300 px. Другата страна се променя съответно, така че картината запазва пропорциите си.
+
+	Import…	Импортиране…

@@ -15,6 +15,27 @@ With `--connect`, the bridge sends the app's control key, which it reads from
 `WORDCRAFT_CONTROL_KEY` or from the key file the app writes at start. It sends the key only to
 loopback addresses; see [Keys](control-protocol.md#keys).
 
+## Scripts from the command line
+
+`wordcraft-cli run --script job.json` (`--script -` reads standard input) runs the commands in a
+file, in order, exactly like repeated `--cmd`, and then saves. Use it to generate a DOCX and its
+PDF in one run without a window:
+
+```json
+{"template": "sample",
+ "commands": [{"command": "select.text", "params": {"text": "Membership"}},
+              {"command": "format.bold"},
+              "caret.docEnd"],
+ "save": ["out.docx", "out.pdf"]}
+```
+
+`file` (a document to open) and `template` are optional, and `--file` / `--template` on the command
+line win. A command is `{"command": id, "params": {…}}` or just the id. `save` is a path or a list;
+each output's format follows its extension. Relative `file` and `save` paths resolve against the
+script's folder (the working folder for stdin). `--cmd` flags run after the script's commands and
+`--save` after its outputs. A failing command stops the run with `command N (id): …` and exit
+status 1, and nothing is saved. Every output is checked (known extension, folder exists) before the first is written. Paths inside command params (a picture to insert, say) are relative to the working folder, not the script's. Scripts are capped at 4 MiB.
+
 ## Tracked changes by an agent
 
 Tracked changes and comments are recorded under the session's user name ("WordCraft User" by
@@ -93,6 +114,9 @@ files it was given rather than guarding against other software on the computer.
 | `render_page` | a page as PNG |
 | `parity` | feature coverage |
 | `screenshot`, `click`, `key`, `ui_inspect` | app only (`--connect`) |
+
+`insert.picture` and `insert.icon` leave the caret after the new picture, so typing next doesn't
+replace it; Picture Format commands (`picture.*`, `arrange.*`) still act on it.
 
 Resources: `wordcraft://document` (inspect) and `wordcraft://commands`.
 
@@ -176,3 +200,8 @@ the distance from the text). Missing fields are `none`, 0, no colour and 0, so a
 | `kinsoku`, `wordWrap`, `overflowPunct`, `autoSpaceDE`, `autoSpaceDN`, `snapToGrid` | bool | East Asian typography; unset = on |
 | `topLinePunct` | bool | East Asian typography; unset = off |
 | `numChange`, `fmtChange` | | Track Changes bookkeeping |
+
+`para.set` also takes `"onPage": {"align"?: "left|center|right|justify|distribute", "left"?: pt,
+"right"?: pt}`: the alignment and indents as seen on the page, which each selected paragraph turns
+into its own start and end once `props` (a `bidi` in it, say) is applied. The Paragraph dialog sends
+only the fields that changed this way, as one command and so one undo step.

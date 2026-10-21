@@ -140,6 +140,9 @@
 	Book Title	Název knihy
 	Bookmark	Záložka
 	Bookmark name:	Název záložky:
+	Delete Bookmark	Odstranit záložku
+	Hidden bookmarks	Skryté záložky
+	Sort by:	Seřadit podle:
 	Border Painter	Štětec ohraničení
 	Border\nPainter	Štětec\nohraničení
 	Borders	Ohraničení
@@ -538,6 +541,7 @@
 	Immersive	Asistivní čtení
 	Immersive Reader	Asistivní čtečka
 	Immersive\nReader	Asistivní\nčtečka
+	In the margin	Na okraji
 	Include level number from:	Zahrnout číslo úrovně z:
 	Increase Font Size	Zvětšit velikost písma
 	Increase Indent	Zvětšit odsazení
@@ -615,6 +619,8 @@
 	Labels	Štítky
 	Landscape	Na šířku
 	Language	Jazyk
+	{language} (no dictionary)	{language} (bez slovníku)
+	No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations.	Pro jazyk {language} není nainstalován žádný pravopisný slovník, proto se nekontroluje. WordCraft hledá slovník Hunspell {name} ve složce WORDCRAFT_DICTIONARIES a na obvyklých místech v systému.
 	Large\nOperator	Velký\noperátor
 	Lasso	Laso
 	Last Column	Poslední sloupec
@@ -705,11 +711,15 @@
 	Move Past Citation	Přejít za citaci
 	Move Past\nCitation	Přejít za\ncitaci
 	Multilevel List	Víceúrovňový seznam
+	Multilevel List Library	Knihovna víceúrovňových seznamů
+	Article I.	Článek I.
+	Chapter 1	Kapitola 1
+	Section 1.01	Oddíl 1.01
 	Multiple Pages	Více stránek
 	Name (A–Z)	Jméno (A–Z)
 	Name of the file this document is saved as	Název souboru dokumentu
 	Name:	Název:
-	Narrow  0.5" all	Úzké  0,5" všude
+	Narrow  {size} all	Úzké  {size} všude
 	Navigation	Navigace
 	Navigation Pane	Navigační podokno
 	New	Nový
@@ -751,7 +761,7 @@
 	Nonbreaking Space	Nezlomitelná mezera
 	None	Žádné
 	Normal	Normální
-	Normal  1" all	Normální  1" všude
+	Normal  {size} all	Normální  {size} všude
 	Normal Indent	Normální s odsazením
 	Normal speed	Normální rychlost
 	Normal Style	Normální styl
@@ -789,6 +799,7 @@
 	OK	OK
 	One	Jeden
 	One Page	Jedna stránka
+	Only for the selected text	Pouze pro vybraný text
 	Only web (http, https) and email (mailto) links can be followed	Otevřít lze pouze webové (http, https) a e-mailové (mailto) odkazy
 	Open	Otevřít
 	OpenDocument Text (*.odt)	Text OpenDocument (*.odt)
@@ -1126,6 +1137,8 @@
 	Space before: {pt} pt	Mezera před: {pt} b.
 	Spacing	Mezery
 	Spacing (pt):	Mezery (b.):
+	Kerning for fonts:	Vyrovnání písma (kerning):
+	Points and above	b. a více
 	Spacing:	Mezera:
 	Special Characters	Speciální znaky
 	Specify height:	Zadat výšku:
@@ -1235,6 +1248,7 @@
 	This font has no characters to show.	Toto písmo neobsahuje žádné znaky k zobrazení.
 	This point forward	Od tohoto místa dále
 	This section	Tento oddíl
+	Selected text	Vybraný text
 	Three	Tři
 	Tight	Těsné
 	Title from the document properties	Název z vlastností dokumentu
@@ -1751,6 +1765,8 @@
 	Customize Ribbon	Přizpůsobit pás karet
 	Add to Quick Access Toolbar	Přidat na panel nástrojů Rychlý přístup
 	Remove from Quick Access Toolbar	Odebrat z panelu nástrojů Rychlý přístup
+	Hide Quick Access Toolbar	Skrýt panel nástrojů Rychlý přístup
+	Show Quick Access Toolbar	Zobrazit panel nástrojů Rychlý přístup
 	Customize the Ribbon…	Přizpůsobit pás karet…
 	Customize Quick Access Toolbar…	Přizpůsobit panel nástrojů Rychlý přístup…
 	More Commands…	Další příkazy…
@@ -2018,6 +2034,7 @@ preview	Title	Ukázka
 	Hyphenation zone:	Pásmo dělení slov:
 	Italian	Italština
 	Croatian	Chorvatština
+	Indonesian	Indonéština
 	Japanese	Japonština
 	Korean	Korejština
 	Limit consecutive hyphens to:	Omezit počet po sobě jdoucích rozdělení:
@@ -2095,6 +2112,8 @@ preview	Title	Ukázka
 	Math AutoCorrect	Automatické opravy matematiky
 	More >>	Více >>
 	Moves	Přesuny
+	Moved from:	Přesunuto odtud:
+	Moved to:	Přesunuto sem:
 	New document	Nový dokument
 	No changes (read only)	Žádné změny (jen pro čtení)
 	Only allow this kind of editing:	Povolit pouze tento typ úprav:
@@ -2264,6 +2283,11 @@ preview	Title	Ukázka
 	Add Font…	Přidat písmo…
 	Added Fonts	Přidaná písma
 	Remove Added Font	Odebrat přidané písmo
+	Load System Installed Fonts…	Načíst nainstalovaná systémová písma…
+	All system fonts are already available.	Všechna systémová písma jsou již k dispozici.
+	Local font access is not supported by your browser.	Váš prohlížeč nepodporuje přístup k místním písmům.
+	Local font access was denied.	Přístup k místním písmům byl odepřen.
+	Loaded {count} system fonts.	Načteno systémových písem: {count}.
 	Recent Colors	Poslední barvy
 	More Colors…	Další barvy…
 	Standard	Standardní
@@ -2301,6 +2325,7 @@ preview	Title	Ukázka
 	{name} already exists. Choose Save again to replace it.	Položka {name} již existuje. Dalším zvolením Uložit ji nahradíte.
 	This folder can't be read: {error}	Tuto složku nelze přečíst: {error}
 	Showing the first {count} items.	Zobrazuje se prvních {count} položek.
+	No items to show.	Žádné položky k zobrazení.
 	File name:	Název souboru:
 	Browse in WordCraft…	Procházet ve WordCraftu…
 	Open a file with WordCraft's own browser when the system file dialog doesn't appear.	Otevřít soubor pomocí vlastního prohlížeče souborů WordCraftu, když se systémový dialog pro práci se soubory nezobrazí.
@@ -2455,6 +2480,45 @@ preview	Title	Ukázka
 	Hindi	Hindské
 	Context	Podle kontextu
 	System	Systémové
+	Odd Banded Rows	Liché pruhované řádky
+	Even Banded Rows	Sudé pruhované řádky
+	Odd Banded Columns	Liché pruhované sloupce
+	Even Banded Columns	Sudé pruhované sloupce
+	Top Left Cell	Levá horní buňka
+	Top Right Cell	Pravá horní buňka
+	Bottom Left Cell	Levá dolní buňka
+	Bottom Right Cell	Pravá dolní buňka
+	Inside Horizontal Border	Vnitřní vodorovné ohraničení
+	Inside Vertical Border	Vnitřní svislé ohraničení
+# Mail merge: filter and sort recipients (#778)
+	Filter Recipients	Filtrovat příjemce
+	Sort Recipients	Seřadit příjemce
+	Filter and Sort	Filtrovat a seřadit
+	And	A
+	Or	Nebo
+	Comparison	Porovnání
+	Compare to	Porovnat s
+	Add Condition	Přidat podmínku
+	Remove condition	Odebrat podmínku
+	Sort by	Seřadit podle
+	Then by	Potom podle
+	Ascending	Vzestupně
+	Descending	Sestupně
+	Equal to	Rovná se
+	Not equal to	Nerovná se
+	Less than	Menší než
+	Greater than	Větší než
+	Less than or equal	Menší nebo rovno
+	Greater than or equal	Větší nebo rovno
+	Is blank	Je prázdné
+	Is not blank	Není prázdné
+	Contains	Obsahuje
+	Does not contain	Neobsahuje
+	{count} of {total} recipients will be merged.	Příjemci ke sloučení: {count} z {total}.
+	Find in list:	Najít v seznamu:
+	Any field	Libovolné pole
+	Matches: {count}	Shody: {count}
+	Show only records that will be merged	Zobrazit jen záznamy, které budou sloučeny
 	Show KeyTips (Alt or F10)	Zobrazit klávesové tipy (Alt nebo F10)
 	Reading	Čtení
 	Reading Column Width	Šířka sloupce pro čtení
@@ -2464,6 +2528,14 @@ preview	Title	Ukázka
 	Correct accidental usage of cAPS LOCK key	Opravovat náhodné použití klávesy cAPS LOCK
 	Region:	Oblast:
 	Automatic ({region})	Automaticky ({region})
+	Text of the nearest paragraph with a given style (running headers)	Text nejbližšího odstavce s daným stylem (živá záhlaví)
+	Style name:	Název stylu:
+	Take the last match on the page	Vzít poslední shodu na stránce
+	Show its list number	Zobrazit jeho číslo v seznamu
+	Show its number relative to this field	Zobrazit jeho číslo vzhledem k tomuto poli
+	Show its number with all higher levels	Zobrazit jeho číslo se všemi vyššími úrovněmi
+	Number only, without the label's words	Jen číslo, bez slov popisku
+	Add whether it is above or below	Doplnit, zda je výše, nebo níže
 	Search	Hledat
 	Title Bar	Záhlaví okna
 	Copy to	Kopírovat do
@@ -2514,6 +2586,24 @@ preview	Title	Ukázka
 	Suggested	Navrhované
 	Set Proofing Language…	Nastavit jazyk kontroly pravopisu…
 	Language Preferences…	Předvolby jazyka…
+	Printer	Tiskárna
+	Select a printer	Vyberte tiskárnu
+	Refresh printers	Obnovit tiskárny
+	Two-sided printing	Oboustranný tisk
+	Printer default	Výchozí tiskárny
+	One-sided	Jednostranný
+	Two-sided: long edge	Oboustranný: dlouhý okraj
+	Two-sided: short edge	Oboustranný: krátký okraj
+	Grayscale	Stupně šedi
+	Finding printers…	Hledání tiskáren…
+	No printers found. Configure a system printer or export a PDF.	Nebyly nalezeny žádné tiskárny. Nastavte systémovou tiskárnu nebo exportujte PDF.
+	Printer discovery failed.	Hledání tiskáren se nezdařilo.
+	Submitting print job…	Odesílání tiskové úlohy…
+	Print job submitted.	Tisková úloha odeslána.
+	Print job submitted: {receipt}	Tisková úloha odeslána: {receipt}
+	Print failed: the printing worker stopped.	Tisk se nezdařil: proces tisku se zastavil.
+	Print settings	Nastavení tisku
+	Submit print job	Odeslat tiskovou úlohu
 
 # Cross-reference dialog (#1003)
 	For which item:	Pro kterou položku:
@@ -2529,3 +2619,75 @@ preview	Title	Ukázka
 	Hunspell .aff and .dic files here (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) are used before the system's.	Soubory Hunspell .aff a .dic z této složky (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) mají přednost před systémovými.
 	{language}: {file}	{language}: {file}
 	{language}: no dictionary found	{language}: slovník nebyl nalezen
+
+# Backstage › Recover (#586)
+	Recover	Obnovit
+
+# Page Setup › Mirror margins (#1239)
+	Mirror margins	Zrcadlové okraje
+
+# Insert Hyperlink › Place in This Document (#1370)
+	Existing File or Web Page	Existující soubor nebo webová stránka
+	Link to:	Odkaz na:
+	Place in This Document	Místo v tomto dokumentu
+# Table Layout › Sort dialog (#1205)
+	Column {n}	Sloupec {n}
+	Header row	Řádek záhlaví
+	No header row	Bez řádku záhlaví
+	My list has	Můj seznam má
+# Table Layout › Formula dialog (#1210)
+	Formula:	Vzorec:
+	Paste function:	Vložit funkci:
+# Reading Mode column widths (#1040)
+	Narrow	Úzká
+	Medium	Střední
+# Split Cells and Convert Text to Table (#2592)
+	Merge cells before split	Před rozdělením buňky sloučit
+	Table size	Velikost tabulky
+	AutoFit behavior	Automatické přizpůsobení
+	Initial column width:	Počáteční šířka sloupce:
+	AutoFit to contents	Automaticky přizpůsobit obsahu
+	AutoFit to window	Automaticky přizpůsobit oknu
+	Separate text at	Oddělit text pomocí
+	Commas	Čárky
+	Other:	Jiné:
+	The number must be between 1 and {max}.	Číslo musí být mezi 1 a {max}.
+	The measurement must be between {min} and {max}.	Míra musí být mezi {min} a {max}.
+	Recently Used Fonts	Naposledy použitá písma
+	All Fonts	Všechna písma
+	Spike	Sběrač
+	Insert Spike	Vložit ze sběrače
+# Add Font status (#1789)
+	Added 1 font	Přidáno 1 písmo
+	Added {n} fonts	Přidaná písma: {n}
+	{added}; {count} couldn't be read: {names}	{added}; nelze přečíst ({count}): {names}
+	{names} and {n} more	{names} a dalších {n}
+	{added}; {n} skipped (limit {max})	{added}; přeskočeno: {n} (limit {max})
+	nothing is selected	nic není vybráno
+	select a picture or shape first	nejdřív vyberte obrázek nebo tvar
+	select recipients first	nejdřív vyberte příjemce
+	select two or more pictures or shapes first (Shift+click)	vyberte dva nebo více obrázků či tvarů (Shift+klepnutí)
+	text boxes can't go inside a text box	textové pole nelze vložit do textového pole
+	the cursor isn't in a table	kurzor není v tabulce
+	{name} options	Možnosti: {name}
+
+# Drop Cap menu and Drop Cap Options (#2601)
+	Dropped	Zapuštěná
+	In margin	Na okraji
+	Drop Cap Options…	Možnosti iniciály…
+	Lines to drop:	Výška v řádcích:
+	Distance from text:	Vzdálenost od textu:
+	Distance from text	Vzdálenost od textu
+
+# Drop Cap disabled reasons (#2601)
+	the paragraph is empty	odstavec je prázdný
+	the paragraph starts with a space	odstavec začíná mezerou
+
+# Picture Format › Size: the Size dialog, sizes typed in any unit (#2573)
+	Lock aspect ratio	Zamknout poměr stran
+	Relative to original picture size	Vzhledem k původní velikosti obrázku
+	Original size	Původní velikost
+	{width} × {height} pixels	{width} × {height} pixelů
+	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Zadejte velikost v libovolné jednotce, například 5 cm nebo 300 px. Druhá strana se přizpůsobí, takže obrázek zachová své proporce.
+
+	Import…	Importovat…

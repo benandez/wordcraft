@@ -84,6 +84,9 @@
 	Book Title	Kitap Başlığı
 	Bookmark	Yer İşareti
 	Bookmark name:	Yer işareti adı:
+	Delete Bookmark	Yer İşaretini Sil
+	Hidden bookmarks	Gizli yer işaretleri
+	Sort by:	Sıralama ölçütü:
 	Border Painter	Kenarlık Fırçası
 	Border\nPainter	Kenarlık\nFırçası
 	Borders	Kenarlıklar
@@ -326,6 +329,7 @@
 	Immersive	Odaklı
 	Immersive Reader	Odaklı Okuyucu
 	Immersive\nReader	Odaklı\nOkuyucu
+	In the margin	Kenarda
 	Increase Font Size	Yazı Tipi Boyutunu Büyüt
 	Increase Indent	Girintiyi Artır
 	Indent	Girinti
@@ -381,6 +385,8 @@
 	Labels	Etiketler
 	Landscape	Yatay
 	Language	Dil
+	{language} (no dictionary)	{language} (sözlük yok)
+	No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations.	{language} için yüklü bir yazım sözlüğü yok, bu yüzden denetlenmiyor. WordCraft, {name} Hunspell sözlüğünü WORDCRAFT_DICTIONARIES klasöründe ve olağan sistem konumlarında arar.
 	Lasso	Kement
 	Last Column	Son Sütun
 	Last commit	Son commit
@@ -434,10 +440,14 @@
 	Modify Style	Stili Değiştir
 	Modify…	Değiştir…
 	Multilevel List	Çok Düzeyli Liste
+	Multilevel List Library	Çok Düzeyli Liste Kitaplığı
+	Article I.	Madde I.
+	Chapter 1	Bölüm 1
+	Section 1.01	Kısım 1.01
 	Multiple Pages	Birden Çok Sayfa
 	Name (A–Z)	Ad (A–Z)
 	Name:	Ad:
-	Narrow  0.5" all	Dar  her kenar 0,5 inç
+	Narrow  {size} all	Dar  her kenar {size}
 	Navigation	Gezinti
 	Navigation Pane	Gezinti Bölmesi
 	New	Yeni
@@ -466,7 +476,7 @@
 	Nonbreaking Space	Bölünemez Boşluk
 	None	Yok
 	Normal	Normal
-	Normal  1" all	Normal  her kenar 1 inç
+	Normal  {size} all	Normal  her kenar {size}
 	Normal Indent	Normal Girintili
 	Normal Style	Normal Stil
 	Normal Table	Normal Tablo
@@ -482,6 +492,7 @@
 	OK	Tamam
 	One	Bir
 	One Page	Bir Sayfa
+	Only for the selected text	Yalnızca seçili metin için
 	Open	Aç
 	OpenDocument Text (*.odt)	OpenDocument Metni (*.odt)
 	Optional Hyphen	İsteğe Bağlı Kısa Çizgi
@@ -691,6 +702,8 @@
 	Space before/after:	Önce/sonra boşluk:
 	Spacing	Aralık
 	Spacing (pt):	Aralık (pt):
+	Kerning for fonts:	Yazı tipi aralık ayarı:
+	Points and above	punto ve üzeri
 	Speech	Konuşma
 	Spelling & Grammar	Yazım ve Dilbilgisi
 	Spelling &\nGrammar	Yazım ve\nDilbilgisi
@@ -1612,6 +1625,7 @@ preview	Title	Örnek
 	Apply to:	Uygula:
 	Whole document	Tüm belge
 	This section	Bu bölüm
+	Selected text	Seçili metin
 	Fill	Dolgu
 	Setting:	Ayar:
 	3-D	3B
@@ -1761,6 +1775,8 @@ preview	Title	Örnek
 	Customize Ribbon	Şeridi Özelleştir
 	Add to Quick Access Toolbar	Hızlı Erişim Araç Çubuğuna Ekle
 	Remove from Quick Access Toolbar	Hızlı Erişim Araç Çubuğundan Kaldır
+	Hide Quick Access Toolbar	Hızlı Erişim Araç Çubuğunu Gizle
+	Show Quick Access Toolbar	Hızlı Erişim Araç Çubuğunu Göster
 	Customize the Ribbon…	Şeridi Özelleştir…
 	Customize Quick Access Toolbar…	Hızlı Erişim Araç Çubuğunu Özelleştir…
 	More Commands…	Diğer Komutlar…
@@ -1804,6 +1820,11 @@ preview	Title	Örnek
 	Add Font…	Yazı Tipi Ekle…
 	Added Fonts	Eklenen Yazı Tipleri
 	Remove Added Font	Eklenen Yazı Tipini Kaldır
+	Load System Installed Fonts…	Yüklü Sistem Yazı Tiplerini Yükle…
+	All system fonts are already available.	Tüm sistem yazı tipleri zaten kullanılabilir.
+	Local font access is not supported by your browser.	Tarayıcınız yerel yazı tipi erişimini desteklemiyor.
+	Local font access was denied.	Yerel yazı tipi erişimi reddedildi.
+	Loaded {count} system fonts.	{count} sistem yazı tipi yüklendi.
 	Print Markup	İşaretlemeyi Yazdır
 	Comments beside each page and tracked changes in PDFs, prints and images; a comment list at the end of web pages, Markdown and text.	PDF'lerde, baskılarda ve görüntülerde her sayfanın yanında açıklamalar ve izlenen değişiklikler; web sayfalarının, Markdown ve metnin sonunda açıklama listesi.
 	Recent Colors	Son Kullanılan Renkler
@@ -2075,6 +2096,8 @@ preview	Title	Örnek
 	Math AutoCorrect	Matematik Otomatik Düzelt
 	More >>	Daha fazla >>
 	Moves	Taşımalar
+	Moved from:	Taşındı (kaynak):
+	Moved to:	Taşındı (hedef):
 	New document	Yeni belge
 	No changes (read only)	Değişiklik yok (salt okunur)
 	Only allow this kind of editing:	Yalnızca bu tür düzenlemeye izin ver:
@@ -2174,6 +2197,7 @@ preview	Title	Örnek
 	{name} already exists. Choose Save again to replace it.	{name} zaten var. Değiştirmek için Kaydet'i yeniden seçin.
 	This folder can't be read: {error}	Bu klasör okunamıyor: {error}
 	Showing the first {count} items.	İlk {count} öğe gösteriliyor.
+	No items to show.	Gösterilecek öğe yok.
 	File name:	Dosya adı:
 	Browse in WordCraft…	WordCraft'ta Gözat…
 	Open a file with WordCraft's own browser when the system file dialog doesn't appear.	Sistemin dosya iletişim kutusu açılmadığında dosyayı WordCraft'ın kendi dosya tarayıcısıyla açın.
@@ -2367,6 +2391,7 @@ preview	Title	Örnek
 	Hyphenation zone:	Heceleme bölgesi:
 	Italian	İtalyanca
 	Croatian	Hırvatça
+	Indonesian	Endonezyaca
 	Japanese	Japonca
 	Korean	Korece
 	Limit consecutive hyphens to:	Ardışık tireleri şununla sınırla:
@@ -2461,6 +2486,53 @@ preview	Title	Örnek
 	AutoFit Column by Double-Clicking	Sütunu Çift Tıklayarak Otomatik Sığdır
 	Region:	Bölge:
 	Automatic ({region})	Otomatik ({region})
+	Odd Banded Rows	Tek Şeritli Satırlar
+	Even Banded Rows	Çift Şeritli Satırlar
+	Odd Banded Columns	Tek Şeritli Sütunlar
+	Even Banded Columns	Çift Şeritli Sütunlar
+	Top Left Cell	Sol Üst Hücre
+	Top Right Cell	Sağ Üst Hücre
+	Bottom Left Cell	Sol Alt Hücre
+	Bottom Right Cell	Sağ Alt Hücre
+	Inside Horizontal Border	İç Yatay Kenarlık
+	Inside Vertical Border	İç Dikey Kenarlık
+	Text of the nearest paragraph with a given style (running headers)	Belirli bir stile sahip en yakın paragrafın metni (değişken üstbilgiler)
+	Style name:	Stil adı:
+# Mail merge: filter and sort recipients (#778)
+	Filter Recipients	Alıcıları filtrele
+	Sort Recipients	Alıcıları sırala
+	Filter and Sort	Filtrele ve sırala
+	And	Ve
+	Or	Veya
+	Comparison	Karşılaştırma
+	Compare to	Karşılaştırılacak değer
+	Add Condition	Koşul ekle
+	Remove condition	Koşulu kaldır
+	Sort by	Sıralama ölçütü
+	Then by	Sonra
+	Ascending	Artan
+	Descending	Azalan
+	Equal to	Eşittir
+	Not equal to	Eşit değildir
+	Less than	Küçüktür
+	Greater than	Büyüktür
+	Less than or equal	Küçük veya eşittir
+	Greater than or equal	Büyük veya eşittir
+	Is blank	Boştur
+	Is not blank	Boş değildir
+	Contains	İçerir
+	Does not contain	İçermez
+	{count} of {total} recipients will be merged.	Birleştirilecek alıcılar: {count} / {total}.
+	Find in list:	Listede bul:
+	Any field	Herhangi bir alan
+	Matches: {count}	Eşleşme: {count}
+	Show only records that will be merged	Yalnızca birleştirilecek kayıtları göster
+	Take the last match on the page	Sayfadaki son eşleşmeyi al
+	Show its list number	Liste numarasını göster
+	Show its number relative to this field	Numarasını bu alana göre göster
+	Show its number with all higher levels	Numarasını tüm üst düzeylerle göster
+	Number only, without the label's words	Yalnızca numara, etiketin sözcükleri olmadan
+	Add whether it is above or below	Yukarıda mı aşağıda mı olduğunu ekle
 	Start-up	Başlangıç
 	Show the Start screen when WordCraft starts	WordCraft açılırken Başlangıç ekranını göster
 	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Açık: WordCraft, Dosya › Giriş sayfasında boş belge, şablonlar ve son belgelerinizle açılır. Kapalı: boş bir belge açar.
@@ -2519,6 +2591,24 @@ preview	Title	Örnek
 	Suggested	Önerilenler
 	Set Proofing Language…	Yazım denetimi dilini ayarla…
 	Language Preferences…	Dil tercihleri…
+	Printer	Yazıcı
+	Select a printer	Bir yazıcı seçin
+	Refresh printers	Yazıcıları yenile
+	Two-sided printing	Çift taraflı yazdırma
+	Printer default	Yazıcı varsayılanı
+	One-sided	Tek taraflı
+	Two-sided: long edge	Çift taraflı: uzun kenar
+	Two-sided: short edge	Çift taraflı: kısa kenar
+	Grayscale	Gri tonlama
+	Finding printers…	Yazıcılar aranıyor…
+	No printers found. Configure a system printer or export a PDF.	Yazıcı bulunamadı. Sistemde bir yazıcı yapılandırın veya PDF olarak dışa aktarın.
+	Printer discovery failed.	Yazıcı arama başarısız oldu.
+	Submitting print job…	Yazdırma işi gönderiliyor…
+	Print job submitted.	Yazdırma işi gönderildi.
+	Print job submitted: {receipt}	Yazdırma işi gönderildi: {receipt}
+	Print failed: the printing worker stopped.	Yazdırma başarısız oldu: yazdırma işlemi durdu.
+	Print settings	Yazdırma ayarları
+	Submit print job	Yazdırma işini gönder
 
 # Cross-reference dialog (#1003)
 	For which item:	Hangi öğe için:
@@ -2534,3 +2624,75 @@ preview	Title	Örnek
 	Hunspell .aff and .dic files here (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) are used before the system's.	Bu klasördeki Hunspell .aff ve .dic dosyaları (pl_PL, pt_BR, it_IT, hr_HR, tr_TR) sistemdekilerden önce kullanılır.
 	{language}: {file}	{language}: {file}
 	{language}: no dictionary found	{language}: sözlük bulunamadı
+
+# Backstage › Recover (#586)
+	Recover	Kurtar
+
+# Page Setup › Mirror margins (#1239)
+	Mirror margins	Yansıtılmış kenar boşlukları
+
+# Insert Hyperlink › Place in This Document (#1370)
+	Existing File or Web Page	Varolan Dosya veya Web Sayfası
+	Link to:	Bağlantı:
+	Place in This Document	Bu Belgede Bir Yer
+# Table Layout › Sort dialog (#1205)
+	Column {n}	Sütun {n}
+	Header row	Başlık satırı
+	No header row	Başlık satırı yok
+	My list has	Listemde
+# Table Layout › Formula dialog (#1210)
+	Formula:	Formül:
+	Paste function:	İşlev yapıştır:
+# Reading Mode column widths (#1040)
+	Narrow	Dar
+	Medium	Orta
+# Split Cells and Convert Text to Table (#2592)
+	Merge cells before split	Bölmeden önce hücreleri birleştir
+	Table size	Tablo boyutu
+	AutoFit behavior	Otomatik sığdırma
+	Initial column width:	Başlangıç sütun genişliği:
+	AutoFit to contents	İçeriğe sığdır
+	AutoFit to window	Pencereye sığdır
+	Separate text at	Metni ayırma yeri
+	Commas	Virgüller
+	Other:	Diğer:
+	The number must be between 1 and {max}.	Sayı 1 ile {max} arasında olmalıdır.
+	The measurement must be between {min} and {max}.	Ölçü {min} ile {max} arasında olmalıdır.
+	Recently Used Fonts	Son Kullanılan Yazı Tipleri
+	All Fonts	Tüm Yazı Tipleri
+	Spike	Biriktirici
+	Insert Spike	Biriktiriciyi Ekle
+# Add Font status (#1789)
+	Added 1 font	1 yazı tipi eklendi
+	Added {n} fonts	{n} yazı tipi eklendi
+	{added}; {count} couldn't be read: {names}	{added}; {count} okunamadı: {names}
+	{names} and {n} more	{names} ve {n} tane daha
+	{added}; {n} skipped (limit {max})	{added}; {n} atlandı (sınır {max})
+	nothing is selected	hiçbir şey seçili değil
+	select a picture or shape first	önce bir resim veya şekil seçin
+	select recipients first	önce alıcıları seçin
+	select two or more pictures or shapes first (Shift+click)	iki veya daha fazla resim ya da şekil seçin (Shift+tıklama)
+	text boxes can't go inside a text box	metin kutuları bir metin kutusunun içine konamaz
+	the cursor isn't in a table	imleç bir tabloda değil
+	{name} options	{name} seçenekleri
+
+# Drop Cap menu and Drop Cap Options (#2601)
+	Dropped	Metin içinde
+	In margin	Kenar boşluğunda
+	Drop Cap Options…	Büyük başlangıç harfi seçenekleri…
+	Lines to drop:	Kaplayacağı satır:
+	Distance from text:	Metinden uzaklık:
+	Distance from text	Metinden uzaklık
+
+# Drop Cap disabled reasons (#2601)
+	the paragraph is empty	paragraf boş
+	the paragraph starts with a space	paragraf boşlukla başlıyor
+
+# Picture Format › Size: the Size dialog, sizes typed in any unit (#2573)
+	Lock aspect ratio	En boy oranını kilitle
+	Relative to original picture size	Özgün resim boyutuna göre
+	Original size	Özgün boyut
+	{width} × {height} pixels	{width} × {height} piksel
+	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Herhangi bir birimde bir boyut yazın, örneğin 5 cm veya 300 px. Diğer kenar da buna uyar, böylece resim oranlarını korur.
+
+	Import…	İçe aktar…
