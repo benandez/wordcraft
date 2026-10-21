@@ -108,6 +108,8 @@ pub enum Stroke {
     Dotted,
     Dashed,
     Double,
+    /// Three thin lines side by side (a `triple` border).
+    Triple,
     Wave,
 }
 
@@ -698,7 +700,8 @@ fn border_stroke(s: BorderStyle) -> Stroke {
     match s {
         BorderStyle::Dotted => Stroke::Dotted,
         BorderStyle::Dashed | BorderStyle::DotDash => Stroke::Dashed,
-        BorderStyle::Double | BorderStyle::Triple => Stroke::Double,
+        BorderStyle::Double => Stroke::Double,
+        BorderStyle::Triple => Stroke::Triple,
         BorderStyle::Wave => Stroke::Wave,
         _ => Stroke::Solid,
     }

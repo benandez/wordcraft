@@ -41,7 +41,22 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("view.hideWhiteSpace", "Hide White Space", "View › Show", |s, v| toggle(s, v, |x| &mut x.hide_white_space))
             .params(r#"{"value"?: bool}"#)
             .pure(),
-        CommandSpec::new("view.focus", "Focus", "View › Immersive", |s, v| toggle(s, v, |x| &mut x.focus_mode)).pure(),
+        // Focus and Full Screen View (#1678) fill the screen; turning one on turns the other off.
+        // Full Screen View has no key of its own: Customize Keyboard binds one.
+        CommandSpec::new("view.focus", "Focus", "View › Immersive", |s, v| {
+            let r = toggle(s, v, |x| &mut x.focus_mode);
+            s.view.full_screen_view &= !s.view.focus_mode;
+            r
+        })
+        .params(r#"{"value"?: bool}"#)
+        .pure(),
+        CommandSpec::new("view.fullScreenView", "Full Screen View", "View › Immersive", |s, v| {
+            let r = toggle(s, v, |x| &mut x.full_screen_view);
+            s.view.focus_mode &= !s.view.full_screen_view;
+            r
+        })
+        .params(r#"{"value"?: bool}"#)
+        .pure(),
         CommandSpec::new("view.ruler", "Ruler", "View › Show", |s, v| toggle(s, v, |x| &mut x.ruler)).pure(),
         // The drawing grid over the page (screen only; never printed or exported).
         CommandSpec::new("view.gridlines", "Gridlines", "View › Show", |s, v| toggle(s, v, |x| &mut x.gridlines))
