@@ -1498,6 +1498,7 @@ template	Letter	Pismo
 	Offset: Top	Pomak: gore
 	Offset: Top Left	Pomak: gore lijevo
 	Offset: Top Right	Pomak: gore desno
+	Old menu keys: Alt, {keys}. Keep typing, or press Esc to cancel.	Stare tipke izbornika: Alt, {keys}. Nastavite tipkati ili pritisnite Esc za odustajanje.
 	Omit	Izostavi
 	On	Uključeno
 	On: WordCraft opens on File › Home, with a blank document, the templates and your recent documents. Off: it opens a blank document.	Uključeno: WordCraft se otvara na Datoteka › Početna, s praznim dokumentom, predlošcima i vašim nedavnim dokumentima. Isključeno: otvara prazan dokument.

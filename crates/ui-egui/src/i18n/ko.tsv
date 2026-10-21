@@ -114,6 +114,7 @@
 	Number alignment:	번호 맞춤:
 	Number format	번호 서식
 	Number style for this level:	이 수준의 번호 스타일:
+	Old menu keys: Alt, {keys}. Keep typing, or press Esc to cancel.	이전 메뉴 키: Alt, {keys}. 계속 입력하거나 Esc 키를 눌러 취소하세요.
 	Outside border	바깥쪽 테두리
 	Overtype	겹쳐쓰기
 	Overtype (typing replaces the characters after the caret)	겹쳐쓰기(입력한 문자가 커서 뒤의 문자를 대체함)
