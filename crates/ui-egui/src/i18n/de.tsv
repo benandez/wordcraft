@@ -358,6 +358,8 @@
 	First line:	Erste Zeile:
 	Fixed Column Width	Feste Spaltenbreite
 	Focus	Fokus
+	Full Screen View	Vollbildansicht
+	Show the ribbon	Menüband anzeigen
 	Font	Schriftart
 	Font Color	Schriftfarbe
 	Font color:	Schriftfarbe:
@@ -2293,3 +2295,43 @@
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Geben Sie eine Größe in einer beliebigen Einheit ein, z. B. 5 cm oder 300 px. Die andere Seite passt sich an, sodass das Bild seine Proportionen behält.
 
 	Import…	Importieren…
+	Format Shape Pane	Bereich „Form formatieren“
+	Format Shape	Form formatieren
+	Format Shape…	Form formatieren…
+	No fill	Keine Füllung
+	Solid fill	Einfarbige Füllung
+	Gradient fill	Farbverlauf
+	Preset gradients	Vordefinierte Farbverläufe
+	Radial	Radial
+	Rectangular	Rechteckig
+	Path	Pfad
+	Direction	Richtung
+	Angle	Winkel
+	Gradient stops	Farbverlaufsstopps
+	Add gradient stop	Farbverlaufsstopp hinzufügen
+	Remove gradient stop	Farbverlaufsstopp entfernen
+	Rotate with shape	Mit Form drehen
+	Gradient	Farbverlauf
+	No Gradient	Kein Farbverlauf
+	Light Variations	Helle Varianten
+	Dark Variations	Dunkle Varianten
+	More Gradients…	Weitere Farbverläufe…
+	Select a shape, text box or drawing canvas to format its fill.	Wählen Sie eine Form, ein Textfeld oder einen Zeichenbereich aus, um die Füllung zu formatieren.
+	Linear Right	Linear rechts
+	Linear Diagonal - Top Left to Bottom Right	Linear diagonal – oben links nach unten rechts
+	Linear Down	Linear nach unten
+	Linear Diagonal - Top Right to Bottom Left	Linear diagonal – oben rechts nach unten links
+	Linear Left	Linear links
+	Linear Diagonal - Bottom Right to Top Left	Linear diagonal – unten rechts nach oben links
+	Linear Up	Linear nach oben
+	Linear Diagonal - Bottom Left to Top Right	Linear diagonal – unten links nach oben rechts
+	From Top Left Corner	Aus Ecke oben links
+	From Top Right Corner	Aus Ecke oben rechts
+	From Bottom Left Corner	Aus Ecke unten links
+	From Bottom Right Corner	Aus Ecke unten rechts
+	From Center	Aus der Mitte
+	Soft	Weich
+	Lit from Top	Von oben beleuchtet
+	Deep	Tief
+	Lit from Bottom	Von unten beleuchtet
+	Center Glow	Leuchten aus der Mitte
