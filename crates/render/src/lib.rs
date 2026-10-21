@@ -762,6 +762,18 @@ fn draw(ctx: &mut RenderContext, doc: &Document, it: &Draw, view: Affine, visibl
                 ctx.stroke_path(&p);
                 return;
             }
+            if *stroke == Stroke::Triple {
+                // Three thin lines, spaced as a double's, across the line's direction (so a
+                // vertical border's lines stand side by side).
+                let (dx, dy) = (x1 - x0, y1 - y0);
+                let len = (dx * dx + dy * dy).sqrt().max(1e-3);
+                let (nx, ny) = (-dy / len * w * 1.8, dx / len * w * 1.8);
+                ctx.set_stroke(kurbo::Stroke::new(w * 0.6));
+                for k in [-1.0, 0.0, 1.0] {
+                    line(ctx, nx * k, ny * k);
+                }
+                return;
+            }
             if *stroke == Stroke::Double {
                 let (dx, dy) = (x1 - x0, y1 - y0);
                 let len = (dx * dx + dy * dy).sqrt().max(1e-3);
