@@ -184,6 +184,8 @@ pub struct CanvasState {
     pub tab_kind: wordcraft_doc::props::TabAlign,
     /// A tab stop being placed or dragged on the ruler (`ruler_tabs`).
     pub(crate) tab_drag: Option<crate::ruler_tabs::TabDrag>,
+    /// Whether the I-beam over the page is drawn rather than the system's (`ibeam`).
+    pub(crate) drawn_ibeam: bool,
 }
 
 impl CanvasState {
@@ -290,6 +292,7 @@ impl Default for CanvasState {
             table_drag: None,
             tab_kind: Default::default(),
             tab_drag: None,
+            drawn_ibeam: crate::ibeam::DRAWN,
         }
     }
 }
@@ -333,9 +336,9 @@ pub struct Geometry {
 }
 
 /// Room kept above the first line and below the last line of a page when white space is hidden (points).
-const WHITE_SPACE_PAD: f32 = 6.0;
+pub(crate) const WHITE_SPACE_PAD: f32 = 6.0;
 /// The line drawn between two pages when white space is hidden (pixels).
-const SEAM: f32 = 1.0;
+pub(crate) const SEAM: f32 = 1.0;
 
 /// Hide White Space: stack single-column pages (`rects`, full pages) so that only each page's
 /// text area (`bodies`: top and bottom of the body in points, plus a little room) shows, with a
@@ -383,6 +386,12 @@ fn on_page_gap(rects: &[Rect], bands: &[(f32, f32)], p: Pos2) -> bool {
         };
         in_x && p.y >= y0 && p.y <= y1
     })
+}
+
+/// True when `p` is on the shown part of a page, not the canvas around or between pages (nor a
+/// margin Hide White Space cuts).
+fn on_visible_page(rects: &[Rect], bands: &[(f32, f32)], p: Pos2) -> bool {
+    rects.iter().zip(bands).any(|(r, &(top, bot))| Rect::from_min_max(pos2(r.min.x, r.min.y + top), pos2(r.max.x, r.min.y + bot)).contains(p))
 }
 
 /// Width of the card that floats beside a page when comments show only for the selected text (points).
@@ -1740,6 +1749,20 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
     crate::table_resize::cursor(app, ui, &resp, &layout, &rects, geo.scale);
     crate::table_mouse::cursor(app, ui, &resp, &layout, &rects, geo.scale);
     crate::table_pen::cursor(app, ui, &resp);
+    // Windows' I-beam is lost on white paper there: draw one that shows (#1746).
+    if app.canvas.drawn_ibeam
+        && (resp.hovered() || resp.dragged())
+        && let Some(p) = ui.input(|i| i.pointer.latest_pos())
+    {
+        let opts = page_render_options(app, dim_body);
+        let bg = if on_visible_page(&rects, &geo.bands, p) {
+            opts.ink(app.session.doc.settings.page_color.unwrap_or(opts.paper))
+        } else {
+            let c = Tokens::get(ui.ctx()).canvas;
+            wordcraft_doc::props::Rgb(c.r(), c.g(), c.b())
+        };
+        crate::ibeam::replace(ui.ctx(), p, bg);
+    }
     app.canvas.auto_scroll.paint(ui, area);
     let _ = origin;
     if let (Some(h), Some(v)) = (hruler, vruler) {
@@ -2437,6 +2460,13 @@ fn mouse(app: &mut WordApp, ui: &Ui, resp: &egui::Response, rects: &[Rect], layo
                 _ => story,
             }
         };
+        // A press in the header/footer area from the body leaves the caret where it is, as in
+        // Word (#2103): moving it to the nearest body text scrolled the view there, away from the
+        // footer the double-click was aiming at.
+        if hf_switch && !mods.shift && hf_zone.is_some() && story == StoryRef::Body && app.session.sel.focus.story == StoryRef::Body {
+            app.canvas.column_drag = None;
+            return;
+        }
         if !mods.shift
             && let Some((at, inner)) = layout.equation_hit(page, x, y, story)
         {
@@ -6019,6 +6049,10 @@ mod tests {
         assert_eq!(nearest_page(&moved, pos2(moved[0].center().x, seam + SEAM + 2.0)), Some(1));
         assert!(on_page_gap(&moved, &bands, pos2(moved[0].center().x, seam + 0.5)));
         assert!(!on_page_gap(&moved, &bands, pos2(moved[0].center().x, seam - 40.0)));
+        // The drawn I-beam takes the canvas colour in the gap and on a cut margin (#1746).
+        assert!(on_visible_page(&moved, &bands, pos2(moved[0].center().x, seam - 40.0)));
+        assert!(!on_visible_page(&moved, &bands, pos2(moved[0].center().x, seam + 0.5)));
+        assert!(!on_visible_page(&moved, &bands, pos2(moved[0].min.x - 5.0, moved[0].center().y)));
         // Hostile numbers never panic.
         let _ = collapse_white_space(&rects, &[(f32::NAN, f32::INFINITY), (-1e9, 1e9)], f32::NAN, f32::NAN);
         let _ = collapse_white_space(&[], &[], 1.0, 1.0);
