@@ -2303,3 +2303,43 @@
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	可用任意单位输入大小，例如 5 cm 或 300 px。另一边随之调整，图片保持原有比例。
 
 	Import…	导入…
+	Format Shape Pane	设置形状格式窗格
+	Format Shape	设置形状格式
+	Format Shape…	设置形状格式…
+	No fill	无填充
+	Solid fill	纯色填充
+	Gradient fill	渐变填充
+	Preset gradients	预设渐变
+	Radial	径向
+	Rectangular	矩形
+	Path	路径
+	Direction	方向
+	Angle	角度
+	Gradient stops	渐变光圈
+	Add gradient stop	添加渐变光圈
+	Remove gradient stop	删除渐变光圈
+	Rotate with shape	与形状一起旋转
+	Gradient	渐变
+	No Gradient	无渐变
+	Light Variations	浅色变体
+	Dark Variations	深色变体
+	More Gradients…	其他渐变…
+	Select a shape, text box or drawing canvas to format its fill.	请选择一个形状、文本框或绘图画布来设置其填充格式。
+	Linear Right	线性 向右
+	Linear Diagonal - Top Left to Bottom Right	线性对角 - 左上到右下
+	Linear Down	线性 向下
+	Linear Diagonal - Top Right to Bottom Left	线性对角 - 右上到左下
+	Linear Left	线性 向左
+	Linear Diagonal - Bottom Right to Top Left	线性对角 - 右下到左上
+	Linear Up	线性 向上
+	Linear Diagonal - Bottom Left to Top Right	线性对角 - 左下到右上
+	From Top Left Corner	从左上角
+	From Top Right Corner	从右上角
+	From Bottom Left Corner	从左下角
+	From Bottom Right Corner	从右下角
+	From Center	从中心
+	Soft	柔和
+	Lit from Top	顶部照亮
+	Deep	深沉
+	Lit from Bottom	底部照亮
+	Center Glow	中心光晕

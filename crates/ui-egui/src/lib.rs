@@ -54,9 +54,11 @@ pub mod equation_tab;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod file_browser;
 pub mod file_dialogs;
+pub mod format_shape;
 pub mod frame;
 pub mod guides;
 pub mod i18n;
+pub mod ibeam;
 pub mod icons;
 pub mod ink;
 pub mod keys;
@@ -301,6 +303,8 @@ pub struct UiState {
     /// View › Switch Modes: show pages dark (white text on black), kept between runs. Only the
     /// pages: the interface follows [`UiState::theme`] (#312).
     pub dark_page: bool,
+    /// File › Options › Proofing › Check spelling as you type, kept between runs (#1792).
+    pub check_spelling: bool,
     /// File › Options › Advanced › Animation: the caret glides to its new place and its blink
     /// fades, as Word's does on Windows (on, the default), or it jumps and blinks on and off
     /// (off).
@@ -386,6 +390,7 @@ impl Default for UiState {
             alt_pressed: false,
             alt_chord_used: false,
             dark_page: false,
+            check_spelling: true,
             caret_animation: true,
             keyboard: wordcraft_engine::KeyMap::default(),
             ribbon: wordcraft_engine::RibbonLayout::default(),
@@ -765,6 +770,7 @@ impl WordApp {
         ui.read_aloud_skip_citations = self.session.read_aloud.skip_citations;
         ui.dark_page = self.session.view.dark_mode;
         ui.nav_pane = self.session.view.nav_pane;
+        ui.check_spelling = self.session.view.proofing;
         ui.keyboard = self.session.keymap.clone();
         ui.ribbon = self.session.ribbon.clone();
         ui.ink_pens = self.session.view.draw.pens.clone();
@@ -810,6 +816,7 @@ impl WordApp {
         self.session.read_aloud.skip_citations = self.ui.read_aloud_skip_citations;
         self.session.view.dark_mode = self.ui.dark_page;
         self.session.view.nav_pane = self.ui.nav_pane;
+        self.session.view.proofing = self.ui.check_spelling;
         // Keys for commands this version doesn't have are dropped.
         self.session.keymap = std::mem::take(&mut self.ui.keyboard);
         let reg = self.session.registry.clone();
@@ -4602,6 +4609,85 @@ mod tests {
         assert!(!a.canvas.focused);
     }
 
+    /// #2103: double-clicking the page number in a later page's footer opens the footer there;
+    /// the view stays on that page instead of jumping to the top of the document.
+    #[test]
+    fn double_clicking_a_later_pages_footer_does_not_scroll_to_the_top() {
+        let ctx = egui::Context::default();
+        let mut a = app();
+        // A header too, so opening the header instead of the footer can't pass.
+        a.run("insert.header", json!({"text": "Head"})).unwrap();
+        a.run("insert.closeHeader", json!({})).unwrap();
+        a.run("insert.pageNumber", json!({"position": "bottom"})).unwrap();
+        for _ in 0..4 {
+            a.run("text.insert", json!({"text": "Some body text on this page."})).unwrap();
+            a.run("insert.pageBreak", json!({})).unwrap();
+        }
+        a.run("text.insert", json!({"text": "The last page."})).unwrap();
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 800.0));
+        let mut t = 0.0;
+        let mut frame = |a: &mut WordApp, events: Vec<egui::Event>| {
+            t += 1.0 / 60.0;
+            let input = egui::RawInput { events, time: Some(t), screen_rect: Some(screen), ..Default::default() };
+            ctx.run_ui(input, |ui| {
+                a.logic(ui.ctx());
+                a.ui(ui);
+            })
+            .drop_without_applying_deltas();
+        };
+        let btn = |pos, pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+        for _ in 0..30 {
+            frame(&mut a, Vec::new());
+        }
+        let last = a.session.layout().pages.len() - 1;
+        assert!(last >= 3, "several pages");
+        let page = a.session.layout().pages[last].clone();
+        let (x, y) = (page.body.x + page.body.w / 2.0, (page.body.bottom() + page.h) / 2.0);
+        // Scroll the reader to the last page's footer, as with the wheel.
+        let at = canvas::page_to_screen(&mut a, last, x, y).expect("footer laid out");
+        let vp = a.canvas.viewport.expect("the canvas laid out");
+        let wheel = egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(0.0, vp.center().y - at.y),
+            phase: egui::TouchPhase::Move,
+            modifiers: Default::default(),
+        };
+        frame(&mut a, vec![egui::Event::PointerMoved(vp.center()), wheel]);
+        for _ in 0..30 {
+            frame(&mut a, Vec::new());
+        }
+        let at = canvas::page_to_screen(&mut a, last, x, y).expect("footer laid out");
+        assert!(vp.contains(at), "the last page's footer is on screen");
+        let before = a.canvas.scroll_offset;
+        assert!(before.y > 1000.0, "scrolled down to the last page: {before:?}");
+        frame(&mut a, vec![egui::Event::PointerMoved(at)]);
+        // A single click there leaves the caret and the view alone (it used to scroll up to the
+        // body text above).
+        let caret = a.session.sel.clone();
+        frame(&mut a, vec![btn(at, true)]);
+        // Already at the press, before the release can decide anything.
+        assert_eq!(a.session.sel, caret, "pressing in the footer area doesn't move the caret");
+        assert!((a.canvas.scroll_offset.y - before.y).abs() < 1.0, "pressing doesn't scroll: {before:?} -> {:?}", a.canvas.scroll_offset);
+        frame(&mut a, vec![btn(at, false)]);
+        for _ in 0..40 {
+            frame(&mut a, Vec::new());
+        }
+        assert_eq!(a.session.sel, caret, "a single click in the footer area doesn't move the caret");
+        assert!((a.canvas.scroll_offset.y - before.y).abs() < 1.0, "a single click doesn't scroll: {before:?} -> {:?}", a.canvas.scroll_offset);
+        for _ in 0..2 {
+            frame(&mut a, vec![btn(at, true)]);
+            frame(&mut a, vec![btn(at, false)]);
+        }
+        for _ in 0..30 {
+            frame(&mut a, Vec::new());
+        }
+        let footer = page.footer_story.expect("the clicked page has a footer");
+        assert!(page.header_story.is_some_and(|h| h != footer), "the page has a separate header: {:?}", page.header_story);
+        assert_eq!(a.session.sel.focus.story, wordcraft_doc::StoryRef::Part(footer), "editing the clicked page's footer");
+        assert_eq!(a.session.page_hint, last, "on the clicked page");
+        assert!((a.canvas.scroll_offset.y - before.y).abs() < 1.0, "the view stays put: {before:?} -> {:?}", a.canvas.scroll_offset);
+    }
+
     /// The control channel's `ui.wheel` scrolls the canvas like a mouse wheel over it.
     #[test]
     fn control_wheel_scrolls_the_canvas() {
@@ -6847,6 +6933,22 @@ mod tests {
         let mut old = app();
         old.apply_prefs(serde_json::from_str(r#"{"navTab": "headings"}"#).unwrap());
         assert!(!old.session.view.nav_pane, "no saved value: closed");
+    }
+
+    #[test]
+    fn check_spelling_survives_restart() {
+        // #1792: unchecking Check spelling as you type was forgotten on restart.
+        let mut first = app();
+        assert!(first.session.view.proofing);
+        first.run("file.options", json!({"checkSpelling": false})).unwrap();
+        let saved = serde_json::to_vec(&first.prefs()).unwrap();
+
+        let mut second = app();
+        second.apply_prefs(serde_json::from_slice(&saved).unwrap());
+        assert!(!second.session.view.proofing);
+        // Settings saved before #1792 have no key: spelling stays on.
+        second.apply_prefs(serde_json::from_str("{}").unwrap());
+        assert!(second.session.view.proofing);
     }
 
     #[test]

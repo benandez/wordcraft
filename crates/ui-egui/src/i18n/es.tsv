@@ -2657,3 +2657,43 @@ preview	Title	Título
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Escribe un tamaño en cualquier unidad, como 5 cm o 300 px. El otro lado se ajusta, así que la imagen conserva sus proporciones.
 
 	Import…	Importar…
+	Format Shape Pane	Panel Formato de forma
+	Format Shape	Formato de forma
+	Format Shape…	Formato de forma…
+	No fill	Sin relleno
+	Solid fill	Relleno sólido
+	Gradient fill	Relleno degradado
+	Preset gradients	Degradados predefinidos
+	Radial	Radial
+	Rectangular	Rectangular
+	Path	Trazado
+	Direction	Dirección
+	Angle	Ángulo
+	Gradient stops	Puntos de degradado
+	Add gradient stop	Agregar punto de degradado
+	Remove gradient stop	Quitar punto de degradado
+	Rotate with shape	Girar con la forma
+	Gradient	Degradado
+	No Gradient	Sin degradado
+	Light Variations	Variaciones claras
+	Dark Variations	Variaciones oscuras
+	More Gradients…	Más degradados…
+	Select a shape, text box or drawing canvas to format its fill.	Seleccione una forma, un cuadro de texto o un lienzo de dibujo para dar formato a su relleno.
+	Linear Right	Lineal hacia la derecha
+	Linear Diagonal - Top Left to Bottom Right	Lineal diagonal: de superior izquierda a inferior derecha
+	Linear Down	Lineal hacia abajo
+	Linear Diagonal - Top Right to Bottom Left	Lineal diagonal: de superior derecha a inferior izquierda
+	Linear Left	Lineal hacia la izquierda
+	Linear Diagonal - Bottom Right to Top Left	Lineal diagonal: de inferior derecha a superior izquierda
+	Linear Up	Lineal hacia arriba
+	Linear Diagonal - Bottom Left to Top Right	Lineal diagonal: de inferior izquierda a superior derecha
+	From Top Left Corner	Desde la esquina superior izquierda
+	From Top Right Corner	Desde la esquina superior derecha
+	From Bottom Left Corner	Desde la esquina inferior izquierda
+	From Bottom Right Corner	Desde la esquina inferior derecha
+	From Center	Desde el centro
+	Soft	Suave
+	Lit from Top	Iluminado desde arriba
+	Deep	Profundo
+	Lit from Bottom	Iluminado desde abajo
+	Center Glow	Brillo central
