@@ -57,15 +57,21 @@ impl Rendered {
         }
         out
     }
+    /// Whether the pixels are exactly `width`×`height` RGBA, within a page raster's budget
+    /// ([`wordcraft_geom::MAX_RASTER_PIXELS`]): the fields are public, so an encoder is never asked
+    /// to pad a short buffer out to a huge claimed size (or, for JPEG, to assert on a mismatch).
+    fn encodable(&self) -> bool {
+        let budget = wordcraft_geom::MAX_RASTER_PIXELS.saturating_mul(4);
+        wordcraft_geom::rgba_fits(self.width, self.height, budget)
+            && wordcraft_geom::rgba_bytes(self.width, self.height).is_some_and(|b| b == self.pixels.len() as u64)
+    }
     /// PNG bytes (empty on failure, logged).
     pub fn to_png(&self) -> Vec<u8> {
-        let mut px = self.to_straight();
-        let Some(len) = wordcraft_geom::rgba_bytes(self.width, self.height).and_then(|b| usize::try_from(b).ok()) else {
-            log::error!("PNG encode: size {}×{} overflows", self.width, self.height);
+        if !self.encodable() {
+            log::error!("PNG encode: {} bytes for {}×{} pixels", self.pixels.len(), self.width, self.height);
             return Vec::new();
-        };
-        px.resize(len, 0);
-        let Some(img) = image::RgbaImage::from_raw(self.width, self.height, px) else {
+        }
+        let Some(img) = image::RgbaImage::from_raw(self.width, self.height, self.to_straight()) else {
             log::error!("PNG encode: bad size {}×{}", self.width, self.height);
             return Vec::new();
         };
@@ -76,7 +82,12 @@ impl Rendered {
         }
         buf
     }
+    /// JPEG bytes on white (empty on failure, logged).
     pub fn to_jpeg(&self, quality: u8) -> Vec<u8> {
+        if !self.encodable() {
+            log::error!("JPEG encode: {} bytes for {}×{} pixels", self.pixels.len(), self.width, self.height);
+            return Vec::new();
+        }
         let rgba = self.to_straight();
         let rgb: Vec<u8> = rgba
             .as_chunks::<4>()
@@ -1623,6 +1634,24 @@ mod tests {
         let hdr = ihdr_only_png(60_000, 60_000);
         assert_eq!(image_size(&hdr), Some((60_000, 60_000)));
         assert!(decode_pixmap(&hdr).is_none());
+    }
+
+    /// A `Rendered` whose pixels don't match its claimed size isn't padded out to that size: a
+    /// 60000×60000 claim over no pixels would allocate 14 GB. It, and any mismatch, encodes to
+    /// nothing (JPEG used to assert on the length).
+    #[test]
+    fn encoders_refuse_pixels_that_dont_match_the_size() {
+        let huge = Rendered { width: 60_000, height: 60_000, pixels: Vec::new() };
+        assert!(huge.to_png().is_empty());
+        assert!(huge.to_jpeg(80).is_empty());
+        let short = Rendered { width: 2, height: 2, pixels: vec![255; 4] };
+        assert!(short.to_png().is_empty());
+        assert!(short.to_jpeg(80).is_empty());
+        let long = Rendered { width: 1, height: 1, pixels: vec![255; 8] };
+        assert!(long.to_png().is_empty());
+        let ok = Rendered { width: 2, height: 2, pixels: vec![255; 16] };
+        assert!(!ok.to_png().is_empty());
+        assert!(!ok.to_jpeg(80).is_empty());
     }
 
     #[test]
