@@ -2669,3 +2669,10 @@ preview	Title	Titel
 	Full Screen View	Full Screen View
 	Personal Templates	Personal Templates
 	Underline Color	Underline Color
+# Styles pane position (#1756)
+	Styles Pane Position	Positie van het deelvenster Stijlen
+	Dock Left	Links vastzetten
+	Dock Right	Rechts vastzetten
+	Float	Zwevend
+	Pane position	Positie van deelvenster
+	Drag out to float the pane	Sleep naar buiten om het deelvenster los te maken

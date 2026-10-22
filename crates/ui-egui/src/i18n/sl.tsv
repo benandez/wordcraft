@@ -2763,3 +2763,10 @@ preview	Title	Naslov
 	{names} and {n} more	{names} and {n} more
 	{name} options	{name} options
 	{width} × {height} pixels	{width} × {height} pixels
+# Styles pane position (#1756)
+	Styles Pane Position	Položaj podokna Slogi
+	Dock Left	Zasidraj levo
+	Dock Right	Zasidraj desno
+	Float	Plavajoče
+	Pane position	Položaj podokna
+	Drag out to float the pane	Povlecite ven, da podokno postane plavajoče

@@ -2599,3 +2599,10 @@ preview	Title	Titel
 	Full Screen View	Full Screen View
 	Personal Templates	Personal Templates
 	Underline Color	Underline Color
+# Styles pane position (#1756)
+	Styles Pane Position	Placering af ruden Typografier
+	Dock Left	Fastgør til venstre
+	Dock Right	Fastgør til højre
+	Float	Flydende
+	Pane position	Rudens placering
+	Drag out to float the pane	Træk ud for at gøre ruden flydende

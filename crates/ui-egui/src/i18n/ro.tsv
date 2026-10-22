@@ -2762,3 +2762,10 @@ template	Letter	Scrisoare
 	cm	cm
 	mm	mm
 	pi	pi
+# Styles pane position (#1756)
+	Styles Pane Position	Poziția panoului Stiluri
+	Dock Left	Ancorare la stânga
+	Dock Right	Ancorare la dreapta
+	Float	Flotant
+	Pane position	Poziția panoului
+	Drag out to float the pane	Trageți afară pentru a face panoul flotant
