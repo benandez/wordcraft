@@ -477,19 +477,24 @@ pub fn group_titled(ui: &mut Ui, id_title: &str, title: &str, launcher: Option<&
     crate::ribbon_fit::record(ui.ctx(), id_title, level, ui.cursor().min.x - start.x);
 }
 
-/// The glow of a hovered group: the accent colour rising from the bottom edge and fading out
-/// towards the top, `strength` (0..1) scaling it.
+/// The glow of a hovered group: the accent colour rising from the very bottom edge to just above
+/// the title row, fading out upwards and towards both sides, `strength` (0..1) scaling it.
 fn group_glow(r: Rect, accent: Color32, strength: f32) -> egui::Shape {
     let at = |alpha: f32| Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), (alpha * strength * 255.0) as u8);
-    let r = r.shrink2(vec2(1.0, 2.0));
-    let (bottom, top) = (at(0.26), at(0.0));
+    let r = Rect::from_min_max(pos2(r.min.x, r.max.y - LABEL_H - 6.0), pos2(r.max.x, r.max.y + 2.0));
+    let soft = (r.width() * 0.3).min(22.0);
+    let xs = [r.min.x, r.min.x + soft, r.max.x - soft, r.max.x];
     let mut mesh = egui::epaint::Mesh::default();
-    mesh.colored_vertex(r.left_bottom(), bottom);
-    mesh.colored_vertex(r.right_bottom(), bottom);
-    mesh.colored_vertex(r.right_top(), top);
-    mesh.colored_vertex(r.left_top(), top);
-    mesh.add_triangle(0, 1, 2);
-    mesh.add_triangle(0, 2, 3);
+    for (y, alpha) in [(r.max.y, 0.3), (r.min.y, 0.0)] {
+        for (i, x) in xs.iter().enumerate() {
+            let edge = i == 0 || i == 3;
+            mesh.colored_vertex(pos2(*x, y), at(if edge { 0.0 } else { alpha }));
+        }
+    }
+    for i in 0..3u32 {
+        mesh.add_triangle(i, i + 1, i + 5);
+        mesh.add_triangle(i, i + 5, i + 4);
+    }
     egui::Shape::mesh(mesh)
 }
 
