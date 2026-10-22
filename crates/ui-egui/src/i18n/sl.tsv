@@ -2763,3 +2763,10 @@ preview	Title	Naslov
 	{names} and {n} more	{names} and {n} more
 	{name} options	{name} options
 	{width} × {height} pixels	{width} × {height} pixels
+	Status bar	Vrstica stanja
+	{chars} characters	Znaki: {chars}
+	{selected} of {chars} characters	Znaki: {selected} od {chars}
+	{chars} characters (no spaces)	Znaki (brez presledkov): {chars}
+	{selected} of {chars} characters (no spaces)	Znaki (brez presledkov): {selected} od {chars}
+	Status bar count:	Števec v vrstici stanja:
+	You can also right-click the count in the status bar to change it.	Števec v vrstici stanja lahko spremenite tudi z desnim klikom.

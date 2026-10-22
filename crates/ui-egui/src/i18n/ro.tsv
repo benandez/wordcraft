@@ -2762,3 +2762,10 @@ template	Letter	Scrisoare
 	cm	cm
 	mm	mm
 	pi	pi
+	Status bar	Bară de stare
+	{chars} characters	Caractere: {chars}
+	{selected} of {chars} characters	Caractere: {selected} din {chars}
+	{chars} characters (no spaces)	Caractere (fără spații): {chars}
+	{selected} of {chars} characters (no spaces)	Caractere (fără spații): {selected} din {chars}
+	Status bar count:	Contor din bara de stare:
+	You can also right-click the count in the status bar to change it.	Contorul din bara de stare poate fi schimbat și cu clic dreapta.
