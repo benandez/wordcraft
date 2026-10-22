@@ -553,13 +553,9 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                 // Drawn object anchor: the floating shape or picture anchored at this CP.
                 let at = ctx.drawn.partition_point(|(c, _)| *c < cp);
                 // Each copy (a story can be walked more than once) is charged to the work budget
-                // by size, a group with all its members (#3710).
+                // by what a clone copies: a picture's alt text, a group with all its members (#3710).
                 for (_, obj) in ctx.drawn.get(at..).unwrap_or_default().iter().take_while(|(c, _)| *c == cp) {
-                    let parts = match obj {
-                        InlineObject::Group { children, .. } => children.len().saturating_add(1),
-                        _ => 1,
-                    };
-                    let cost = (parts as u64).saturating_mul(std::mem::size_of::<InlineObject>() as u64);
+                    let cost = object_cost(obj);
                     let Some(left) = ctx.work.get().checked_sub(cost) else { continue };
                     ctx.work.set(left);
                     pb.push('\u{FFFC}', CharProps::default());
@@ -612,6 +608,17 @@ struct FieldBuild {
 /// The target is copied once per run of equally formatted result text, not per character,
 /// and each copy is charged to `work` ([`MAX_WORK`]); once that is spent the rest of the
 /// result is kept as plain text (#3708).
+/// Bytes a clone of `obj` copies: the object itself plus a picture's alt text, a group with all
+/// its members (#3710).
+fn object_cost(obj: &InlineObject) -> u64 {
+    let shallow = std::mem::size_of::<InlineObject>() as u64;
+    match obj {
+        InlineObject::Image { alt, .. } => shallow.saturating_add(alt.len() as u64),
+        InlineObject::Group { children, .. } => children.iter().fold(shallow, |n, c| n.saturating_add(object_cost(&c.obj))),
+        _ => shallow,
+    }
+}
+
 fn finish_field(pb: &mut ParaBuild, f: FieldBuild, work: &std::cell::Cell<u64>) {
     let instr = f.instr.trim().to_string();
     let result = f.sep.unwrap_or_default();

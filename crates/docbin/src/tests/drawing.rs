@@ -377,6 +377,33 @@ fn a_group_named_by_many_anchors_is_built_once() {
     assert_eq!(groups, [1000]);
 }
 
+/// #3710: a floating picture's copy is charged its alt text too, and a group every member's.
+#[test]
+fn a_floating_copy_is_charged_its_alt_text() {
+    let image = |alt: String| InlineObject::Image {
+        media: String::new(),
+        w: 1.0,
+        h: 1.0,
+        alt,
+        float: Default::default(),
+        crop: Default::default(),
+        ole: None,
+    };
+    let bare = crate::object_cost(&image(String::new()));
+    assert_eq!(crate::object_cost(&image("€".repeat(4096))), bare + 3 * 4096);
+    let member = |obj| wordcraft_doc::para::GroupChild { x: 0.0, y: 0.0, obj };
+    let group = InlineObject::Group {
+        w: 1.0,
+        h: 1.0,
+        float: Default::default(),
+        ch_w: 1.0,
+        ch_h: 1.0,
+        children: vec![member(image("x".repeat(100))), member(image(String::new()))],
+        canvas: None,
+    };
+    assert_eq!(crate::object_cost(&group), 3 * bare + 100);
+}
+
 /// A deflated WMF BLIP record declaring `size` uncompressed bytes.
 fn packed_wmf(size: u32, packed: &[u8]) -> Vec<u8> {
     let mut hdr = size.to_le_bytes().to_vec();
