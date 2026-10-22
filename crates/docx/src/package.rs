@@ -191,6 +191,9 @@ pub fn rel_is(t: &str, full: &str) -> bool {
 /// picture, an embedded object) is handed over rather than copied.
 pub struct Package {
     files: BTreeMap<String, Arc<Vec<u8>>>,
+    /// Lowercased part name → its stored spelling (the first in name order): part names are
+    /// case-insensitive (ECMA-376 Part 2 §6.2.2.3), so every spelling is one part.
+    lower: HashMap<String, String>,
 }
 
 impl Package {
@@ -236,13 +239,30 @@ impl Package {
             }
             files.insert(name, Arc::new(buf));
         }
-        Ok(Package { files })
+        Ok(Package::new(files))
     }
 
     /// A package from parts already in memory (a Flat OPC file, a converted document), by part
     /// name without the leading `/`.
     pub fn from_parts(files: BTreeMap<String, Vec<u8>>) -> Package {
-        Package { files: files.into_iter().map(|(name, bytes)| (name, Arc::new(bytes))).collect() }
+        Package::new(files.into_iter().map(|(name, bytes)| (name, Arc::new(bytes))).collect())
+    }
+
+    fn new(files: BTreeMap<String, Arc<Vec<u8>>>) -> Package {
+        let mut lower = HashMap::new();
+        for name in files.keys() {
+            lower.entry(name.to_ascii_lowercase()).or_insert_with(|| name.clone());
+        }
+        Package { files, lower }
+    }
+
+    /// The stored spelling of part `name` (leading `/` ignored; case-insensitive fallback).
+    pub fn canonical(&self, name: &str) -> Option<&str> {
+        let n = name.trim_start_matches('/');
+        match self.files.get_key_value(n) {
+            Some((k, _)) => Some(k),
+            None => self.lower.get(&n.to_ascii_lowercase()).map(String::as_str),
+        }
     }
 
     /// Part bytes by name (leading `/` ignored; case-insensitive fallback).
@@ -253,11 +273,7 @@ impl Package {
     /// [`Package::get`], as the shared bytes themselves: for a part the document keeps whole, which
     /// then costs no copy (a picture document's pictures used to be held twice while it opened).
     pub fn get_shared(&self, name: &str) -> Option<&Arc<Vec<u8>>> {
-        let n = name.trim_start_matches('/');
-        if let Some(v) = self.files.get(n) {
-            return Some(v);
-        }
-        self.files.iter().find(|(k, _)| k.eq_ignore_ascii_case(n)).map(|(_, v)| v)
+        self.canonical(name).and_then(|n| self.files.get(n))
     }
 
     pub fn xml(&self, name: &str) -> Result<Option<El>, DocxError> {
@@ -283,7 +299,14 @@ impl Package {
         for r in root.els().filter(|e| e.local() == "Relationship") {
             let (Some(id), Some(target)) = (r.attr("Id"), r.attr("Target")) else { continue };
             let external = r.attr("TargetMode").is_some_and(|m| m.eq_ignore_ascii_case("External"));
-            let resolved = if external { target.to_string() } else { resolve(dir, target) };
+            // Internal targets name the part as stored, so a part reached under several spellings
+            // is kept, cached and written once (#3704).
+            let resolved = if external {
+                target.to_string()
+            } else {
+                let path = resolve(dir, target);
+                self.canonical(&path).map_or(path, str::to_string)
+            };
             rels.list.push(Rel { id: id.to_string(), kind: r.attr("Type").unwrap_or("").to_string(), target: resolved, external });
         }
         rels
