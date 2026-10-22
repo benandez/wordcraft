@@ -408,12 +408,24 @@ fn draw_vector_text(ctx: &mut RenderContext, t: &wordcraft_metafile::Text, tf: A
     let k = lay.em / face.upem.max(1.0);
     ctx.set_paint(rgba_color(t.color));
     let db = FontDb::global();
+    let canvas = kurbo::Rect::new(0.0, 0.0, f64::from(ctx.width()), f64::from(ctx.height()));
     for (g, (x, y)) in shaped.iter().zip(&lay.glyphs) {
         let o = db.outline(&face, g.gid);
-        ctx.set_transform(tf * Affine::translate((*x, *y)) * Affine::scale(k));
+        let m = tf * Affine::translate((*x, *y)) * Affine::scale(k);
+        // A record's font size is file data: a glyph many canvases tall (or off the canvas) would
+        // have its outline flattened into millions of segments for nothing, so it is left out.
+        let b = m.transform_rect_bbox(o.bounding_box());
+        let sane = [b.x0, b.y0, b.x1, b.y1].iter().all(|v| v.is_finite()) && b.width() <= MAX_GLYPH_PIXELS && b.height() <= MAX_GLYPH_PIXELS;
+        if !sane || !b.overlaps(canvas) {
+            continue;
+        }
+        ctx.set_transform(m);
         ctx.fill_path(&o);
     }
 }
+
+/// Largest metafile glyph drawn, in device pixels per side (four times the widest canvas).
+const MAX_GLYPH_PIXELS: f64 = 65_536.0;
 
 /// One device pixel in page points under `view` (its mean axis scale); 1 for a degenerate transform.
 fn device_pixel(view: Affine) -> f64 {
@@ -2201,6 +2213,42 @@ mod tests {
         let (x1, y1) = (((rect.x + rect.w) * scale) as u32, ((rect.y + rect.h) * scale) as u32);
         let dark = (y0..y1).flat_map(|y| (x0..x1).map(move |x| (x, y))).filter(|&(x, y)| img.pixel(x, y)[0] < 100).count();
         assert!(dark > 50, "the text is painted inside the picture: {dark} dark pixels");
+    }
+
+    /// An EMF text run whose anchor sits inside the picture but whose font is billions of units
+    /// tall: each glyph's curves would span billions of device pixels, which the rasteriser
+    /// subdivides for ever. Glyphs that big (or off the raster) are left out; the page renders.
+    #[test]
+    fn metafile_text_with_a_huge_font_is_left_out() {
+        let mut font = emf_rec(82, &le32(&[1, -2_000_000_000, 0, 0, 0, 400, 0, 0]));
+        let mut name: Vec<u8> = "Arial".encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+        name.resize(64, 0);
+        font.extend(name);
+        font[4..8].copy_from_slice(&104u32.to_le_bytes());
+        let mut text = emf_rec(84, &le32(&[0, 0, 100, 100, 1, 0, 0, 5, 40, 4, 76, 0, 0, 0, 0, 0, 0]));
+        text.extend("WOWS".encode_utf16().flat_map(|u| u.to_le_bytes()));
+        text[4..8].copy_from_slice(&84u32.to_le_bytes());
+        let mut emf = red_right_half_emf()[..88].to_vec();
+        emf.extend([font, emf_rec(37, &le32(&[1])), emf_rec(24, &le32(&[0])), text, emf_rec(14, &[0; 12])].concat());
+        let mut d = Document::new();
+        let media = d.add_media(emf, "emf");
+        let mut p = wordcraft_doc::Paragraph::new();
+        let obj = wordcraft_doc::para::InlineObject::Image {
+            media,
+            w: 70.0,
+            h: 70.0,
+            alt: String::new(),
+            float: Default::default(),
+            crop: [0.0; 4],
+            ole: None,
+        };
+        p.insert_object(0, obj, &Default::default()).unwrap();
+        d.body = vec![wordcraft_doc::para_block(p)];
+        let l = layout(&d, &mut LayoutCache::new(), &LayoutOptions::default());
+        let start = std::time::Instant::now();
+        let img = render_page(&d, &l.pages[0], 1.0, &RenderOptions::default());
+        assert!(start.elapsed() < std::time::Duration::from_secs(2), "{:?}", start.elapsed());
+        assert_eq!(img.width, 612);
     }
 
     #[test]
