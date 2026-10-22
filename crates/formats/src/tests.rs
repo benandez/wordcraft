@@ -748,8 +748,11 @@ fn code_spans_and_links_around_backticks_read_as_before() {
     // inside a code span in link text, and link text with a backtick that nothing closes.
     let flow = crate::markdown::parse("\\``e` `` a ` b `` then ``` and `c` [x `]` y](http://a.org) [p ` q](http://b.org) ``f");
     let FBlock::Para(p) = &flow.blocks[0] else { panic!("{:?}", flow.blocks) };
-    let spans: Vec<(String, bool, Option<String>)> =
-        p.inlines.iter().filter_map(|i| if let model::Inline::Text(t, f) = i { Some((t.clone(), f.code, f.link.as_deref().map(str::to_string))) } else { None }).collect();
+    let spans: Vec<(String, bool, Option<String>)> = p
+        .inlines
+        .iter()
+        .filter_map(|i| if let model::Inline::Text(t, f) = i { Some((t.clone(), f.code, f.link.as_deref().map(str::to_string))) } else { None })
+        .collect();
     let code: Vec<&str> = spans.iter().filter(|s| s.1).map(|s| s.0.as_str()).collect();
     assert_eq!(code, ["e", "a ` b", "c", "]"], "{spans:?}");
     let linked = |url: &str| spans.iter().filter(|s| s.2.as_deref() == Some(url)).map(|s| s.0.as_str()).collect::<String>();
@@ -789,7 +792,8 @@ fn brackets_do_not_turn_later_links_into_text() {
     let links = |md: &str| {
         let flow = crate::markdown::parse(md);
         let FBlock::Para(p) = &flow.blocks[0] else { panic!("{:?}", flow.blocks) };
-        let mut urls: Vec<String> = p.inlines.iter().filter_map(|i| if let model::Inline::Text(_, f) = i { f.link.as_deref().map(str::to_string) } else { None }).collect();
+        let mut urls: Vec<String> =
+            p.inlines.iter().filter_map(|i| if let model::Inline::Text(_, f) = i { f.link.as_deref().map(str::to_string) } else { None }).collect();
         urls.dedup();
         urls
     };
@@ -900,7 +904,8 @@ fn overlong_font_names_and_links_are_dropped() {
     let flow = crate::rtf::parse(b"{\\rtf1{\\fonttbl{\\f0 Arial;}{\\f1 Georgia;}}\\f1 a}").unwrap();
     assert_eq!(spans(&flow)[0].1.font.as_deref(), Some("Georgia"));
 
-    let html = format!("<p><span style=\"font-family:'{long}'\"><a href=\"https://e.com/{long}\">kept</a></span> <font face=\"{long}\">too</font></p>");
+    let html =
+        format!("<p><span style=\"font-family:'{long}'\"><a href=\"https://e.com/{long}\">kept</a></span> <font face=\"{long}\">too</font></p>");
     let sp = spans(&crate::html::parse(&html));
     assert!(sp.iter().any(|(t, _)| t.contains("kept")) && sp.iter().any(|(t, _)| t.contains("too")));
     assert!(sp.iter().all(|(_, f)| f.font.is_none() && f.link.is_none()), "{:?}", sp.iter().map(|s| &s.0).collect::<Vec<_>>());

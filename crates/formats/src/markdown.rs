@@ -2127,7 +2127,8 @@ mod tests {
         ] {
             let out = md(l);
             let back = inl(&out);
-            let got: Vec<_> = back.iter().filter_map(|i| if let Inline::Text(_, f) = i { f.link.as_deref().map(str::to_string) } else { None }).collect();
+            let got: Vec<_> =
+                back.iter().filter_map(|i| if let Inline::Text(_, f) = i { f.link.as_deref().map(str::to_string) } else { None }).collect();
             assert_eq!(got, [l.to_string()], "{l:?} → {out:?}");
         }
         // Ordinary destinations are written as before.
