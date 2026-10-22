@@ -110,3 +110,26 @@ fn autofit_tables_with_a_spanning_cell_in_every_row_lay_out_in_linear_time() {
     assert_linear("spanning cells", layout_time_ratio(doc, 400, &LayoutOptions::default()));
 }
 
+/// Finding 13: each section's headers and footers were found by walking back through the
+/// sections before it, for every section and again for every page.
+#[test]
+fn headers_inherited_through_many_sections_lay_out_in_linear_time() {
+    let doc = |n: usize| {
+        let mut d = Document::from_text(&vec!["x"; n].join("\n"));
+        let head = d.add_part(wordcraft_doc::PartKind::Header, vec![wordcraft_doc::para_block(Paragraph::with_text("Head", CharProps::default()))]);
+        for i in 0..n.saturating_sub(1) {
+            let mut s = SectionProps { start: SectionStart::Continuous, ..Default::default() };
+            if i == 0 {
+                s.headers.default = Some(head);
+            }
+            d.para_mut(StoryRef::Body, &Path::top(i)).unwrap().section = Some(Box::new(s));
+        }
+        d.last_section.start = SectionStart::Continuous;
+        d
+    };
+    // Every page shows the first section's header.
+    let l = lay(&doc(200), &LayoutOptions::default());
+    assert!(l.pages.iter().all(|p| !p.header.is_empty()), "the header is inherited");
+    assert_linear("sections", layout_time_ratio(doc, 2000, &LayoutOptions::default()));
+}
+
