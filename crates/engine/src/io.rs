@@ -549,7 +549,13 @@ fn open_regular_file(path: &std::path::Path) -> Result<(std::fs::File, std::fs::
     if !meta.is_file() {
         return Err(format!("{}: not a file", path.display()));
     }
-    let file = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut open = std::fs::OpenOptions::new();
+    open.read(true);
+    // A path swapped for a named pipe since the check above would block `open`; non-blocking
+    // opens it at once (no effect on a regular file) and the handle check below refuses it.
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::custom_flags(&mut open, libc::O_NONBLOCK);
+    let file = open.open(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let meta = file.metadata().map_err(|e| format!("{}: {e}", path.display()))?;
     if !meta.is_file() {
         return Err(format!("{}: not a file", path.display()));

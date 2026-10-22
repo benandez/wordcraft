@@ -4135,7 +4135,7 @@ fn opening_a_named_pipe_or_device_is_refused_without_blocking() {
     let got = rx.recv_timeout(std::time::Duration::from_secs(10));
     if got.is_err() {
         // Unblock the stuck reader so the thread ends, then fail.
-        let _ = std::fs::OpenOptions::new().write(true).open(&fifo);
+        let _ = std::os::unix::fs::OpenOptionsExt::custom_flags(std::fs::OpenOptions::new().write(true), libc::O_NONBLOCK).open(&fifo);
     }
     let _ = std::fs::remove_dir_all(&dir);
     let [pipe, device] = got.expect("opening a named pipe blocked");
@@ -4164,7 +4164,7 @@ fn html_picture_that_is_a_named_pipe_is_skipped_without_blocking() {
     let got = rx.recv_timeout(std::time::Duration::from_secs(10));
     if got.is_err() {
         // Unblock the stuck reader so the thread ends, then fail.
-        let _ = std::fs::OpenOptions::new().write(true).open(&fifo);
+        let _ = std::os::unix::fs::OpenOptionsExt::custom_flags(std::fs::OpenOptions::new().write(true), libc::O_NONBLOCK).open(&fifo);
     }
     let _ = std::fs::remove_dir_all(&dir);
     let doc = got.expect("opening the HTML file blocked on a named pipe").unwrap();
@@ -4194,7 +4194,7 @@ fn insert_picture_from_a_named_pipe_is_refused_without_blocking() {
     let got = rx.recv_timeout(std::time::Duration::from_secs(10));
     if got.is_err() {
         // Unblock the stuck reader so the thread ends, then fail.
-        let _ = std::fs::OpenOptions::new().write(true).open(&fifo);
+        let _ = std::os::unix::fs::OpenOptionsExt::custom_flags(std::fs::OpenOptions::new().write(true), libc::O_NONBLOCK).open(&fifo);
     }
     let _ = std::fs::remove_dir_all(&dir);
     assert!(got.expect("reading a picture path blocked on a named pipe").is_err(), "a pipe is not a file to read");
@@ -4226,9 +4226,10 @@ fn file_head_and_capped_reads_refuse_a_named_pipe_without_blocking() {
     });
     let got = rx.recv_timeout(std::time::Duration::from_secs(10));
     if got.is_err() {
-        // Unblock the stuck reader (twice: each helper may be stuck in turn) so the thread ends, then fail.
-        let _ = std::fs::OpenOptions::new().write(true).open(&fifo);
-        let _ = std::fs::OpenOptions::new().write(true).open(&fifo);
+        // Unblock the stuck reader (twice: each helper may be stuck in turn) so the thread ends, then
+        // fail. Non-blocking: with no reader left the open fails at once instead of hanging the test.
+        let _ = std::os::unix::fs::OpenOptionsExt::custom_flags(std::fs::OpenOptions::new().write(true), libc::O_NONBLOCK).open(&fifo);
+        let _ = std::os::unix::fs::OpenOptionsExt::custom_flags(std::fs::OpenOptions::new().write(true), libc::O_NONBLOCK).open(&fifo);
     }
     let _ = std::fs::remove_dir_all(&dir);
     let [head, capped] = got.expect("reading a named pipe blocked");
