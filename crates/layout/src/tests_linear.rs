@@ -95,42 +95,61 @@ fn line_carets_match_x_of() {
 /// Finding 3: autofitting a table counted its grid's columns again for every spanning cell.
 #[test]
 fn autofit_tables_with_a_spanning_cell_in_every_row_lay_out_in_linear_time() {
+    // Rows with no cells, only a column skipped before and after them with a width: two
+    // spanning entries a row for next to no layout, so counting the grid per entry dominates.
     let doc = |n: usize| {
-        let mut t = Table::new(n, 3, 468.0);
-        for row in &mut t.rows {
-            row.cells.truncate(2);
-            if let Some(c) = row.cells.first_mut() {
-                c.props.span = 2;
-            }
+        let mut t = Table::new(n, 1, 468.0);
+        for row in t.rows.iter_mut().skip(1) {
+            row.cells.clear();
+            row.props.grid_before = 1;
+            row.props.w_before = Some(10.0);
+            row.props.grid_after = 1;
+            row.props.w_after = Some(10.0);
         }
         let mut d = Document::from_text("x");
         d.insert_block(StoryRef::Body, &Path::top(0), Block::Table(t)).unwrap();
         d
     };
-    assert_linear("spanning cells", layout_time_ratio(doc, 400, &LayoutOptions::default()));
+    assert_linear("spanning cells", layout_time_ratio(doc, 2000, &LayoutOptions::default()));
+}
+
+/// `n` continuous sections of an empty paragraph each, each with a different first page. The
+/// first section names every header and footer; the others name them too, or (`inherit`) name
+/// none and link to the previous section's.
+fn sections(n: usize, inherit: bool) -> Document {
+    use wordcraft_doc::PartKind::{Footer, Header};
+    let mut d = Document::from_text(&"\n".repeat(n.saturating_sub(1)));
+    let mut part = |k| d.add_part(k, vec![wordcraft_doc::para_block(Paragraph::with_text("Head", CharProps::default()))]);
+    let ids = [part(Header), part(Header), part(Header), part(Footer), part(Footer), part(Footer)];
+    let named = SectionProps {
+        start: SectionStart::Continuous,
+        title_page: true,
+        headers: HeaderSet { default: Some(ids[0]), first: Some(ids[1]), even: Some(ids[2]) },
+        footers: HeaderSet { default: Some(ids[3]), first: Some(ids[4]), even: Some(ids[5]) },
+        ..Default::default()
+    };
+    let linked = SectionProps { headers: HeaderSet::default(), footers: HeaderSet::default(), ..named.clone() };
+    for i in 0..n.saturating_sub(1) {
+        let s = if i == 0 || !inherit { named.clone() } else { linked.clone() };
+        d.para_mut(StoryRef::Body, &Path::top(i)).unwrap().section = Some(Box::new(s));
+    }
+    d.last_section = if inherit { linked } else { named };
+    d
 }
 
 /// Finding 13: each section's headers and footers were found by walking back through the
-/// sections before it, for every section and again for every page.
+/// sections before it, for every section and again for every page. Linked to the previous
+/// section's, they must cost no more to lay out than named in each section.
 #[test]
 fn headers_inherited_through_many_sections_lay_out_in_linear_time() {
-    let doc = |n: usize| {
-        let mut d = Document::from_text(&vec!["x"; n].join("\n"));
-        let head = d.add_part(wordcraft_doc::PartKind::Header, vec![wordcraft_doc::para_block(Paragraph::with_text("Head", CharProps::default()))]);
-        for i in 0..n.saturating_sub(1) {
-            let mut s = SectionProps { start: SectionStart::Continuous, ..Default::default() };
-            if i == 0 {
-                s.headers.default = Some(head);
-            }
-            d.para_mut(StoryRef::Body, &Path::top(i)).unwrap().section = Some(Box::new(s));
-        }
-        d.last_section.start = SectionStart::Continuous;
-        d
-    };
-    // Every page shows the first section's header.
-    let l = lay(&doc(200), &LayoutOptions::default());
-    assert!(l.pages.iter().all(|p| !p.header.is_empty()), "the header is inherited");
-    assert_linear("sections", layout_time_ratio(doc, 2000, &LayoutOptions::default()));
+    let l = lay(&sections(200, true), &LayoutOptions::default());
+    assert!(l.pages.iter().all(|p| !p.header.is_empty() && !p.footer.is_empty()), "the header and footer are inherited");
+    let n = 8000;
+    let (named, inherited) = (sections(n, false), sections(n, true));
+    let lay_once = |d: &Document| drop(std::hint::black_box(lay(d, &LayoutOptions::default())));
+    let (t_named, t_inherited, ratio) = cost_ratio(1, || lay_once(&named), || lay_once(&inherited));
+    eprintln!("{n} sections: named {t_named:.4} s, inherited {t_inherited:.4} s, ratio {ratio:.1}");
+    assert!(ratio < 2.0, "{n} inheriting sections took {ratio:.1}x the time of named ones ({t_named:.4} s → {t_inherited:.4} s)");
 }
 
 /// A header of `n` short paragraphs.
