@@ -88,8 +88,8 @@ pub struct FontFace {
     bmp: std::sync::OnceLock<Box<[u64]>>,
     // Some legacy CJK fonts assemble their contours with TrueType instructions.
     outline_hinter: std::sync::OnceLock<Option<HintingInstance>>,
-    /// Set once a hinted glyph ran too long: the face is drawn unhinted from then on.
-    hinting_off: std::sync::atomic::AtomicBool,
+    /// Hinted glyphs that ran too long; at [`MAX_HINT_STRIKES`] the face is drawn unhinted.
+    hint_strikes: std::sync::atomic::AtomicU8,
 }
 
 /// Limits on what a face's TrueType instructions may run over (#3692). skrifa's interpreter budget
@@ -101,10 +101,13 @@ const MAX_HINT_TWILIGHT: u16 = 1024;
 const MAX_HINT_STACK: u16 = 4096;
 /// skrifa's buffer for one hinted glyph (points, stack, twilight zone, CVT and storage).
 const MAX_HINT_GLYPH_BYTES: usize = 256 * 1024;
-/// A hinted glyph slower than this turns hinting off for its face. A face under the limits above
-/// can still take seconds for one glyph: this keeps it to one. Native only (no clock on wasm).
+/// A hinted glyph slower than this is a strike against its face; [`MAX_HINT_STRIKES`] of them turn
+/// hinting off. A face under the limits above can still take seconds for one glyph: this keeps it
+/// to a few, while one draw slowed by a busy machine doesn't drop hinting. Native only (no clock
+/// on wasm).
 #[cfg(not(target_arch = "wasm32"))]
 const HINT_STRIKE: std::time::Duration = std::time::Duration::from_millis(50);
+const MAX_HINT_STRIKES: u8 = 3;
 
 /// A cheap `Copy` handle to a face. Faces are never unloaded, so the handle lives for the rest of
 /// the process; unlike cloning an `Arc`, copying it touches no shared reference count (which made
@@ -190,6 +193,11 @@ impl FontFace {
     pub fn id(&self) -> u32 {
         self.id
     }
+    /// Counts a slow hinted draw; true when it is the one that turns hinting off.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn strike_hinting(&self) -> bool {
+        self.hint_strikes.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| (n < MAX_HINT_STRIKES).then_some(n + 1)) == Ok(MAX_HINT_STRIKES - 1)
+    }
     /// Glyph `gid`'s outline in font units, y-down (flipped), uncached: for faces the database
     /// doesn't keep (font list previews); others go through [`FontDb::outline`]'s cache.
     pub fn glyph_outline(&self, gid: u32) -> BezPath {
@@ -197,14 +205,15 @@ impl FontFace {
         if let Some(f) = self.skrifa()
             && let Some(g) = f.outline_glyphs().get(GlyphId::new(gid))
         {
-            let hinter =
-                self.hinter().filter(|_| !self.hinting_off.load(Ordering::Relaxed) && g.draw_memory_size(Hinting::Embedded) <= MAX_HINT_GLYPH_BYTES);
+            let hinter = self.hinter().filter(|_| {
+                self.hint_strikes.load(Ordering::Relaxed) < MAX_HINT_STRIKES && g.draw_memory_size(Hinting::Embedded) <= MAX_HINT_GLYPH_BYTES
+            });
             #[cfg(not(target_arch = "wasm32"))]
             let started = std::time::Instant::now();
             let settings = hinter.map_or_else(|| DrawSettings::unhinted(Size::unscaled(), self.location()), |h| DrawSettings::hinted(h, false));
             let drawn = g.draw(settings, &mut pen);
             #[cfg(not(target_arch = "wasm32"))]
-            if hinter.is_some() && started.elapsed() > HINT_STRIKE && !self.hinting_off.swap(true, Ordering::Relaxed) {
+            if hinter.is_some() && started.elapsed() > HINT_STRIKE && self.strike_hinting() {
                 log::warn!("Hinting glyph {gid} in {:?} took {:?}: drawing the face unhinted", self.family, started.elapsed());
             }
             if let Err(e) = drawn {
@@ -972,7 +981,7 @@ fn make_face(bytes: FontBytes, index: u32, family: String, style: String, legacy
         index,
         bmp: std::sync::OnceLock::new(),
         outline_hinter: std::sync::OnceLock::new(),
-        hinting_off: Default::default(),
+        hint_strikes: Default::default(),
     })
 }
 
@@ -1974,6 +1983,15 @@ mod tests_sysfonts;
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn one_slow_hinted_glyph_does_not_turn_hinting_off() {
+        let db = super::FontDb::with_font_dirs(vec![]);
+        let face = db.face("Anything", "Regular");
+        let strikes: Vec<bool> = (0..5).map(|_| face.strike_hinting()).collect();
+        assert_eq!(strikes, [false, false, true, false, false]);
+        assert_eq!(face.hint_strikes.load(std::sync::atomic::Ordering::Relaxed), super::MAX_HINT_STRIKES);
+    }
     #[test]
     #[ignore = "requires a locally licensed kaiu.ttf; set WORDCRAFT_TEST_KAI_FONT"]
     fn kai_contours_include_complete_character_body() {
