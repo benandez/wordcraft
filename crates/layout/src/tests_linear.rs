@@ -43,3 +43,52 @@ fn proof_text_walks_the_runs_once() {
     assert_linear("proof_text", ratio_of(8, &small, &big, |p| drop(std::hint::black_box(para::proof_text(p)))));
 }
 
+/// A right-to-left paragraph whose one line holds `n` hidden letters: caret offsets with no width.
+fn bidi_hidden(n: usize) -> Document {
+    let head = "سلام ";
+    let mut d = Document::from_text(&format!("{head}{} world", "x".repeat(n)));
+    let at = Pos::body(0, 0);
+    d.format_paragraphs(&at, &at, &|p| p.bidi = Some(true)).unwrap();
+    d.format_range(&Pos::body(0, head.len()), &Pos::body(0, head.len() + n), &|c| c.hidden = Some(true)).unwrap();
+    d
+}
+
+/// Finding 5: a click on a bidirectional line and a visual caret step measured every caret
+/// offset from the line's first cluster.
+#[test]
+fn bidi_clicks_and_caret_steps_take_linear_time() {
+    let opts = LayoutOptions { show_hidden: false, ..Default::default() };
+    let (ds, db) = (bidi_hidden(5000), bidi_hidden(SCALE * 5000));
+    let (ls, lb) = (lay(&ds, &opts), lay(&db, &opts));
+    let (Some(ps), Some(pb)) = (first_para(&ls), first_para(&lb)) else { panic!("no paragraph") };
+    assert_eq!(pb.lines.len(), 1, "the hidden letters stay on one line");
+    let ratio = ratio_of(32, &(ps, &ls), &(pb, &lb), |(p, l)| {
+        std::hint::black_box(p.off_at_x(0, 1.0));
+        std::hint::black_box(l.visual_step(&Pos::body(0, 0), true, 0));
+    });
+    assert_linear("bidi hit test", ratio);
+}
+
+/// The carets of a line walked in one pass are where `x_of` puts each of them, on bidirectional
+/// and left-to-right lines alike.
+#[test]
+fn line_carets_match_x_of() {
+    let docs = [bidi_hidden(20), Document::from_text("Plain left-to-right text, long enough to wrap. ".repeat(6).as_str()), {
+        let mut d = Document::from_text("سلام world 123 دنیا (مرحبا) end");
+        let at = Pos::body(0, 0);
+        d.format_paragraphs(&at, &at, &|p| p.bidi = Some(true)).unwrap();
+        d
+    }];
+    for d in &docs {
+        for show_hidden in [false, true] {
+            let l = lay(d, &LayoutOptions { show_hidden, ..Default::default() });
+            let Some(p) = first_para(&l) else { panic!("no paragraph") };
+            for li in 0..p.lines.len() {
+                let want: Vec<_> = p.line_offsets(li).into_iter().map(|off| (off, p.x_of(li, off))).collect();
+                assert!(!want.is_empty());
+                assert_eq!(p.line_carets(li), want, "line {li}");
+            }
+        }
+    }
+}
+

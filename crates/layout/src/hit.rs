@@ -722,8 +722,8 @@ impl DocLayout {
             let l = para.lines.get(li)?;
             let here = para.x_of(li, pos.off)?;
             let mut best: Option<(usize, f32)> = None;
-            for off in para.line_offsets(li) {
-                let Some(x) = para.x_of(li, off) else { continue };
+            for (off, x) in para.line_carets(li) {
+                let Some(x) = x else { continue };
                 let ahead = if left { x < here - 0.01 } else { x > here + 0.01 };
                 let d = (x - here).abs();
                 if ahead && best.is_none_or(|b| d < b.1) {

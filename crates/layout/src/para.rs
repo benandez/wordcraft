@@ -3018,19 +3018,41 @@ impl ParaLayout {
     /// x of byte offset `off` within line `li` (clamped to the line).
     pub fn x_of(&self, li: usize, off: usize) -> Option<f32> {
         let l = self.lines.get(li)?;
+        let mut from = l.c0;
+        self.x_from(l, off, &mut from)
+    }
+    /// [`Self::x_of`] on line `l`, looking for the cluster at `off` from cluster `*from` on (the
+    /// clusters before it must all end at or before `off`: so they do when `from` was left there
+    /// by an offset no greater), and leaving `from` at the cluster found. Walks a line's carets
+    /// in order in one pass over its clusters.
+    fn x_from(&self, l: &Line, off: usize, from: &mut usize) -> Option<f32> {
         if !l.vis.is_empty() {
-            return self.x_of_bidi(l, off);
+            return self.x_of_bidi(l, off, from);
         }
-        for k in l.c0..l.c1 {
+        for k in *from..l.c1 {
             let c = self.clusters.get(k)?;
-            if off <= c.start {
-                return l.xs.get(k - l.c0).copied();
-            }
-            if off < c.end {
+            if off <= c.start || off < c.end {
+                *from = k;
                 return l.xs.get(k - l.c0).copied();
             }
         }
+        *from = l.c1;
         l.xs.last().copied()
+    }
+    /// Each caret offset on line `li` ([`Self::line_offsets`]) with its x ([`Self::x_of`]).
+    pub fn line_carets(&self, li: usize) -> Vec<(usize, Option<f32>)> {
+        let Some(l) = self.lines.get(li) else { return Vec::new() };
+        let (mut from, mut last) = (l.c0, 0);
+        self.line_offsets(li)
+            .into_iter()
+            .map(|off| {
+                if off < last {
+                    from = l.c0;
+                }
+                last = off;
+                (off, self.x_from(l, off, &mut from))
+            })
+            .collect()
     }
     /// The farthest right a caret goes on left-to-right line `li`: spaces at the end of a line
     /// hang past its right edge, but the caret after them stays at the edge, as in Word (#2146);
@@ -3066,8 +3088,9 @@ impl ParaLayout {
     /// edge of right-to-left text), except where `off` leaves an embedded run (the cluster before
     /// it has the higher level), which keeps the caret at that run's trailing edge, so each
     /// visual boundary of the common mixed cases has its own offset.
-    fn x_of_bidi(&self, l: &Line, off: usize) -> Option<f32> {
-        let k = (l.c0..l.c1).find(|&k| self.clusters.get(k).is_some_and(|c| off < c.end || off <= c.start));
+    fn x_of_bidi(&self, l: &Line, off: usize, from: &mut usize) -> Option<f32> {
+        let k = (*from..l.c1).find(|&k| self.clusters.get(k).is_some_and(|c| off < c.end || off <= c.start));
+        *from = k.unwrap_or(l.c1);
         let Some(k) = k else { return Some(l.end_x()) };
         let c = self.clusters.get(k)?;
         let here = l.vis.get(k - l.c0)?;
@@ -3114,8 +3137,8 @@ impl ParaLayout {
         let Some(l) = self.lines.get(li) else { return self.text_len };
         if !l.vis.is_empty() {
             let mut best = (l.start, f32::MAX);
-            for off in self.line_offsets(li) {
-                let d = self.x_of(li, off).map_or(f32::MAX, |cx| (cx - x).abs());
+            for (off, cx) in self.line_carets(li) {
+                let d = cx.map_or(f32::MAX, |cx| (cx - x).abs());
                 if d < best.1 {
                     best = (off, d);
                 }
