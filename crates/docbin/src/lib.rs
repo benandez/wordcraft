@@ -50,8 +50,9 @@ const MAX_PARTS: usize = 50_000;
 /// WordDocument stream (see [`read`]); this caps even a maximal stream.
 const MAX_TOTAL_CHARS: u64 = 64 << 20;
 /// Bytes of repeated work per document beyond the text itself: piece Prm grpprls (Prcs, up
-/// to 64 KB each) interpreted (#3692), hyperlink targets (#3708) and picture alt text (#3709)
-/// copied into every run or anchor. Past it Prms are skipped and copies left empty.
+/// to 64 KB each) interpreted (#3692), hyperlink targets (#3708), picture alt text (#3709)
+/// and floating objects (#3710) copied into every run or anchor. Past it Prms are skipped,
+/// copied strings left empty and floating objects dropped.
 const MAX_WORK: u64 = 64 << 20;
 /// `sprmCPicLocation`: the fc of a picture in the Data stream.
 const C_PIC_LOCATION: u16 = 0x6A03;
@@ -609,7 +610,16 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
             '\u{8}' => {
                 // Drawn object anchor: the floating shape or picture anchored at this CP.
                 let at = ctx.drawn.partition_point(|(c, _)| *c < cp);
+                // Each copy (a story can be walked more than once) is charged to the work budget
+                // by size, a group with all its members (#3710).
                 for (_, obj) in ctx.drawn.get(at..).unwrap_or_default().iter().take_while(|(c, _)| *c == cp) {
+                    let parts = match obj {
+                        InlineObject::Group { children, .. } => children.len().saturating_add(1),
+                        _ => 1,
+                    };
+                    let cost = (parts as u64).saturating_mul(std::mem::size_of::<InlineObject>() as u64);
+                    let Some(left) = ctx.work.get().checked_sub(cost) else { continue };
+                    ctx.work.set(left);
                     pb.push('\u{FFFC}', CharProps::default());
                     pb.objects.push(obj.clone());
                 }

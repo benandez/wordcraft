@@ -352,3 +352,27 @@ fn alt_text_copies_across_many_anchors_are_bounded() {
     assert!(total <= 64 << 20, "alt bytes {total}");
     assert_eq!(alts.last().copied(), Some(""));
 }
+
+/// #3710: every PlcSpa entry naming a group built another copy of all its members. A shape is
+/// anchored once; repeated spids are skipped.
+#[test]
+fn a_group_named_by_many_anchors_is_built_once() {
+    let rect = |l: i32| rec(0, 0, 0xF00F, &[l, 0, l + 10, 10].iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>());
+    let head = sp(&[fsp(0, 3000, 0x201), rec(1, 0, 0xF009, &[0i32, 0, 10_000, 10].iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>())]);
+    let members: Vec<Vec<u8>> = (0..1000).map(|i| sp(&[fsp(1, 4000 + i as u32, 0xA02), rect(i * 10)])).collect();
+    let group = container(0xF003, &[vec![head], members].concat());
+    let art = art_content(&[], &[group]);
+    let n = 5000u32;
+    let cps: Vec<u32> = (1..=n + 1).collect();
+    let spas: Vec<u8> = (0..n).flat_map(|_| spa(3000, [0, 0, 1440, 1440], spa_flags(0, 0, 3, false))).collect();
+    let text = "A\u{8}\u{8}\u{8}B\r";
+    let ccp = text.chars().count() as u32;
+    let spec = StructSpec { text, extra_pairs: vec![(40, plc(&cps, &spas)), (50, art)], ..structured_spec(text, ccp) };
+    let t = std::time::Instant::now();
+    let doc = read(&struct_doc(&spec)).expect("opens");
+    assert!(t.elapsed().as_millis() < 1000, "opened in {:?}", t.elapsed());
+    let p0 = doc.body.first().and_then(|b| b.as_para()).expect("para");
+    let groups: Vec<usize> =
+        p0.objects.iter().filter_map(|o| if let InlineObject::Group { children, .. } = o { Some(children.len()) } else { None }).collect();
+    assert_eq!(groups, [1000]);
+}
