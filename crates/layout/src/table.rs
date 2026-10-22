@@ -5,7 +5,7 @@
 use wordcraft_doc::numbering::Counters;
 use wordcraft_doc::props::{Align, Border, Borders, HeightRule, Rgb, TextDirection, VAlign, VMerge};
 use wordcraft_doc::styles::{PartSet, TablePart, TableStyleProps};
-use wordcraft_doc::{Block, Blocks, Paragraph, StoryRef, Table};
+use wordcraft_doc::{Block, Blocks, Paragraph, Row, StoryRef, Table};
 use wordcraft_geom::Rect;
 
 use crate::para::{CellText, ClKind, ParaLayout};
@@ -181,7 +181,7 @@ pub fn measure_table_columns(doc: &wordcraft_doc::Document, t: &Table) -> Vec<(f
     let mut spanned: Vec<(usize, usize, f32, f32)> = Vec::new();
     let mut budget = MEASURE_BUDGET;
     'rows: for (ri, row) in t.rows.iter().enumerate() {
-        let mut g = 0usize;
+        let mut g = row.first_grid();
         for cell in &row.cells {
             let span = cell.span();
             let margins = cell.props.resolved_margins(margins_def);
@@ -197,6 +197,7 @@ pub fn measure_table_columns(doc: &wordcraft_doc::Document, t: &Table) -> Vec<(f
                 hide_deleted: Default::default(),
                 table: text.as_ref(),
                 proofing: None,
+                typing_word: None,
                 // Measurement uses a fixed environment (like show_hidden/proofing above).
                 numeral: crate::NumeralMode::default(),
                 exclusions: &[],
@@ -204,6 +205,7 @@ pub fn measure_table_columns(doc: &wordcraft_doc::Document, t: &Table) -> Vec<(f
                 read_line_spacing: None,
                 grid: crate::para::Grid::default(),
                 fit_objects: false,
+                fitted: &[],
             };
             let (mut min, mut max) = (EMPTY_TEXT, EMPTY_TEXT);
             if cell.props.vmerge != VMerge::Continue && !cell.props.text_direction.is_turned() {
@@ -238,6 +240,7 @@ pub fn measure_table_columns(doc: &wordcraft_doc::Document, t: &Table) -> Vec<(f
             }
             g += span;
         }
+        spanned.extend(row_gaps(row, g).map(|(g, span, w)| (g, span, w, w)));
     }
     for (g, span, min, max) in spanned {
         let Some(cs) = cols.get_mut(g..(g + span).min(ncols)) else { continue };
@@ -356,7 +359,15 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
     let ncols = t.cols().max(1);
     // Column widths.
     let mut grid: Vec<f32> = if t.grid.len() == ncols {
-        t.grid.iter().map(|w| if w.is_finite() { w.max(4.0) } else { 72.0 }).collect()
+        // Grid units can be narrower than a text box, including omitted row-end columns.
+        t.grid
+            .iter()
+            .map(|&w| match w {
+                w if !w.is_finite() => 72.0,
+                w if w <= 0.0 => 4.0,
+                w => w,
+            })
+            .collect()
     } else {
         vec![avail / ncols as f32; ncols]
     };
@@ -372,11 +383,17 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
         _ => None,
     };
     if let Some(tw) = target {
-        let k = tw / total.max(1.0);
-        grid.iter_mut().for_each(|w| *w *= k);
+        if total > 0.0 && total < 1.0 {
+            // Divide first: a tiny positive total can overflow the scale factor.
+            grid.iter_mut().for_each(|w| *w = (*w / total) * tw);
+        } else {
+            let k = tw / total.max(1.0);
+            grid.iter_mut().for_each(|w| *w *= k);
+        }
         total = tw;
     }
-    if total > avail * 1.5 && !t.props.fixed {
+    // A table with its own width keeps it, however far it runs past the margins (as in Word).
+    if target.is_none() && total > avail * 1.5 && !t.props.fixed {
         let k = avail / total.max(1.0);
         grid.iter_mut().for_each(|w| *w *= k);
         total = avail;
@@ -458,7 +475,7 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
     let mut heights: Vec<f32> = Vec::with_capacity(nrows);
     let mut bottoms: Vec<f32> = Vec::with_capacity(nrows);
     for (ri, row) in t.rows.iter().enumerate() {
-        let mut g = 0usize;
+        let mut g = row.first_grid();
         let mut cells = Vec::with_capacity(row.cells.len());
         let mut rh = 0.0f32;
         // The tallest cell margins plus border bands in the row.
@@ -505,7 +522,9 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
             let cb = cell.props.borders.unwrap_or_default();
             // A row's table property exceptions (`w:tblPrEx`) override the table's borders for its cells.
             let row_borders = row.props.exceptions.as_ref().and_then(|e| e.borders).unwrap_or_default();
-            let (first_g, last_g) = (g == 0, g + span >= ncols);
+            // A row that skips grid columns (`w:gridBefore`/`w:gridAfter`) has its edge at its own
+            // first and last cell.
+            let (first_g, last_g) = (g == row.first_grid(), g + span >= ncols.saturating_sub(row.props.grid_after as usize));
             let rb = look.map(|l| region_borders(&l.borders, (ri, nrows), (first_g, last_g))).unwrap_or_default();
             let mut borders = Borders {
                 top: edge(cb.top.or(if ri == 0 { row_borders.top } else { row_borders.between }).or(rb.top), ri == 0, tb.top, tb.between),
@@ -538,6 +557,23 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
             // border): the border's width sits on top of the cell margin.
             let band = |b: Option<Border>| b.filter(Border::is_visible).map_or(0.0, |b| b.width.clamp(0.0, 12.0));
             let (band_t, band_b) = (band(borders.top), if ri + 1 == nrows { band(borders.bottom) } else { 0.0 });
+            // A shared edge painted by the row above still clears this cell's text and minimum.
+            let band_t = if band_t > 0.0 || cell.props.vmerge == VMerge::Continue {
+                band_t
+            } else {
+                rows.last()
+                    .into_iter()
+                    .flatten()
+                    .filter(|above| above.g < g + span && g < above.g + above.span)
+                    .filter(|above| {
+                        above.vmerge == VMerge::None
+                            || !t.cell_at_grid(ri, above.g).is_some_and(|ci| {
+                                t.grid_col(ri, ci) == above.g && row.cells.get(ci).is_some_and(|c| c.props.vmerge == VMerge::Continue)
+                            })
+                    })
+                    .map(|above| band(above.borders.bottom))
+                    .fold(0.0, f32::max)
+            };
             let insets = margins[0] + margins[2] + band_t + band_b;
             let turn = cell.props.text_direction;
             let mut turned = None;
@@ -563,7 +599,7 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
                 turned = Some(Turned { turn, len, across, snap, region, ci, top: margins[0] + band_t });
                 (items, len)
             } else {
-                let BoxLayout { mut items, mut height, floats_bottom, last_top } =
+                let BoxLayout { mut items, mut height, floats_bottom, last_top, .. } =
                     layout_box(ctx, story, &cell.blocks, &cpath, cw, BoxContext::Cell(text), depth, None);
                 // A hidden end-of-cell mark: an empty last paragraph takes no room (Word for
                 // Windows: a row of empty such cells is only its borders).
@@ -639,7 +675,7 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
         .rows
         .iter()
         .map(|r| {
-            let mut gx = 0;
+            let mut gx = r.first_grid();
             r.cells
                 .iter()
                 .filter_map(|x| {
@@ -809,11 +845,15 @@ pub fn split_row(row: &RowLayout, cut: f32) -> Option<(RowLayout, RowLayout)> {
         .collect();
     // A cell that widow/orphan control leaves with nothing on this page, though its first line
     // would fit there, takes the whole row on with it: Word doesn't leave the other cells behind
-    // beside an empty one (observed with synthetic documents).
+    // beside an empty one (observed with synthetic documents). Trailing space alone can move
+    // the last paragraph without deferring the whole row.
     for (items, splits) in cells.iter().zip(&splits) {
         let first = items.iter().zip(splits).find_map(|(it, &split)| text_lines(it).map(|t| (t, split)));
-        if let Some(((para, l0, _, y), split)) = first
+        if let Some(((para, l0, l1, y), split)) = first
             && split == l0
+            && para.rp.widow_control
+            && l1.saturating_sub(l0) > 1
+            && crate::item_bottom(y, para, l0, l1).is_some_and(|bottom| !fits(bottom))
             && para.lines.get(l0).is_some_and(|l| fits(y + l.top - para.lines.get(l0).map_or(0.0, |f| f.top) + l.height))
         {
             return None;
@@ -1041,8 +1081,9 @@ type Region = PartSet;
 
 /// The parts of the cell at grid column `g` spanning `span` of `ncols` columns in row `ri`.
 fn region_of(t: &Table, style: Option<&TableStyleProps>, ri: usize, g: usize, span: usize, ncols: usize) -> Region {
-    let size = style.and_then(|s| s.parts.band_size).unwrap_or(1);
-    PartSet::of_cell(&t.props.look, size, (ri, t.rows.len()), (g, span, ncols))
+    let rows = style.and_then(|s| s.parts.band_size).unwrap_or(0);
+    let cols = style.and_then(|s| s.parts.col_band_size).unwrap_or(0);
+    PartSet::of_cell(&t.props.look, (rows, cols), (ri, t.rows.len()), (g, span, ncols))
 }
 
 /// The table style's text formatting in `region`: each part's character formatting and paragraph
@@ -1069,7 +1110,7 @@ fn column_content(ctx: &mut Ctx, t: &Table, style: Option<&TableStyleProps>, dep
     let mut spanning = Vec::new();
     let mut any = false;
     for (ri, row) in t.rows.iter().enumerate() {
-        let mut g = 0usize;
+        let mut g = row.first_grid();
         for cell in &row.cells {
             let span = cell.span();
             if cell.props.vmerge != VMerge::Continue {
@@ -1085,6 +1126,7 @@ fn column_content(ctx: &mut Ctx, t: &Table, style: Option<&TableStyleProps>, dep
             }
             g += span;
         }
+        spanning.extend(row_gaps(row, g).map(|(g, span, w)| (g, span, (w, w))));
     }
     for (g, span, need) in spanning {
         let Some(cs) = cols.get_mut(g..(g + span).min(t.cols())) else { continue };
@@ -1096,6 +1138,17 @@ fn column_content(ctx: &mut Ctx, t: &Table, style: Option<&TableStyleProps>, dep
         }
     }
     any.then_some(cols)
+}
+
+/// The grid columns row `row` leaves empty before its first cell and after its last one (which
+/// ends at grid column `end`) when it gives their width (`w:wBefore`, `w:wAfter`): (first column,
+/// columns, width in points). Column widths make room for them like for an empty cell.
+fn row_gaps(row: &Row, end: usize) -> impl Iterator<Item = (usize, usize, f32)> {
+    let p = &row.props;
+    [(0, row.first_grid(), p.w_before), (end, p.grid_after as usize, p.w_after)]
+        .into_iter()
+        .filter(|&(_, n, _)| n > 0)
+        .filter_map(|(g, n, w)| w.filter(|w| w.is_finite() && *w > 0.0).map(|w| (g, n, w.min(1584.0))))
 }
 
 /// The narrowest and widest a block list can be laid out.

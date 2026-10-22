@@ -140,8 +140,11 @@
 	Book Title	Název knihy
 	Bookmark	Záložka
 	Bookmark name:	Název záložky:
+	Continue from previous section	Pokračovat z předchozího oddílu
 	Delete Bookmark	Odstranit záložku
 	Hidden bookmarks	Skryté záložky
+	Page Number Format	Formát čísel stránek
+	Page numbering	Číslování stránek
 	Sort by:	Seřadit podle:
 	Border Painter	Štětec ohraničení
 	Border\nPainter	Štětec\nohraničení
@@ -377,6 +380,8 @@
 	Edit\nRecipient List	Upravit seznam\npříjemců
 	Edited	Upraveno
 	Editing	Úpravy
+	Editing endnote	Úprava vysvětlivky
+	Editing footnote	Úprava poznámky pod čarou
 	Editing header/footer	Úprava záhlaví/zápatí
 	Editing — edit the document directly	Úpravy — přímá úprava dokumentu
 	Editor	Editor
@@ -455,6 +460,9 @@
 	Flip Horizontal	Převrátit vodorovně
 	Flip Vertical	Převrátit svisle
 	Focus	Soustředění
+	Full Screen View	Zobrazení na celou obrazovku
+	Show the ribbon	Zobrazit pás karet
+	Old menu keys: Alt, {keys}. Keep typing, or press Esc to cancel.	Staré klávesy nabídek: Alt, {keys}. Pokračujte v psaní, nebo zrušte klávesou Esc.
 	Follow number with:	Znak za číslem:
 	Font	Písmo
 	Font Color	Barva písma
@@ -1137,6 +1145,8 @@
 	Space before: {pt} pt	Mezera před: {pt} b.
 	Spacing	Mezery
 	Spacing (pt):	Mezery (b.):
+	Kerning for fonts:	Vyrovnání písma (kerning):
+	Points and above	b. a více
 	Spacing:	Mezera:
 	Special Characters	Speciální znaky
 	Specify height:	Zadat výšku:
@@ -1388,6 +1398,9 @@
 	{cols}×{rows} Table	Tabulka {cols}×{rows}
 	AaBbYyZz	AaBbYyZz ČčŘřŽž
 	pt	b.
+	cm	cm
+	mm	mm
+	pi	pi
 	Document1	Dokument1
 	Username	Uživatelské jméno
 	Display name	Zobrazované jméno
@@ -1763,6 +1776,8 @@
 	Customize Ribbon	Přizpůsobit pás karet
 	Add to Quick Access Toolbar	Přidat na panel nástrojů Rychlý přístup
 	Remove from Quick Access Toolbar	Odebrat z panelu nástrojů Rychlý přístup
+	Hide Quick Access Toolbar	Skrýt panel nástrojů Rychlý přístup
+	Show Quick Access Toolbar	Zobrazit panel nástrojů Rychlý přístup
 	Customize the Ribbon…	Přizpůsobit pás karet…
 	Customize Quick Access Toolbar…	Přizpůsobit panel nástrojů Rychlý přístup…
 	More Commands…	Další příkazy…
@@ -2015,6 +2030,12 @@ preview	Title	Ukázka
 	Do not check spelling or grammar	Nekontrolovat pravopis ani mluvnici
 	Dutch	Nizozemština
 	English (United Kingdom)	Angličtina (Spojené království)
+	English (Australia)	Angličtina (Austrálie)
+	English (Canada)	Angličtina (Kanada)
+	English (India)	Angličtina (Indie)
+	English (Ireland)	Angličtina (Irsko)
+	English (New Zealand)	Angličtina (Nový Zéland)
+	English (South Africa)	Angličtina (Jihoafrická republika)
 	Envelope size:	Velikost obálky:
 	Estonian	Estonština
 	Finnish	Finština
@@ -2321,6 +2342,7 @@ preview	Title	Ukázka
 	{name} already exists. Choose Save again to replace it.	Položka {name} již existuje. Dalším zvolením Uložit ji nahradíte.
 	This folder can't be read: {error}	Tuto složku nelze přečíst: {error}
 	Showing the first {count} items.	Zobrazuje se prvních {count} položek.
+	No items to show.	Žádné položky k zobrazení.
 	File name:	Název souboru:
 	Browse in WordCraft…	Procházet ve WordCraftu…
 	Open a file with WordCraft's own browser when the system file dialog doesn't appear.	Otevřít soubor pomocí vlastního prohlížeče souborů WordCraftu, když se systémový dialog pro práci se soubory nezobrazí.
@@ -2510,6 +2532,10 @@ preview	Title	Ukázka
 	Contains	Obsahuje
 	Does not contain	Neobsahuje
 	{count} of {total} recipients will be merged.	Příjemci ke sloučení: {count} z {total}.
+	Find in list:	Najít v seznamu:
+	Any field	Libovolné pole
+	Matches: {count}	Shody: {count}
+	Show only records that will be merged	Zobrazit jen záznamy, které budou sloučeny
 	Show KeyTips (Alt or F10)	Zobrazit klávesové tipy (Alt nebo F10)
 	Reading	Čtení
 	Reading Column Width	Šířka sloupce pro čtení
@@ -2592,6 +2618,7 @@ preview	Title	Ukázka
 	Submitting print job…	Odesílání tiskové úlohy…
 	Print job submitted.	Tisková úloha odeslána.
 	Print job submitted: {receipt}	Tisková úloha odeslána: {receipt}
+	Print job submitted: spooled {count} sheet(s)	Tisková úloha odeslána: do tiskové fronty předáno listů: {count}
 	Print failed: the printing worker stopped.	Tisk se nezdařil: proces tisku se zastavil.
 	Print settings	Nastavení tisku
 	Submit print job	Odeslat tiskovou úlohu
@@ -2632,6 +2659,9 @@ preview	Title	Ukázka
 # Reading Mode column widths (#1040)
 	Narrow	Úzká
 	Medium	Střední
+	Dot-dot-dash	Dvojitě čerchované
+	More Underlines…	Další podtržení…
+	Underline Color	Barva podtržení
 # Split Cells and Convert Text to Table (#2592)
 	Merge cells before split	Před rozdělením buňky sloučit
 	Table size	Velikost tabulky
@@ -2661,3 +2691,85 @@ preview	Title	Ukázka
 	{added}; {count} couldn't be read: {names}	{added}; nelze přečíst ({count}): {names}
 	{names} and {n} more	{names} a dalších {n}
 	{added}; {n} skipped (limit {max})	{added}; přeskočeno: {n} (limit {max})
+	nothing is selected	nic není vybráno
+	select a picture or shape first	nejdřív vyberte obrázek nebo tvar
+	select recipients first	nejdřív vyberte příjemce
+	select two or more pictures or shapes first (Shift+click)	vyberte dva nebo více obrázků či tvarů (Shift+klepnutí)
+	text boxes can't go inside a text box	textové pole nelze vložit do textového pole
+	the cursor isn't in a table	kurzor není v tabulce
+	{name} options	Možnosti: {name}
+
+# Drop Cap menu and Drop Cap Options (#2601)
+	Dropped	Zapuštěná
+	In margin	Na okraji
+	Drop Cap Options…	Možnosti iniciály…
+	Lines to drop:	Výška v řádcích:
+	Distance from text:	Vzdálenost od textu:
+	Distance from text	Vzdálenost od textu
+
+# Drop Cap disabled reasons (#2601)
+	the paragraph is empty	odstavec je prázdný
+	the paragraph starts with a space	odstavec začíná mezerou
+
+# Picture Format › Size: the Size dialog, sizes typed in any unit (#2573)
+	Lock aspect ratio	Zamknout poměr stran
+	Relative to original picture size	Vzhledem k původní velikosti obrázku
+	Original size	Původní velikost
+	{width} × {height} pixels	{width} × {height} pixelů
+	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Zadejte velikost v libovolné jednotce, například 5 cm nebo 300 px. Druhá strana se přizpůsobí, takže obrázek zachová své proporce.
+
+	Import…	Importovat…
+
+# Personal templates (#2852)
+	Personal	Osobní
+	Personal Templates	Osobní šablony
+	Templates you save in your templates folder show up here.	Zde se zobrazí šablony, které uložíte do složky šablon.
+	Save as Word Template…	Uložit jako šablonu Wordu…
+	Saves a .dotx template in your templates folder. It shows up in File › New under Personal.	Uloží šablonu .dotx do vaší složky šablon. Zobrazí se v nabídce Soubor › Nový v části Osobní.
+	File locations	Umístění souborů
+	User templates:	Uživatelské šablony:
+	Not set	Nenastaveno
+	File › New lists the .dotx and .dotm templates here under Personal; Save as Word Template starts here.	Soubor › Nový zobrazuje šablony .dotx a .dotm odsud v části Osobní; Uložit jako šablonu Wordu začíná zde.
+	Format Shape Pane	Podokno Formát obrazce
+	Format Shape	Formát obrazce
+	Format Shape…	Formátovat obrazec…
+	No fill	Bez výplně
+	Solid fill	Plná výplň
+	Gradient fill	Přechodová výplň
+	Preset gradients	Předdefinované přechody
+	Radial	Paprskový
+	Rectangular	Obdélníkový
+	Path	Cesta
+	Direction	Směr
+	Angle	Úhel
+	Gradient stops	Zarážky přechodu
+	Add gradient stop	Přidat zarážku přechodu
+	Remove gradient stop	Odebrat zarážku přechodu
+	Rotate with shape	Otáčet s obrazcem
+	Gradient	Přechod
+	No Gradient	Bez přechodu
+	Light Variations	Světlé varianty
+	Dark Variations	Tmavé varianty
+	More Gradients…	Další přechody…
+	Select a shape, text box or drawing canvas to format its fill.	Vyberte obrazec, textové pole nebo kreslicí plátno a naformátujte jeho výplň.
+	Linear Right	Lineární doprava
+	Linear Diagonal - Top Left to Bottom Right	Lineární úhlopříčný – vlevo nahoře do vpravo dole
+	Linear Down	Lineární dolů
+	Linear Diagonal - Top Right to Bottom Left	Lineární úhlopříčný – vpravo nahoře do vlevo dole
+	Linear Left	Lineární doleva
+	Linear Diagonal - Bottom Right to Top Left	Lineární úhlopříčný – vpravo dole do vlevo nahoře
+	Linear Up	Lineární nahoru
+	Linear Diagonal - Bottom Left to Top Right	Lineární úhlopříčný – vlevo dole do vpravo nahoře
+	From Top Left Corner	Z rohu vlevo nahoře
+	From Top Right Corner	Z rohu vpravo nahoře
+	From Bottom Left Corner	Z rohu vlevo dole
+	From Bottom Right Corner	Z rohu vpravo dole
+	From Center	Ze středu
+	Soft	Jemný
+	Lit from Top	Osvětlený shora
+	Deep	Sytý
+	Lit from Bottom	Osvětlený zdola
+	Center Glow	Záře ze středu
+	More tabs	Další karty
+# #3013: Insert Table of Figures
+	Include label and number	Zahrnout popisek a číslo

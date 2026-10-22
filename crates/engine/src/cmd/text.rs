@@ -17,6 +17,9 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("text.columnBreak", "Column Break", "Layout › Breaks", |s, _| ins_char(s, COLUMN_BREAK)).key("Mod+Shift+Enter"),
         CommandSpec::new("text.tab", "Tab", "Editing", tab).key("Tab"),
         CommandSpec::new("text.backTab", "Shift+Tab", "Editing", back_tab).key("Shift+Tab"),
+        // A tab character even in a table cell, where Tab moves to the next cell (#3137); ⌥Tab on macOS.
+        CommandSpec::new("text.insertTab", "Tab Character", "Editing", |s, _| ins_char(s, '\t'))
+            .key(if cfg!(target_os = "macos") { "Alt+Tab" } else { "Mod+Tab" }),
         CommandSpec::new("text.backspace", "Backspace", "Editing", backspace).key("Backspace"),
         CommandSpec::new("text.delete", "Delete", "Editing", delete).key("Delete"),
         CommandSpec::new("text.deleteWordBack", "Delete Previous Word", "Editing", delete_word_back).key("Mod+Backspace / Alt+Backspace"),
@@ -133,14 +136,20 @@ fn insert(s: &mut Session, v: &Value) -> CmdResult {
     sel_result(s)
 }
 
-/// "* " / "- " / "> " → bullets, "1. " / "a) " → numbering, typed at the start of a paragraph.
+/// "* " / "- " / "> " → bullets, "1. " / "a) " → numbering, typed at the start of a paragraph
+/// (Word triggers on the paragraph's first characters, whatever text already follows the caret,
+/// not only when the trigger is the paragraph's entire content — #3352).
 fn list_autoformat(s: &mut Session) -> Result<bool, CmdError> {
     let f = s.sel.focus.clone();
     let Some(para) = s.doc.para_at(&f) else { return Ok(false) };
-    if para.props.numbering.is_some_and(|n| n.num != 0) || f.off != para.len() {
+    // A style-linked list (a heading-linked Multilevel List preset, #1793) numbers the paragraph
+    // without `props.numbering` itself being set: resolve it, so autoformat doesn't paper over an
+    // already-numbered heading with a fresh bullet.
+    if s.doc.styles.resolve_para(&para.props).numbering.is_some_and(|n| n.num != 0) {
         return Ok(false);
     }
-    let kind = match para.text.as_str() {
+    let Some(prefix) = para.text.get(..f.off) else { return Ok(false) };
+    let kind = match prefix {
         "* " => ListKind::Bullet,
         "- " => ListKind::BulletChar('-'),
         // Arrow bullets (Word draws these from a symbol font; we use the Unicode arrows).
@@ -168,8 +177,7 @@ fn list_autoformat(s: &mut Session) -> Result<bool, CmdError> {
         None => s.doc.numbering.try_add_list(kind)?,
     };
     let para = s.doc.para_mut(f.story, &f.path)?;
-    let len = para.len();
-    para.delete(0, len)?;
+    para.delete(0, f.off)?;
     para.props.numbering = Some(NumRef { num, level: 0 });
     // A heading stays a heading (Word: "1. " in a Heading 1 gives a numbered Heading 1).
     if para.props.style.as_deref().is_none_or(|st| st == "Normal") {
@@ -190,7 +198,7 @@ fn dash_autoformat(s: &mut Session) -> Result<(), CmdError> {
     {
         // "word -- word" → "word – word" once the next word is typed.
         let p = s.doc.para_mut(f.story, &f.path)?;
-        let props = p.props_at(i + 1).clone();
+        let props = p.props_at(i + 1).clone().without_symbol();
         p.delete(i + 1, i + 3)?;
         p.insert_text(i + 1, "\u{2013}", &props)?;
         s.sel = Selection::caret(Pos { off: f.off + 1, ..f });
@@ -199,7 +207,7 @@ fn dash_autoformat(s: &mut Session) -> Result<(), CmdError> {
         && !before.trim_end()[i + 3..].contains(' ')
     {
         let p = s.doc.para_mut(f.story, &f.path)?;
-        let props = p.props_at(i + 1).clone();
+        let props = p.props_at(i + 1).clone().without_symbol();
         p.delete(i + 1, i + 2)?;
         p.insert_text(i + 1, "\u{2013}", &props)?;
         s.sel = Selection::caret(Pos { off: f.off + 2, ..f });
@@ -209,7 +217,7 @@ fn dash_autoformat(s: &mut Session) -> Result<(), CmdError> {
         && before.trim_end()[..i].chars().next_back().is_some_and(|c| c != ' ')
     {
         let p = s.doc.para_mut(f.story, &f.path)?;
-        let props = p.props_at(i).clone();
+        let props = p.props_at(i).clone().without_symbol();
         p.delete(i, i + 2)?;
         p.insert_text(i, "\u{2014}", &props)?;
         s.sel = Selection::caret(Pos { off: f.off + 1, ..f });

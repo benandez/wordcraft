@@ -1,6 +1,7 @@
 //! Blocks, paragraphs, runs, objects and tables → WordprocessingML.
 
 use wordcraft_doc::effects::ShapeEffects;
+use wordcraft_doc::fill::{Fill, GradientFlip, GradientKind, PathShape};
 use wordcraft_doc::para::{AltText, Anchor, Float, NoteKind, ShapeKind, Wrap};
 use wordcraft_doc::props::{CharProps, PropChange, Rgb, TextColor};
 use wordcraft_doc::section::{LineNumberRestart, NoteProps, SectionProps, SectionStart};
@@ -21,6 +22,8 @@ enum Piece<'a> {
     Br(Option<&'static str>),
     NbHyphen,
     SoftHyphen,
+    /// A symbol character in its own font (`w:sym`, ECMA-376 §17.3.3.30).
+    Sym(&'a str, char),
     /// An object and its byte offset in the paragraph.
     Obj(&'a InlineObject, usize),
 }
@@ -33,8 +36,7 @@ impl Writer<'_> {
             return;
         }
         let plan = super::sdt::plan(bl);
-        // A TOC inside a content control already has one (read from a file).
-        let toc = if top { toc_span(bl).filter(|(start, _)| !plan.covers(*start)) } else { None };
+        let toc = if top { written_toc_span(bl) } else { None };
         // Whether the heading's TOC field was written and still needs its end.
         let mut toc_field_open = false;
         for (i, b) in bl.iter().enumerate() {
@@ -137,6 +139,12 @@ impl Writer<'_> {
             let tail = head.split_off(first.len_utf8()).ok();
             if let Some(mut tail) = tail {
                 head.props.drop_cap = Some(lines);
+                // The letter's own font goes on its run (`w:rFonts`).
+                if let Some(f) = p.props.drop_cap_font.as_ref().filter(|f| !f.trim().is_empty()) {
+                    for r in &mut head.runs {
+                        r.props.font = Some(f.clone());
+                    }
+                }
                 head.section = None;
                 self.para_inner(w, &head, rels, false, depth, true);
                 tail.props.drop_cap = None;
@@ -259,6 +267,7 @@ impl Writer<'_> {
             let range = range.clone();
             let base = range.start;
             let Some(text) = p.text.get(range) else { continue };
+            let sym_font = props.sym_font.as_deref().filter(|f| !f.trim().is_empty());
             let mut buf = String::new();
             for (ci, c) in text.char_indices() {
                 let special = match c {
@@ -276,6 +285,9 @@ impl Writer<'_> {
                             None => Piece::Text(String::new()),
                         })
                     }
+                    // `w:char` is a two-byte code (ST_ShortHexNumber) from U+0020, as the reader
+                    // takes it; anything else stays text.
+                    c if (0x20..=0xFFFF).contains(&u32::from(c)) => sym_font.map(|f| Piece::Sym(f, c)),
                     _ => None,
                 };
                 match special {
@@ -358,6 +370,7 @@ impl Writer<'_> {
                             Piece::Br(Some(t)) => w.empty("w:br", &[("w:type", t)]),
                             Piece::NbHyphen => w.empty("w:noBreakHyphen", &[]),
                             Piece::SoftHyphen => w.empty("w:softHyphen", &[]),
+                            Piece::Sym(font, c) => w.empty("w:sym", &[("w:font", font), ("w:char", &format!("{:04X}", u32::from(*c)))]),
                             _ => {}
                         }
                     }
@@ -565,6 +578,12 @@ impl Writer<'_> {
                 let root = match (graphic.chart.as_deref(), graphic.smart_art.as_deref(), graphic.source.as_deref()) {
                     (Some(spec), _, _) => crate::xml::parse(self.chart_graphic(spec, rels).as_bytes()).ok(),
                     (None, Some(spec), _) => crate::xml::parse(self.smart_art_graphic(spec, *gw, *gh, rels).as_bytes()).ok(),
+                    // Ink in a group member's form (no drawing of its own) can't stand alone: left
+                    // out before its parts are queued, so no orphan part or relationship is written.
+                    (None, None, Some(src)) if ink && !standalone_ink(src) => {
+                        log::warn!("docx: group-member ink outside its group can't be written; it is left out");
+                        None
+                    }
                     (None, None, Some(src)) => self.embedded_tree(src, rels, ink.then_some((*gw, *gh, float, alt.as_str()))),
                     (None, None, None) => None,
                 };
@@ -701,14 +720,14 @@ impl Writer<'_> {
                         w.open("a:graphicData", &[("uri", "http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas")]);
                         w.open("wpc:wpc", &[]);
                         w.open("wpc:bg", &[]);
-                        solid_fill(w, c.fill);
+                        write_fill(w, c.fill.as_ref());
                         w.close("wpc:bg");
                         w.open("wpc:whole", &[]);
                         match c.stroke {
                             Some(_) => w.open("a:ln", &[("w", &emu(c.stroke_width.clamp(0.0, 100.0)))]),
                             None => w.open("a:ln", &[]),
                         }
-                        solid_fill(w, c.stroke);
+                        write_fill(w, c.stroke.map(Fill::solid).as_ref());
                         w.close("a:ln");
                         w.close("wpc:whole");
                         "wpc:wpc"
@@ -741,6 +760,15 @@ impl Writer<'_> {
                         InlineObject::Shape { extra, .. } => {
                             let id = self.shape_docpr(extra.id);
                             self.wsp(w, &c.obj, Some(&id), at, rels, depth);
+                        }
+                        // Native ink kept from the file, with its fallback, at the member's place.
+                        InlineObject::Graphic { w: iw, h: ih, float, graphic, .. } if graphic.kind == wordcraft_doc::graphic::GraphicKind::Ink => {
+                            if let Some(src) = graphic.source.as_deref()
+                                && let Some(mut root) = self.embedded_tree(src, rels, None)
+                            {
+                                Self::place_member(&mut root, [c.x, c.y, *iw, *ih], float, 0);
+                                w.raw(&root.to_xml());
+                            }
                         }
                         _ => {}
                     }
@@ -1046,28 +1074,27 @@ impl Writer<'_> {
         }
         let alpha = geom.map_or(1.0, |f| f.alpha);
         let ink = geom.is_some_and(|f| f.is_ink());
-        match fill.filter(|_| !ink && !kind.is_open()) {
-            Some(c) => {
-                w.open("a:solidFill", &[]);
-                w.empty("a:srgbClr", &[("val", &c.hex())]);
-                w.close("a:solidFill");
-            }
-            None => w.empty("a:noFill", &[]),
-        }
+        write_fill(w, fill.as_ref().filter(|_| !ink && !kind.is_open()));
         match stroke {
             Some(c) => {
                 let width = emu(stroke_width.clamp(0.0, 100.0));
                 let ln: &[(&str, &str)] = if ink { &[("w", width.as_str()), ("cap", "rnd")] } else { &[("w", width.as_str())] };
                 w.open("a:ln", ln);
-                w.open("a:solidFill", &[]);
-                if alpha < 1.0 {
-                    w.open("a:srgbClr", &[("val", &c.hex())]);
-                    w.empty("a:alpha", &[("val", &n((alpha.clamp(0.0, 1.0) * 100_000.0).round() as i64))]);
-                    w.close("a:srgbClr");
+                // An outline gradient read from a file, while the outline keeps its colour (#1500).
+                let grad = extra.outline_fill.as_ref().filter(|f| !ink && f.main_color() == *c);
+                if grad.is_some() {
+                    write_fill(w, grad);
                 } else {
-                    w.empty("a:srgbClr", &[("val", &c.hex())]);
+                    w.open("a:solidFill", &[]);
+                    if alpha < 1.0 {
+                        w.open("a:srgbClr", &[("val", &c.hex())]);
+                        w.empty("a:alpha", &[("val", &n((alpha.clamp(0.0, 1.0) * 100_000.0).round() as i64))]);
+                        w.close("a:srgbClr");
+                    } else {
+                        w.empty("a:srgbClr", &[("val", &c.hex())]);
+                    }
+                    w.close("a:solidFill");
                 }
-                w.close("a:solidFill");
                 line_dash(w, &extra.dash);
                 if ink {
                     w.empty("a:round", &[]);
@@ -1156,7 +1183,9 @@ impl Writer<'_> {
         } else {
             let d = emu(float.dist.clamp(0.0, 1584.0));
             let (dt, db) = (emu(float.dist_top.clamp(0.0, 1584.0)), emu(float.dist_bottom.clamp(0.0, 1584.0)));
-            self.z += 1;
+            // The stacking order read from the file is kept; objects without one stack in
+            // document order above it.
+            self.z = if float.z > 0 { float.z } else { self.z.saturating_add(1) };
             let behind = if float.wrap == Wrap::BehindText { "1" } else { "0" };
             w.open(
                 "wp:anchor",
@@ -1169,7 +1198,7 @@ impl Writer<'_> {
                     ("relativeHeight", &self.z.to_string()),
                     ("behindDoc", behind),
                     ("locked", "0"),
-                    ("layoutInCell", "1"),
+                    ("layoutInCell", if float.outside_cell { "0" } else { "1" }),
                     ("allowOverlap", "1"),
                 ],
             );
@@ -1660,6 +1689,12 @@ fn is_toc(instr: &str) -> bool {
     instr.split_whitespace().next().is_some_and(|k| k.eq_ignore_ascii_case("TOC"))
 }
 
+/// The body TOC the writer wraps in Word's Table of Contents control (`toc_span`): not one whose
+/// heading is inside a content control already (read from a file).
+pub(crate) fn written_toc_span(bl: &Blocks) -> Option<(usize, usize)> {
+    toc_span(bl).filter(|(start, _)| !super::sdt::plan(bl).covers(*start))
+}
+
 /// The engine's TOC: a paragraph holding an empty `TOC` field, then its TOC-styled entries.
 /// Returns (heading, last entry) so the field can be written spanning the entries, as Word does.
 fn toc_span(bl: &Blocks) -> Option<(usize, usize)> {
@@ -1706,15 +1741,68 @@ pub(super) fn nv_props(w: &mut W, tag: &str, id: &str, name: &str, descr: &str, 
     w.close(tag);
 }
 
-/// A DrawingML `a:solidFill` in `c`, or `a:noFill`.
-fn solid_fill(w: &mut W, c: Option<wordcraft_doc::props::Rgb>) {
-    match c {
-        Some(c) => {
-            w.open("a:solidFill", &[]);
+/// A shape's fill: `a:solidFill` (with `a:alpha` when transparent), `a:gradFill` with everything
+/// read from the file, or `a:noFill`.
+fn write_fill(w: &mut W, f: Option<&Fill>) {
+    let pct = |v: f32| n((v * 1000.0).round() as i64);
+    let color = |w: &mut W, c: Rgb, transparency: f32| {
+        if transparency > 0.0 {
+            w.open("a:srgbClr", &[("val", &c.hex())]);
+            w.empty("a:alpha", &[("val", &pct(100.0 - transparency))]);
+            w.close("a:srgbClr");
+        } else {
             w.empty("a:srgbClr", &[("val", &c.hex())]);
+        }
+    };
+    let rect = |r: [f32; 4]| [("l", pct(r[0])), ("t", pct(r[1])), ("r", pct(r[2])), ("b", pct(r[3]))];
+    match f.and_then(Fill::sanitized) {
+        None => w.empty("a:noFill", &[]),
+        Some(Fill::Solid { color: c, transparency }) => {
+            w.open("a:solidFill", &[]);
+            color(w, c, transparency);
             w.close("a:solidFill");
         }
-        None => w.empty("a:noFill", &[]),
+        Some(Fill::Gradient(g)) => {
+            // `rotWithShape` and `scaled` are written only when set: an absent one reads back off.
+            let mut attrs = if g.rot_with_shape { vec![("rotWithShape", "1")] } else { vec![] };
+            match g.flip {
+                GradientFlip::None => {}
+                GradientFlip::X => attrs.insert(0, ("flip", "x")),
+                GradientFlip::Y => attrs.insert(0, ("flip", "y")),
+                GradientFlip::Xy => attrs.insert(0, ("flip", "xy")),
+            }
+            w.open("a:gradFill", &attrs);
+            w.open("a:gsLst", &[]);
+            for s in &g.stops {
+                w.open("a:gs", &[("pos", &pct(s.pos))]);
+                color(w, s.color, s.transparency);
+                w.close("a:gs");
+            }
+            w.close("a:gsLst");
+            match g.kind {
+                GradientKind::Linear { angle, scaled } => {
+                    let ang = n((angle * 60_000.0).round() as i64);
+                    let attrs: &[(&str, &str)] = if scaled { &[("ang", &ang), ("scaled", "1")] } else { &[("ang", &ang)] };
+                    w.empty("a:lin", attrs)
+                }
+                GradientKind::Path { shape, focus } => {
+                    let path = match shape {
+                        PathShape::Circle => "circle",
+                        PathShape::Rect => "rect",
+                        PathShape::Shape => "shape",
+                    };
+                    w.open("a:path", &[("path", path)]);
+                    let r = rect(focus);
+                    w.empty("a:fillToRect", &r.iter().map(|(k, v)| (*k, v.as_str())).collect::<Vec<_>>());
+                    w.close("a:path");
+                }
+            }
+            if let Some(t) = g.tile {
+                let r = rect(t);
+                w.empty("a:tileRect", &r.iter().map(|(k, v)| (*k, v.as_str())).collect::<Vec<_>>());
+            }
+            w.close("a:gradFill");
+        }
     }
 }
 
@@ -1744,4 +1832,39 @@ fn comment_reference_style(doc: &wordcraft_doc::Document) -> &str {
         .iter()
         .find(|s| s.kind == wordcraft_doc::styles::StyleKind::Character && s.name.eq_ignore_ascii_case("annotation reference"))
         .map_or("CommentReference", |s| s.id.as_str())
+}
+
+/// Is kept ink `src` in a form the drawing-level writer writes: its `a:graphic`, a direct run-level
+/// `w:contentPart`, or an `mc:AlternateContent` whose choice holds a drawing (not a group member's
+/// bare `w14:contentPart`, nor one in `mc:AlternateContent` with a `pic:pic` fallback)?
+fn standalone_ink(src: &wordcraft_doc::graphic::Embedded) -> bool {
+    match crate::xml::parse(src.xml.as_bytes()) {
+        Ok(root) => match root.name.as_str() {
+            "a:graphic" | "w:contentPart" => true,
+            "mc:AlternateContent" => root.child("mc:Choice").and_then(|c| c.child("w:drawing")).is_some_and(|d| d.find("a:graphic").is_some()),
+            _ => false,
+        },
+        Err(_) => false,
+    }
+}
+
+#[cfg(test)]
+mod standalone_ink_tests {
+    use super::standalone_ink;
+    use wordcraft_doc::graphic::Embedded;
+
+    fn emb(xml: &str) -> Embedded {
+        Embedded { xml: xml.into(), ..Default::default() }
+    }
+
+    /// Review: an alternate whose choice has a drawing but no `a:graphic` is not writable as ink.
+    #[test]
+    fn alternate_content_needs_a_graphic() {
+        let ns = r#"xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main""#;
+        let with =
+            format!("<mc:AlternateContent {ns}><mc:Choice Requires=\"w14\"><w:drawing><a:graphic/></w:drawing></mc:Choice></mc:AlternateContent>");
+        let without = format!("<mc:AlternateContent {ns}><mc:Choice Requires=\"w14\"><w:drawing/></mc:Choice></mc:AlternateContent>");
+        assert!(standalone_ink(&emb(&with)));
+        assert!(!standalone_ink(&emb(&without)));
+    }
 }

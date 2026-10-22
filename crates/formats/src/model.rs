@@ -5,9 +5,9 @@
 use std::sync::Arc;
 
 use wordcraft_doc::numbering::{AbstractNum, Level, ListKind, Num, levels_for};
-use wordcraft_doc::para::{InlineObject, OBJ, PAGE_BREAK, Run};
+use wordcraft_doc::para::{InlineObject, OBJ, PAGE_BREAK, RubyAlign, Run, ruby_raise};
 use wordcraft_doc::props::{
-    Border, BorderStyle, Borders, CellProps, CharProps, NumRef, ParaProps, RowProps, TextColor, Underline, VMerge, VertAlign,
+    Border, BorderStyle, Borders, CellProps, CharProps, NumRef, ParaProps, PropChange, RowProps, TextColor, Underline, VAlign, VMerge, VertAlign,
 };
 use wordcraft_doc::section::NumFormat;
 use wordcraft_doc::styles::{Style, StyleKind};
@@ -41,6 +41,16 @@ pub struct Fmt {
     pub ins: Option<RevMark>,
     /// Tracked deletion of this text. Only [`from_doc_tracked`] keeps deleted text in a flow.
     pub del: Option<RevMark>,
+    /// Tracked formatting change of this text: who made it and the formatting before it (only
+    /// [`from_doc_tracked`] and formats that keep revisions set it).
+    pub fmt_change: Option<Box<FmtChange<Fmt>>>,
+}
+
+/// A tracked formatting change in a flow: who made it, and the formatting before it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct FmtChange<T> {
+    pub mark: RevMark,
+    pub old: T,
 }
 
 /// Who made a tracked change and when (ISO 8601; empty = unknown).
@@ -81,6 +91,34 @@ pub enum Inline {
         linear: String,
         display: bool,
     },
+    /// Ruby (phonetic guide): `ruby` text (furigana, pinyin…) over `base` text, in the formatting
+    /// of the run it sits in (#1681). Formats without ruby write the base text
+    /// ([`ruby_as_text`]).
+    Ruby {
+        base: String,
+        ruby: String,
+        fmt: Fmt,
+    },
+}
+
+/// Base text size (points) a phonetic guide falls back to when the source states none: the
+/// Phonetic Guide command's own fallback for an unresolved size
+/// (`crates/engine/src/cmd/phonetic.rs`).
+pub const RUBY_BASE_SIZE: f32 = 10.5;
+
+/// Ruby text size for a base of `base_size` points: half the base size, rounded down to a half
+/// point, as the Phonetic Guide command sets it.
+fn ruby_default_size(base_size: f32) -> f32 {
+    (base_size.floor() / 2.0).max(1.0)
+}
+
+/// The ruby a format without its own ruby markup gets: a [`InlineObject::Ruby`] over `base` with
+/// the Phonetic Guide's defaults (centred, half the base size, raised clear of the base text).
+pub fn ruby_object(base: String, ruby: String, base_size: f32) -> InlineObject {
+    let base_size = if base_size.is_finite() { base_size.clamp(1.0, 1584.0) } else { RUBY_BASE_SIZE };
+    let size = ruby_default_size(base_size);
+    let raise = ruby_raise(0.0, base_size, size).clamp(0.0, 1584.0);
+    InlineObject::Ruby { base, ruby, align: RubyAlign::default(), size, raise, base_size, lang: String::new(), props: Default::default() }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -102,6 +140,8 @@ pub struct ListInfo {
     pub ordered: bool,
     /// 0-based nesting level (0..=8).
     pub level: u8,
+    /// Number of the first item of an ordered list (1 unless the source says otherwise).
+    pub start: u32,
 }
 
 /// Paragraph spacing and indents (points) that a source states on the paragraph itself (RTF);
@@ -123,6 +163,8 @@ pub struct Para {
     pub list: Option<ListInfo>,
     pub align: Option<Align>,
     pub page_break: bool,
+    /// Keep the paragraph on the same page as the next one (ODT `fo:keep-with-next`).
+    pub keep_next: bool,
     pub inlines: Vec<Inline>,
     pub spacing: Spacing,
     /// Borders the source puts on the paragraph itself (RTF `\brdrb`…).
@@ -134,6 +176,9 @@ pub struct Para {
     /// Tracked deletion of the paragraph mark (only [`from_doc_tracked`] and formats that keep
     /// revisions set it).
     pub mark_del: Option<Box<RevMark>>,
+    /// Tracked formatting change of the paragraph: the paragraph's formatting before it (kind,
+    /// list, alignment, page break, spacing and borders of `old`; its inlines are unused).
+    pub fmt_change: Option<Box<FmtChange<Para>>>,
 }
 
 impl Para {
@@ -153,12 +198,13 @@ impl Para {
         }
         self.inlines.push(Inline::Text(s.to_string(), f.clone()));
     }
-    /// The plain text (images and anchors left out; equations as their linear text).
+    /// The plain text (images and anchors left out; equations as their linear text, ruby as its
+    /// base text).
     pub fn text(&self) -> String {
         let mut s = String::new();
         for i in &self.inlines {
             match i {
-                Inline::Text(t, _) | Inline::Equation { linear: t, .. } => s.push_str(t),
+                Inline::Text(t, _) | Inline::Equation { linear: t, .. } | Inline::Ruby { base: t, .. } => s.push_str(t),
                 Inline::Image(_) | Inline::Anchor(_) | Inline::Figure(_) => {}
             }
         }
@@ -174,7 +220,7 @@ impl Para {
                     Some(font) if wordcraft_doc::symbol_fonts::is_symbol_font(font) => s.push_str(&wordcraft_doc::symbol_fonts::map_text(font, t)),
                     _ => s.push_str(t),
                 },
-                Inline::Equation { linear: t, .. } => s.push_str(t),
+                Inline::Equation { linear: t, .. } | Inline::Ruby { base: t, .. } => s.push_str(t),
                 Inline::Image(_) | Inline::Anchor(_) | Inline::Figure(_) => {}
             }
         }
@@ -227,11 +273,12 @@ pub struct Cell {
     pub shading: Option<Rgb>,
     /// The cell's own borders (RTF `\clbrdr…`), drawn whatever the table's style.
     pub borders: Option<wordcraft_doc::props::Borders>,
+    pub valign: Option<VAlign>,
 }
 
 impl Default for Cell {
     fn default() -> Self {
-        Cell { blocks: Vec::new(), colspan: 1, rowspan: 1, covered: false, header: false, shading: None, borders: None }
+        Cell { blocks: Vec::new(), colspan: 1, rowspan: 1, covered: false, header: false, shading: None, borders: None, valign: None }
     }
 }
 
@@ -346,6 +393,22 @@ pub fn equations_as_text(inlines: &[Inline]) -> std::borrow::Cow<'_, [Inline]> {
     std::borrow::Cow::Owned(p.inlines)
 }
 
+/// `inlines` with ruby as its base text, for formats that have no ruby markup: the base text (and
+/// everything around it) keeps its formatting, and the reading is left out.
+pub fn ruby_as_text(inlines: &[Inline]) -> std::borrow::Cow<'_, [Inline]> {
+    if !inlines.iter().any(|i| matches!(i, Inline::Ruby { .. })) {
+        return std::borrow::Cow::Borrowed(inlines);
+    }
+    let mut p = Para::default();
+    for i in inlines {
+        match i {
+            Inline::Ruby { base, fmt, .. } => p.push_text(base, fmt),
+            other => p.inlines.push(other.clone()),
+        }
+    }
+    std::borrow::Cow::Owned(p.inlines)
+}
+
 // ---------------------------------------------------------------------------------------------
 // Flow → Document
 
@@ -414,6 +477,43 @@ fn append(p: &mut Paragraph, text: &str, props: &CharProps, obj: Option<InlineOb
     }
 }
 
+/// The paragraph properties of a flow paragraph (its list as instance `list_num`, when given).
+fn para_props(p: &Para, list_num: Option<u32>) -> ParaProps {
+    let mut out = ParaProps {
+        style: match p.kind {
+            Kind::Heading(n) => Some(format!("Heading{}", n.clamp(1, 6))),
+            Kind::Title => Some("Title".into()),
+            Kind::Quote => Some("Quote".into()),
+            Kind::Code => Some(CODE_STYLE.into()),
+            Kind::Rule | Kind::Normal => None,
+        },
+        ..Default::default()
+    };
+    if p.kind == Kind::Rule {
+        out.borders = Some(rule_borders());
+    } else if p.borders.is_some() {
+        out.borders = p.borders;
+    }
+    if let (Some(li), Some(num)) = (p.list, list_num) {
+        if out.style.is_none() {
+            out.style = Some("ListParagraph".into());
+        }
+        out.numbering = Some(NumRef { num, level: li.level.min(8) });
+    }
+    out.align = p.align;
+    let sp = p.spacing;
+    out.space_before = sp.before;
+    out.space_after = sp.after;
+    out.line_spacing = sp.line;
+    out.indent_left = sp.left;
+    out.indent_right = sp.right;
+    out.indent_first = sp.first;
+    if p.page_break {
+        out.page_break_before = Some(true);
+    }
+    out
+}
+
 struct Builder<'a> {
     doc: &'a mut Document,
     /// Revisions already in `doc` by (kind, author, date), so each change is added once.
@@ -454,35 +554,21 @@ impl<'a> Builder<'a> {
 
     fn para(&mut self, p: &Para, list_num: Option<u32>) -> Paragraph {
         let mut out = Paragraph::new();
-        let style = match p.kind {
-            Kind::Heading(n) => Some(format!("Heading{}", n.clamp(1, 6))),
-            Kind::Title => Some("Title".into()),
-            Kind::Quote => Some("Quote".into()),
-            Kind::Code => Some(CODE_STYLE.into()),
-            Kind::Rule | Kind::Normal => None,
-        };
-        out.props.style = style;
-        if p.kind == Kind::Rule {
-            out.props.borders = Some(rule_borders());
-        } else if p.borders.is_some() {
-            out.props.borders = p.borders;
+        out.props = para_props(p, list_num);
+        if let Some(c) = &p.fmt_change {
+            // A list item stays in its list instance (only its level may differ); an old list on a
+            // paragraph that is no list now gets an instance of its own, so Reject can restore it.
+            // The same goes for an item whose list kind changed (numbered to bulleted or back).
+            let old_num = match (c.old.list, p.list, list_num) {
+                (Some(old), Some(now), Some(num)) if old.ordered == now.ordered => Some(num),
+                (Some(old), _, _) => Some(self.new_list(&[old])),
+                _ => None,
+            };
+            let old = para_props(&c.old, old_num);
+            out.props.fmt_change = PropChange::boxed(self.revision(RevisionKind::Format, &c.mark), old);
         }
-        if let (Some(li), Some(num)) = (p.list, list_num) {
-            if out.props.style.is_none() {
-                out.props.style = Some("ListParagraph".into());
-            }
-            out.props.numbering = Some(NumRef { num, level: li.level.min(8) });
-        }
-        out.props.align = p.align;
-        let sp = p.spacing;
-        out.props.space_before = sp.before.or(out.props.space_before);
-        out.props.space_after = sp.after.or(out.props.space_after);
-        out.props.line_spacing = sp.line.or(out.props.line_spacing);
-        out.props.indent_left = sp.left.or(out.props.indent_left);
-        out.props.indent_right = sp.right.or(out.props.indent_right);
-        out.props.indent_first = sp.first.or(out.props.indent_first);
-        if p.page_break {
-            out.props.page_break_before = Some(true);
+        if p.keep_next {
+            out.props.keep_next = Some(true);
         }
         out.section.clone_from(&p.section);
         // Inlines are appended in order, so build the runs directly: inserting each one through
@@ -494,8 +580,19 @@ impl<'a> Builder<'a> {
                     let mut cp = char_props(f);
                     cp.ins = f.ins.as_ref().map(|m| self.revision(RevisionKind::Insert, m));
                     cp.del = f.del.as_ref().map(|m| self.revision(RevisionKind::Delete, m));
-                    if p.kind == Kind::Code && cp.font.as_deref() == Some(MONO_FONT) {
-                        cp.font = None;
+                    if let Some(c) = &f.fmt_change {
+                        cp.fmt_change = PropChange::boxed(self.revision(RevisionKind::Format, &c.mark), char_props(&c.old));
+                    }
+                    if p.kind == Kind::Code {
+                        // Code's font comes from its style, before a change as after it.
+                        if cp.font.as_deref() == Some(MONO_FONT) {
+                            cp.font = None;
+                        }
+                        if let Some(c) = cp.fmt_change.as_deref_mut()
+                            && c.old.font.as_deref() == Some(MONO_FONT)
+                        {
+                            c.old.font = None;
+                        }
                     }
                     append(&mut out, &t, &cp, None);
                 }
@@ -515,6 +612,20 @@ impl<'a> Builder<'a> {
                     if !linear.is_empty() {
                         let obj = InlineObject::Equation { linear, display: *display, math: Default::default() };
                         append(&mut out, "", &CharProps::default(), Some(obj));
+                    }
+                }
+                Inline::Ruby { base, ruby, fmt } => {
+                    let (base, ruby) = (clean_text(base), clean_text(ruby));
+                    let cp = char_props(fmt);
+                    // A source without a base or without a reading (malformed markup) is just its
+                    // text: a guide that annotates nothing is no guide.
+                    if base.is_empty() || ruby.is_empty() {
+                        append(&mut out, if base.is_empty() { &ruby } else { &base }, &cp, None);
+                    } else {
+                        // Ruby attributes a format without them doesn't state (HTML): the
+                        // Phonetic Guide's defaults for a new guide over this run's text.
+                        let obj = ruby_object(base, ruby, cp.size.unwrap_or(RUBY_BASE_SIZE));
+                        append(&mut out, "", &cp, Some(obj));
                     }
                 }
             }
@@ -538,13 +649,25 @@ impl<'a> Builder<'a> {
                 *k = Some(li.ordered);
             }
         }
+        let mut starts: [Option<u32>; 9] = [None; 9];
+        for li in group {
+            if let Some(s) = starts.get_mut(li.level.min(8) as usize)
+                && s.is_none()
+            {
+                *s = Some(li.start);
+            }
+        }
         // Levels nobody used follow the first level's kind.
         let first = group.first().map(|l| l.ordered).unwrap_or(false);
         let levels: Vec<Level> = (0..9)
             .map(|i| {
                 let ordered = kinds.get(i).copied().flatten().unwrap_or(first);
                 let src = if ordered { &num_levels } else { &bul_levels };
-                src.get(i).cloned().unwrap_or_default()
+                let mut level = src.get(i).cloned().unwrap_or_default();
+                if ordered && let Some(s) = starts.get(i).copied().flatten() {
+                    level.start = s;
+                }
+                level
             })
             .collect();
         let numbering = &mut self.doc.numbering;
@@ -644,7 +767,15 @@ impl<'a> Builder<'a> {
                     VMerge::None
                 };
                 row.cells.push(wordcraft_doc::Cell {
-                    props: CellProps { width: Some(w), span: span as u32, vmerge, shading: c.shading, borders: c.borders, ..Default::default() },
+                    props: CellProps {
+                        width: Some(w),
+                        span: span as u32,
+                        vmerge,
+                        shading: c.shading,
+                        borders: c.borders,
+                        valign: c.valign,
+                        ..Default::default()
+                    },
                     blocks,
                     controls: Default::default(),
                 });
@@ -758,25 +889,35 @@ fn fmt_of(doc: &Document, cp: &CharProps, in_code: bool) -> Fmt {
             _ => None,
         },
         size: e.size,
-        font: if code || in_code { None } else { e.font.clone() },
+        font: if code || in_code { None } else { e.shown_font().map(str::to_string) },
         background: e.highlight.and_then(|h| h.rgb()).or(e.shading),
         ins: None,
         del: None,
+        fmt_change: None,
     }
+}
+
+/// Revision `i` as a flow mark (unknown author and date when there is none).
+fn rev_mark(doc: &Document, i: u32) -> RevMark {
+    doc.revisions.get(i as usize).map(|r| RevMark { author: r.author.clone(), date: r.date.clone(), id: Some(i) }).unwrap_or_default()
 }
 
 /// The insertion and deletion `cp` tracks, as flow marks.
 fn rev_marks(doc: &Document, cp: &CharProps) -> (Option<RevMark>, Option<RevMark>) {
-    let mark = |i: Option<u32>| {
-        i.map(|i| doc.revisions.get(i as usize).map(|r| RevMark { author: r.author.clone(), date: r.date.clone(), id: Some(i) }).unwrap_or_default())
-    };
-    (mark(cp.ins), mark(cp.del))
+    (cp.ins.map(|i| rev_mark(doc, i)), cp.del.map(|i| rev_mark(doc, i)))
 }
 
 /// Paragraph kind and list membership of a document paragraph.
 pub fn para_kind(doc: &Document, p: &Paragraph) -> (Kind, Option<ListInfo>) {
-    let rp = doc.styles.resolve_para(&p.props);
-    let style = p.props.style.as_deref().unwrap_or("Normal");
+    let blank = p.plain_text().trim().is_empty() && p.objects.iter().all(|o| o.is_marker());
+    props_kind(doc, &p.props, blank)
+}
+
+/// Paragraph kind and list membership of paragraph properties; `blank` = the paragraph shows
+/// nothing (a bottom border then makes it a rule).
+fn props_kind(doc: &Document, props: &ParaProps, blank: bool) -> (Kind, Option<ListInfo>) {
+    let rp = doc.styles.resolve_para(props);
+    let style = props.style.as_deref().unwrap_or("Normal");
     let kind = if let Some(l) = rp.outline_level {
         Kind::Heading((l + 1).min(6))
     } else if doc.styles.chain(style).iter().any(|s| s.id == "Title") {
@@ -785,17 +926,14 @@ pub fn para_kind(doc: &Document, p: &Paragraph) -> (Kind, Option<ListInfo>) {
         Kind::Quote
     } else if is_code_style(doc, style) {
         Kind::Code
-    } else if p.plain_text().trim().is_empty()
-        && p.objects.iter().all(|o| o.is_marker())
-        && rp.borders.and_then(|b| b.bottom).is_some_and(|b| b.is_visible())
-    {
+    } else if blank && rp.borders.and_then(|b| b.bottom).is_some_and(|b| b.is_visible()) {
         Kind::Rule
     } else {
         Kind::Normal
     };
     let list = rp.numbering.and_then(|n| {
         let lv = doc.numbering.level(n.num, n.level)?;
-        Some(ListInfo { ordered: !matches!(lv.format, NumFormat::Bullet | NumFormat::None), level: n.level.min(8) })
+        Some(ListInfo { ordered: !matches!(lv.format, NumFormat::Bullet | NumFormat::None), level: n.level.min(8), start: lv.start })
     });
     (kind, list)
 }
@@ -822,17 +960,20 @@ pub fn flow_paras(doc: &Document, p: &Paragraph) -> Vec<Para> {
 fn flow_paras_in(doc: &Document, p: &Paragraph, tracked: bool) -> Vec<Para> {
     let (kind, list) = para_kind(doc, p);
     let mut done: Vec<Para> = Vec::new();
+    let borders = if kind == Kind::Rule { None } else { p.props.borders.filter(|b| b.any_visible()) };
     let mut out = Para {
         kind,
         list,
         align: p.props.align,
         page_break: p.props.page_break_before.unwrap_or(false),
+        keep_next: p.props.keep_next.unwrap_or(false),
         inlines: Vec::new(),
         spacing: Spacing::default(),
-        borders: None,
+        borders,
         section: None,
         mark_ins: None,
         mark_del: None,
+        fmt_change: None,
     };
     let in_code = kind == Kind::Code;
     let mut k = 0usize;
@@ -844,6 +985,7 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, tracked: bool) -> Vec<Para> {
         let mut f = fmt_of(doc, props, in_code);
         if tracked {
             (f.ins, f.del) = rev_marks(doc, props);
+            f.fmt_change = props.fmt_change.as_deref().map(|c| Box::new(FmtChange { mark: rev_mark(doc, c.rev), old: fmt_of(doc, &c.old, in_code) }));
         }
         let mut buf = String::new();
         for c in text.chars() {
@@ -855,12 +997,14 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, tracked: bool) -> Vec<Para> {
                         list: None,
                         align: p.props.align,
                         page_break: true,
+                        keep_next: p.props.keep_next.unwrap_or(false),
                         inlines: Vec::new(),
                         spacing: Spacing::default(),
-                        borders: None,
+                        borders,
                         section: None,
                         mark_ins: None,
                         mark_del: None,
+                        fmt_change: None,
                     };
                     let prev = std::mem::replace(&mut out, next);
                     if prev.inlines.is_empty() {
@@ -883,14 +1027,21 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, tracked: bool) -> Vec<Para> {
                 continue;
             }
             match obj {
-                Some(InlineObject::Image { media, w, h, alt, .. }) => {
+                Some(o @ InlineObject::Image { media, w, h, alt, .. }) => {
                     if !buf.is_empty() {
                         out.push_text(&std::mem::take(&mut buf), &f);
                     }
+                    // A picture marked decorative keeps its description in the document, but
+                    // exports with none (`alt=""`), so screen readers skip it.
+                    let alt = if o.is_decorative() { "" } else { alt.as_str() };
                     match doc.media.get(media) {
-                        Some(data) => {
-                            out.inlines.push(Inline::Image(Img { data: data.clone(), ext: media_ext(media, data), w: *w, h: *h, alt: alt.clone() }))
-                        }
+                        Some(data) => out.inlines.push(Inline::Image(Img {
+                            data: data.clone(),
+                            ext: media_ext(media, data),
+                            w: *w,
+                            h: *h,
+                            alt: alt.to_string(),
+                        })),
                         None if !alt.is_empty() => buf.push_str(alt),
                         None => {}
                     }
@@ -912,6 +1063,14 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, tracked: bool) -> Vec<Para> {
                     let linear = if linear.is_empty() { wordcraft_doc::math::to_linear(&math.nodes) } else { linear.clone() };
                     out.inlines.push(Inline::Equation { linear, display: *display });
                 }
+                Some(InlineObject::Ruby { base, ruby, .. }) => {
+                    if !buf.is_empty() {
+                        out.push_text(&std::mem::take(&mut buf), &f);
+                    }
+                    // The base text and reading, in the run's formatting; the guide's own
+                    // attributes (alignment, size, raise) stay in the document model.
+                    out.inlines.push(Inline::Ruby { base: base.clone(), ruby: ruby.clone(), fmt: f.clone() });
+                }
                 Some(InlineObject::BookmarkStart { name }) if name != "_GoBack" => {
                     if !buf.is_empty() {
                         out.push_text(&std::mem::take(&mut buf), &f);
@@ -929,6 +1088,13 @@ fn flow_paras_in(doc: &Document, p: &Paragraph, tracked: bool) -> Vec<Para> {
     if tracked {
         let (ins, del) = rev_marks(doc, &p.mark);
         (out.mark_ins, out.mark_del) = (ins.map(Box::new), del.map(Box::new));
+        // The formatting change belongs to the paragraph the mark ends.
+        out.fmt_change = p.props.fmt_change.as_deref().map(|c| {
+            let blank = out.inlines.is_empty();
+            let (kind, list) = props_kind(doc, &c.old, blank);
+            let old = Para { kind, list, align: c.old.align, page_break: c.old.page_break_before.unwrap_or(false), ..Default::default() };
+            Box::new(FmtChange { mark: rev_mark(doc, c.rev), old })
+        });
     }
     // The paragraph that ends a section carries its properties (the last piece of it does).
     out.section.clone_from(&p.section);
@@ -979,6 +1145,7 @@ fn flow_table(doc: &Document, t: &Table, depth: usize, tracked: bool) -> FTable 
                 header,
                 shading: c.props.shading,
                 borders: c.props.borders,
+                valign: c.props.valign,
             });
         }
         rows.push(cells);
@@ -1131,6 +1298,7 @@ pub fn percent_decode(s: &str) -> Vec<u8> {
     while let Some(&c) = b.get(i) {
         if c == b'%'
             && let Some(h) = b.get(i + 1..i + 3)
+            && h.iter().all(u8::is_ascii_hexdigit)
             && let Some(hex) = std::str::from_utf8(h).ok()
             && let Ok(v) = u8::from_str_radix(hex, 16)
         {
@@ -1180,6 +1348,9 @@ impl ListCounter {
         }
         let n = match self.counts.get_mut(lv) {
             Some(c) => {
+                if *c == 0 {
+                    *c = li.start.saturating_sub(1);
+                }
                 *c = c.saturating_add(1);
                 *c
             }
@@ -1203,20 +1374,60 @@ impl ListCounter {
     }
 }
 
-/// Parse a CSS / HTML colour: `#rgb`, `#rrggbb`, `rgb(r,g,b)` or a basic name.
+fn hsl_to_rgb(h: f64, s: f64, l: f64) -> Rgb {
+    let h = (h / 360.0).rem_euclid(1.0);
+    let s = s.clamp(0.0, 1.0);
+    let l = l.clamp(0.0, 1.0);
+    if s == 0.0 {
+        let v = (l * 255.0).round().clamp(0.0, 255.0) as u8;
+        return Rgb(v, v, v);
+    }
+    let q = if l < 0.5 { l * (1.0 + s) } else { l + s - l * s };
+    let p = 2.0 * l - q;
+    let hue_to_rgb = |mut t: f64| -> f64 {
+        if t < 0.0 {
+            t += 1.0;
+        }
+        if t > 1.0 {
+            t -= 1.0;
+        }
+        if t < 1.0 / 6.0 {
+            return p + (q - p) * 6.0 * t;
+        }
+        if t < 1.0 / 2.0 {
+            return q;
+        }
+        if t < 2.0 / 3.0 {
+            return p + (q - p) * (2.0 / 3.0 - t) * 6.0;
+        }
+        p
+    };
+    let r = (hue_to_rgb(h + 1.0 / 3.0) * 255.0).round().clamp(0.0, 255.0) as u8;
+    let g = (hue_to_rgb(h) * 255.0).round().clamp(0.0, 255.0) as u8;
+    let b = (hue_to_rgb(h - 1.0 / 3.0) * 255.0).round().clamp(0.0, 255.0) as u8;
+    Rgb(r, g, b)
+}
+
+/// Parse a CSS / HTML colour: `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, `rgb(...)`, `hsl(...)` or a basic name.
 pub fn parse_color(s: &str) -> Option<Rgb> {
     let s = s.trim().to_ascii_lowercase();
     if let Some(h) = s.strip_prefix('#') {
-        if h.len() == 3 && h.is_ascii() {
+        if (h.len() == 3 || h.len() == 4) && h.is_ascii() {
             let d = |i: usize| h.get(i..i + 1).and_then(|x| u8::from_str_radix(x, 16).ok()).map(|v| v * 17);
             return Some(Rgb(d(0)?, d(1)?, d(2)?));
+        }
+        if h.len() == 8 && h.is_ascii() {
+            let p = |i: usize| h.get(i..i + 2).and_then(|x| u8::from_str_radix(x, 16).ok());
+            return Some(Rgb(p(0)?, p(2)?, p(4)?));
         }
         return Rgb::parse(h);
     }
     if let Some(inner) = s.strip_prefix("rgb(").or_else(|| s.strip_prefix("rgba(")) {
-        let v: Vec<u8> = inner
-            .trim_end_matches(')')
-            .split(',')
+        let inner = inner.trim_end_matches(')').trim();
+        let before_slash = inner.split('/').next().unwrap_or(inner);
+        let parts: Vec<&str> = if before_slash.contains(',') { before_slash.split(',').collect() } else { before_slash.split_whitespace().collect() };
+        let v: Vec<u8> = parts
+            .iter()
             .take(3)
             .filter_map(|x| {
                 let x = x.trim();
@@ -1231,6 +1442,35 @@ pub fn parse_color(s: &str) -> Option<Rgb> {
             return Some(Rgb(r, g, b));
         }
         return None;
+    }
+    if let Some(inner) = s.strip_prefix("hsl(").or_else(|| s.strip_prefix("hsla(")) {
+        let inner = inner.trim_end_matches(')').trim();
+        let before_slash = inner.split('/').next().unwrap_or(inner);
+        let parts: Vec<&str> = if before_slash.contains(',') { before_slash.split(',').collect() } else { before_slash.split_whitespace().collect() };
+        if parts.len() < 3 {
+            return None;
+        }
+        let h_str = parts[0].trim();
+        let h: f64 = if let Some(deg) = h_str.strip_suffix("deg") {
+            deg.trim().parse().ok()?
+        } else if let Some(rad) = h_str.strip_suffix("rad") {
+            rad.trim().parse::<f64>().ok()? * 180.0 / std::f64::consts::PI
+        } else if let Some(turn) = h_str.strip_suffix("turn") {
+            turn.trim().parse::<f64>().ok()? * 360.0
+        } else {
+            h_str.parse().ok()?
+        };
+        let parse_pct = |x: &str| -> Option<f64> {
+            let x = x.trim();
+            if let Some(p) = x.strip_suffix('%') {
+                Some((p.trim().parse::<f64>().ok()? / 100.0).clamp(0.0, 1.0))
+            } else {
+                Some(x.parse::<f64>().ok()?.clamp(0.0, 1.0))
+            }
+        };
+        let s = parse_pct(parts[1])?;
+        let l = parse_pct(parts[2])?;
+        return Some(hsl_to_rgb(h, s, l));
     }
     Some(match s.as_str() {
         "black" => Rgb(0, 0, 0),
@@ -1259,6 +1499,14 @@ mod tests {
     use super::*;
 
     #[test]
+    fn percent_decode_requires_hex_digits() {
+        assert_eq!(percent_decode("%+A"), b"%+A".to_vec());
+        assert_eq!(percent_decode("%-A"), b"%-A".to_vec());
+        assert_eq!(percent_decode("%G1"), b"%G1".to_vec());
+        assert_eq!(percent_decode("%41"), b"A".to_vec());
+    }
+
+    #[test]
     fn insert_covered_is_bounded_on_hostile_rowspan() {
         // Many rows each carrying the maximum rowspan would be O(rows × rowspan) covered cells;
         // the work cap must keep insertion bounded (and quick) instead of exhausting memory.
@@ -1282,8 +1530,15 @@ mod tests {
     #[test]
     fn colors() {
         assert_eq!(parse_color("#f00"), Some(Rgb(255, 0, 0)));
+        assert_eq!(parse_color("#f00f"), Some(Rgb(255, 0, 0)));
         assert_eq!(parse_color("#0080FF"), Some(Rgb(0, 128, 255)));
+        assert_eq!(parse_color("#0080ff80"), Some(Rgb(0, 128, 255)));
         assert_eq!(parse_color("rgb(1, 2, 3)"), Some(Rgb(1, 2, 3)));
+        assert_eq!(parse_color("rgb(1 2 3)"), Some(Rgb(1, 2, 3)));
+        assert_eq!(parse_color("rgb(1 2 3 / 50%)"), Some(Rgb(1, 2, 3)));
+        assert_eq!(parse_color("hsl(0, 100%, 50%)"), Some(Rgb(255, 0, 0)));
+        assert_eq!(parse_color("hsl(120deg 100% 50%)"), Some(Rgb(0, 255, 0)));
+        assert_eq!(parse_color("hsla(240, 100%, 50%, 0.8)"), Some(Rgb(0, 0, 255)));
         assert_eq!(parse_color("navy"), Some(Rgb(0, 0, 128)));
         assert_eq!(parse_color("#zz"), None);
         assert_eq!(parse_color("rgb(1)"), None);
@@ -1292,12 +1547,12 @@ mod tests {
     #[test]
     fn list_labels() {
         let mut c = ListCounter::default();
-        let o = |level| ListInfo { ordered: true, level };
+        let o = |level| ListInfo { ordered: true, level, start: 1 };
         assert_eq!(c.label(o(0)), "1.");
         assert_eq!(c.label(o(1)), "a.");
         assert_eq!(c.label(o(1)), "b.");
         assert_eq!(c.label(o(0)), "2.");
-        assert_eq!(c.label(ListInfo { ordered: false, level: 0 }), "•");
+        assert_eq!(c.label(ListInfo { ordered: false, level: 0, start: 1 }), "•");
     }
 
     #[test]

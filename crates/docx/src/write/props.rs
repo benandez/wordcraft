@@ -106,11 +106,18 @@ pub fn rpr_inner(w: &mut W, c: &CharProps) {
     }
     toggle(w, "w:rtl", c.rtl);
     toggle(w, "w:cs", c.cs);
-    match (&c.lang, &c.lang_bidi) {
-        (Some(l), Some(b)) => w.empty("w:lang", &[("w:val", l), ("w:bidi", b)]),
-        (Some(l), None) => w.val("w:lang", l),
-        (None, Some(b)) => w.empty("w:lang", &[("w:bidi", b)]),
-        (None, None) => {}
+    let mut lang_attrs: Vec<(&str, &str)> = Vec::with_capacity(3);
+    if let Some(l) = &c.lang {
+        lang_attrs.push(("w:val", l));
+    }
+    if let Some(ea) = &c.lang_ea {
+        lang_attrs.push(("w:eastAsia", ea));
+    }
+    if let Some(b) = &c.lang_bidi {
+        lang_attrs.push(("w:bidi", b));
+    }
+    if !lang_attrs.is_empty() {
+        w.empty("w:lang", &lang_attrs);
     }
     // After w:lang (CT_RPr's sequence).
     if let Some(l) = &c.east_asian_layout {
@@ -247,10 +254,17 @@ pub fn ppr_inner(w: &mut W, p: &ParaProps, framed: bool, num_change: Option<&Cha
     toggle(w, "w:keepLines", p.keep_lines);
     toggle(w, "w:pageBreakBefore", p.page_break_before);
     if framed && let Some(lines) = p.drop_cap.filter(|l| *l > 0) {
-        w.empty(
-            "w:framePr",
-            &[("w:dropCap", "drop"), ("w:lines", &n(lines.min(10) as i64)), ("w:wrap", "around"), ("w:vAnchor", "text"), ("w:hAnchor", "text")],
-        );
+        // ECMA-376 §17.3.1.11: the drop cap's frame — dropped or in the margin, the lines it
+        // spans and its distance from the text (`w:hSpace`, twips).
+        let kind = if p.drop_cap_margin == Some(true) { "margin" } else { "drop" };
+        let lines = n(lines.min(10) as i64);
+        let space = p.drop_cap_distance.filter(|d| d.is_finite() && *d > 0.0).map(|d| twips(d.min(wordcraft_doc::resolve::MAX_DROP_CAP_DISTANCE)));
+        let mut a: Vec<(&str, &str)> = vec![("w:dropCap", kind), ("w:lines", &lines)];
+        if let Some(h) = &space {
+            a.push(("w:hSpace", h));
+        }
+        a.extend([("w:wrap", "around"), ("w:vAnchor", "text"), ("w:hAnchor", "text")]);
+        w.empty("w:framePr", &a);
     } else if let Some(f) = &p.frame {
         let (fw, fh, fx, fy) = (f.w.map(twips), f.h.map(twips), twips(f.x), twips(f.y));
         let (hs, vs) = (twips(f.h_space), twips(f.v_space));

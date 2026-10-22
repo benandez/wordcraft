@@ -670,7 +670,17 @@ fn step(s: &mut Session, dir: i64) -> CmdResult {
     Ok(json!({"index": idx, "count": n}))
 }
 
+/// Replace needs something to look for: the `text` given, or the last search's (Find then Replace
+/// with just a `with`). Neither is a call that would silently replace nothing (a misspelt `text`).
+fn need_query(s: &Session, v: &Value) -> Result<(), CmdError> {
+    if p::str(v, "text").is_none() && s.find.query.is_empty() {
+        return Err(CmdError::Params("`text` (string) is required".into()));
+    }
+    Ok(())
+}
+
 fn replace(s: &mut Session, v: &Value) -> CmdResult {
+    need_query(s, v)?;
     read_opts(s, v);
     let story = s.sel.focus.story;
     let results = search_full(s, story, true)?;
@@ -686,6 +696,7 @@ fn replace(s: &mut Session, v: &Value) -> CmdResult {
 /// Every match replaced, last first so earlier positions stay valid (one undo step). A `\r` in
 /// the replacement (`^p`) splits the paragraph.
 fn replace_all(s: &mut Session, v: &Value) -> CmdResult {
+    need_query(s, v)?;
     read_opts(s, v);
     let story = s.sel.focus.story;
     let results = search_full(s, story, true)?;
@@ -699,7 +710,8 @@ fn replace_all(s: &mut Session, v: &Value) -> CmdResult {
             super::paste_text(s, &with)?;
             continue;
         }
-        let props = s.doc.para_at(&a).map(|p| p.props_of_char(a.off).clone()).unwrap_or_default();
+        // Replacing a symbol gives the new text the symbol's formatting, not its own font.
+        let props = s.doc.para_at(&a).map(|p| p.props_of_char(a.off).clone().without_symbol()).unwrap_or_default();
         let mut at = s.doc.delete_range(&a, &b)?;
         for (k, part) in with.split(['\r', '\u{2029}']).enumerate() {
             if k > 0 {
@@ -763,7 +775,8 @@ fn goto(s: &mut Session, v: &Value) -> CmdResult {
 
 fn painter_pick(s: &mut Session) {
     let f = s.sel.ordered().0;
-    let chr = s.doc.para_at(&f).map(|p| p.props_of_char(f.off).clone()).unwrap_or_default();
+    // A symbol's own font isn't formatting to paint onto text.
+    let chr = s.doc.para_at(&f).map(|p| p.props_of_char(f.off).clone().without_symbol()).unwrap_or_default();
     let para = s.doc.para_at(&f).map(|p| p.props.clone()).unwrap_or_default();
     s.painter = Some((chr, para, false));
 }

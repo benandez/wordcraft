@@ -4,6 +4,7 @@
 //! caret). Picture adjustments re-encode the bitmap (originals are kept for Reset Picture).
 
 use serde_json::{Value, json};
+use wordcraft_doc::graphic::GraphicKind;
 use wordcraft_doc::para::{Float, InlineObject, Wrap, WrapText};
 use wordcraft_doc::props::{Rgb, TextVert, VAlign};
 use wordcraft_doc::{Pos, StoryRef, TextBody};
@@ -56,15 +57,23 @@ fn has_movable(s: &Session) -> Option<&'static str> {
         _ => has_object(s),
     }
 }
+/// Word's own ink in a group is kept in the form a group member takes; it can't stand on its own
+/// yet, so such a group stays whole.
+const INK_GROUP: &str = "a group holding Word ink can't be ungrouped yet";
+/// Does group `o` hold a member that can't stand on its own (Word's ink)?
+fn holds_ink(o: &InlineObject) -> bool {
+    matches!(o, InlineObject::Group { children, .. } if children.iter().any(|c| matches!(&c.obj, InlineObject::Graphic { graphic, .. } if graphic.kind == GraphicKind::Ink)))
+}
 fn has_group(s: &Session) -> Option<&'static str> {
     match selected(s) {
         Some((_, o)) if o.is_canvas() => Some("a drawing canvas can't be ungrouped"),
+        Some((_, o)) if holds_ink(&o) => Some(INK_GROUP),
         Some((_, InlineObject::Group { .. })) => None,
         _ => Some("select a group first"),
     }
 }
 /// Shape Fill and Shape Outline: a shape, or a Drawing Canvas's background and border.
-fn has_shape_or_canvas(s: &Session) -> Option<&'static str> {
+pub(crate) fn has_shape_or_canvas(s: &Session) -> Option<&'static str> {
     match selected(s) {
         Some((_, o)) if o.is_canvas() => None,
         _ => has_shape(s),
@@ -82,10 +91,14 @@ fn has_shape(s: &Session) -> Option<&'static str> {
 
 pub fn specs() -> Vec<CommandSpec> {
     vec![
-        CommandSpec::new("picture.size", "Size", "Picture Format › Size", size).params(r#"{"width"?: pt, "height"?: pt, "lockAspect"?: bool, "scale"?: percent}"#).when(has_sizable),
+        CommandSpec::new("picture.size", "Size", "Picture Format › Size", size)
+            .params(
+                r#"{"width"?: pt, "height"?: pt, "lockAspect"?: bool, "scale"?: percent, "original"?: bool} (scale: of the current size, or with original of the picture's original size, its pixels at 96 ppi less what is cropped; original alone restores that size; one side alone keeps the proportions unless lockAspect is false; 1–4000 pt: when the proportions are kept, a side past 4000 pt shrinks the other with it)"#,
+            )
+            .when(has_sizable),
         CommandSpec::new("picture.crop", "Crop", "Picture Format › Size", crop)
             .params(
-                r#"{"left"?, "top"?, "right"?, "bottom"? (fractions of the source 0–0.45; a side left out is uncropped), "width"?: pt, "height"?: pt (the new display size, in the same undo step; a floating picture also moves by what a left/top crop trims, so the visible part stays put)}"#,
+                r#"{"left"?, "top"?, "right"?, "bottom"? (fractions of the source 0–0.95; the two sides of an axis keep at least 5% between them; a side left out is uncropped), "width"?: pt, "height"?: pt (the new display size, in the same undo step; a floating picture also moves by what a left/top crop trims, so the visible part stays put)}"#,
             )
             .when(has_picture),
         // Kept for scripts written before every object had alt text: `object.altText` on a picture.
@@ -151,32 +164,11 @@ pub fn specs() -> Vec<CommandSpec> {
         .params(r#"{"color": "RRGGBB"}"#)
         .when(has_picture),
         CommandSpec::new("picture.effects", "Artistic Effects", "Picture Format › Adjust", |s, v| {
+            // One effect at a time, as in Word: a second one replaces the first (#2052).
             let e = p::str(v, "effect").unwrap_or("blur").to_string();
-            adjust(s, move |img| match e.as_str() {
-                "blur" => img.blur(3.0),
-                "sharpen" => img.unsharpen(2.0, 2),
-                "invert" => {
-                    let mut i = img;
-                    i.invert();
-                    i
-                }
-                "posterize" => {
-                    let mut rgba = img.to_rgba8();
-                    for px in rgba.pixels_mut() {
-                        for c in px.0.iter_mut().take(3) {
-                            *c = (*c / 64) * 85;
-                        }
-                    }
-                    image::DynamicImage::ImageRgba8(rgba)
-                }
-                "pixelate" => {
-                    let (w, h) = (img.width().max(1), img.height().max(1));
-                    img.resize_exact((w / 12).max(1), (h / 12).max(1), image::imageops::FilterType::Nearest).resize_exact(w, h, image::imageops::FilterType::Nearest)
-                }
-                _ => img,
-            })
+            relook(s, move |l| l.effect = (e != "none").then_some(e))
         })
-        .params(r#"{"effect": "blur|sharpen|invert|posterize|pixelate"}"#)
+        .params(r#"{"effect": "blur|sharpen|invert|posterize|pixelate|none"} (replaces the picture's effect)"#)
         .when(has_picture),
         CommandSpec::new("picture.transparency", "Transparency", "Picture Format › Adjust", |s, v| {
             let t = p::f32(v, "percent").unwrap_or(50.0).clamp(0.0, 100.0);
@@ -230,17 +222,22 @@ pub fn specs() -> Vec<CommandSpec> {
         .params(r#"{"path"?: string, "data"?: base64}"#)
         .when(has_picture),
         CommandSpec::new("picture.style", "Picture Styles", "Picture Format › Picture Styles", |s, v| {
+            // A style replaces the picture's style and border, as Word's gallery does (#2052).
             let style = p::str(v, "style").unwrap_or("simpleFrame").to_string();
-            adjust(s, move |img| picture_style(img, &style))
+            relook(s, move |l| {
+                l.style = Some(style);
+                l.border = None;
+            })
         })
-        .params(r#"{"style": "simpleFrame|thickFrame|rounded|softEdge|shadow"}"#)
+        .params(r#"{"style": "simpleFrame|thickFrame|rounded|softEdge|shadow"} (replaces the picture's style and border)"#)
         .when(has_picture),
         CommandSpec::new("picture.border", "Picture Border", "Picture Format › Picture Styles", |s, v| {
             let c = p::str(v, "color").and_then(Rgb::parse).unwrap_or(Rgb::BLACK);
             let w = p::u64(v, "width").unwrap_or(4).clamp(1, 200) as u32;
-            adjust(s, move |img| frame(img, w, [c.0, c.1, c.2, 255]))
+            // Replaces the picture's border, keeping its style (#2052).
+            relook(s, move |l| l.border = Some((c, w)))
         })
-        .params(r#"{"color"?: "RRGGBB", "width"?: px}"#)
+        .params(r#"{"color"?: "RRGGBB", "width"?: px} (replaces the picture's border)"#)
         .when(has_picture),
         CommandSpec::new("arrange.rotate", "Rotate", "Layout › Arrange", |s, v| {
             // Turns and flips are the object's angle and mirroring (DrawingML `a:xfrm`): the
@@ -327,10 +324,10 @@ pub fn specs() -> Vec<CommandSpec> {
         .when(has_movable),
         CommandSpec::new("arrange.selectionPane", "Selection Pane", "Layout › Arrange", objects_list).pure(),
         CommandSpec::new("arrange.bounds", "Move or Resize", "Layout › Arrange", bounds)
-            .params(r#"{"width"?: pt, "height"?: pt, "x"?: pt, "y"?: pt, "page"?: n}  (x/y: the top-left on page `page` (0-based, default its page); moving an inline object floats it)"#)
+            .params(r#"{"width"?: pt, "height"?: pt, "x"?: pt, "y"?: pt, "page"?: n, "to"?: Pos}  (x/y: the top-left on page `page` (0-based, default its page); moving an inline object by x/y floats it. to: an In Line with Text object moves to that text position and stays inline, as a drag does)"#)
             .when(has_movable),
         CommandSpec::new("arrange.copyTo", "Copy to", "Layout › Arrange", copy_to)
-            .params(r#"{"x": pt, "y": pt, "page"?: n}  (Ctrl+drag: a copy of the selected object lands with its top-left there and is selected; the original and the clipboard stay as they were)"#)
+            .params(r#"{"x": pt, "y": pt, "page"?: n} | {"to": Pos}  (Ctrl+drag: a copy of the selected object lands with its top-left there, or an In Line with Text one at the text position `to`, and is selected; the original and the clipboard stay as they were)"#)
             .when(has_movable),
         CommandSpec::new("arrange.nudge", "Nudge", "Layout › Arrange", |s, v| {
             let d = |k| p::f32(v, k).unwrap_or(0.0).clamp(-MAX_OFFSET, MAX_OFFSET);
@@ -360,24 +357,14 @@ pub fn specs() -> Vec<CommandSpec> {
         })
         .params(r#"{"index"?: n}"#)
         .pure(),
-        CommandSpec::new("shape.fill", "Shape Fill", "Shape Format › Shape Styles", |s, v| {
-            let c = p::str(v, "color").and_then(Rgb::parse);
-            with_obj(s, |o| {
-                if let InlineObject::Shape { fill, .. } = o {
-                    *fill = c;
-                } else if let Some(style) = super::canvas::style_mut(o) {
-                    style.fill = c;
-                }
-            })
-        })
-        .params(r#"{"color": "RRGGBB" | null}  (a selected drawing canvas: its background)"#)
-        .when(has_shape_or_canvas),
         CommandSpec::new("shape.outline", "Shape Outline", "Shape Format › Shape Styles", |s, v| {
             let c = p::str(v, "color").and_then(Rgb::parse);
             let w = p::f32(v, "width").map(|w| w.clamp(0.0, 72.0));
             with_obj(s, |o| {
-                if let InlineObject::Shape { stroke, stroke_width, .. } = o {
+                if let InlineObject::Shape { stroke, stroke_width, extra, .. } = o {
                     *stroke = c;
+                    // A colour chosen here replaces an outline gradient from a file.
+                    extra.outline_fill = None;
                     if let Some(w) = w {
                         *stroke_width = w;
                     }
@@ -681,6 +668,10 @@ fn bounds(s: &mut Session, v: &Value) -> CmdResult {
         (None, None) => None,
         _ => return Err(CmdError::Params("`x` and `y` go together".into())),
     };
+    let in_text = text_target(v, &obj)?;
+    if in_text.is_some() && to.is_some() {
+        return Err(CmdError::Params("`to` or `x`/`y`, not both".into()));
+    }
     let (w0, h0) = obj_size(&obj);
     let min = min_size(&obj);
     let w = p::f32(v, "width").unwrap_or(w0).clamp(min, MAX_OFFSET);
@@ -688,24 +679,92 @@ fn bounds(s: &mut Session, v: &Value) -> CmdResult {
     if (w, h) != (w0, h0) {
         with_obj(s, |o| o.set_size(w, h))?;
     }
-    let pos = match to {
-        Some((x, y)) => move_object(s, pos, p::u64(v, "page"), x, y, (w, h))?,
-        None => pos,
+    let pos = match (to, in_text) {
+        (Some((x, y)), _) => move_object(s, pos, p::u64(v, "page"), x, y, (w, h))?,
+        (None, Some(at)) => move_in_text(s, pos, &at)?,
+        (None, None) => pos,
     };
-    s.sel = Selection { anchor: pos.clone(), focus: Pos { off: pos.off + wordcraft_doc::para::OBJ.len_utf8(), ..pos.clone() } };
+    select_object(s, &pos);
     let o = s.doc.para_at(&pos).and_then(|p| p.object_at(pos.off)).cloned();
     Ok(json!({"object": serde_json::to_value(o).unwrap_or(Value::Null), "pos": super::pos_json(&pos)}))
 }
 
+/// Select the object whose character is at `pos`.
+fn select_object(s: &mut Session, pos: &Pos) {
+    s.sel = Selection { anchor: pos.clone(), focus: Pos { off: pos.off + wordcraft_doc::para::OBJ.len_utf8(), ..pos.clone() } };
+}
+
+/// The text position in `v`'s `to`, for an In Line with Text `obj` (a floating one is placed by
+/// `x`/`y`); None without one.
+fn text_target(v: &Value, obj: &InlineObject) -> Result<Option<Pos>, CmdError> {
+    let Some(to) = v.get("to").filter(|t| !t.is_null()) else { return Ok(None) };
+    if obj.is_floating() {
+        return Err(CmdError::Params("`to` places an In Line with Text object; move a floating one by `x` and `y`".into()));
+    }
+    super::parse_pos(to).map(Some).ok_or_else(|| CmdError::Params("bad `to`".into()))
+}
+
+/// The text position `to` an In Line with Text object at `pos` can land at: in the object's own
+/// story (a table cell there too), not inside a field's code or such (it's clamped to a
+/// character).
+fn landing(s: &Session, pos: &Pos, to: &Pos) -> Result<Pos, CmdError> {
+    if pos.path.depth() > 0 || !movable_story(s, pos.story) {
+        return Err(CmdError::Disabled("only objects in the body text, headers and footers can be moved".into()));
+    }
+    if to.story != pos.story || s.doc.para_at(to).is_none() {
+        return Err(CmdError::Params("`to` must be a position in the object's own text".into()));
+    }
+    Ok(s.doc.clamp(to))
+}
+
+/// Move the In Line with Text object at `pos` to the text position `to`, where it stays In Line
+/// with Text, keeping its character formatting: Word's drag of an inline picture, which lands
+/// where its dashed insertion cursor was (#2233, #2234). Dropped on itself, nothing changes.
+/// Returns the object's position afterwards.
+fn move_in_text(s: &mut Session, pos: Pos, to: &Pos) -> Result<Pos, CmdError> {
+    let to = landing(s, &pos, to)?;
+    let len = wordcraft_doc::para::OBJ.len_utf8();
+    let same_para = to.path == pos.path;
+    if same_para && (to.off == pos.off || to.off == pos.off + len) {
+        return Ok(pos);
+    }
+    let para = s.doc.para_at(&pos).ok_or_else(|| CmdError::Failed("object vanished".into()))?;
+    let obj = para.object_at(pos.off).cloned().ok_or_else(|| CmdError::Failed("object vanished".into()))?;
+    let props = para.props_of_char(pos.off).clone();
+    s.doc.delete_range(&pos, &Pos { off: pos.off + len, ..pos.clone() })?;
+    let mut at = to;
+    if same_para && at.off > pos.off {
+        at.off = at.off.saturating_sub(len);
+    }
+    let at = s.doc.clamp(&at);
+    s.doc.insert_object(&at, obj, &props)?;
+    Ok(at)
+}
+
 /// Ctrl+drag: copy the selected object (a text box gets its own story) and move the copy to
-/// (x, y), leaving the original in place and the clipboard alone. The copy is selected.
+/// (x, y), or for an In Line with Text object put it at the text position `to`, leaving the
+/// original in place and the clipboard alone. The copy is selected.
 fn copy_to(s: &mut Session, v: &Value) -> CmdResult {
-    let (pos, _) = selected(s).ok_or_else(|| CmdError::Disabled("no picture or shape selected".into()))?;
+    let (pos, obj) = selected(s).ok_or_else(|| CmdError::Disabled("no picture or shape selected".into()))?;
+    let len = wordcraft_doc::para::OBJ.len_utf8();
+    let end = Pos { off: pos.off + len, ..pos.clone() };
+    if let Some(to) = text_target(v, &obj)? {
+        if p::f32(v, "x").is_some() || p::f32(v, "y").is_some() {
+            return Err(CmdError::Params("`to` or `x`/`y`, not both".into()));
+        }
+        let at = landing(s, &pos, &to)?;
+        let frag = s.doc.copy_range(&pos, &end);
+        s.sel = Selection::caret(at.clone());
+        super::paste::insert(s, frag)?;
+        // The copy starts where it was pasted.
+        let copy = s.doc.clamp(&at);
+        select_object(s, &copy);
+        let o = s.doc.para_at(&copy).and_then(|p| p.object_at(copy.off)).cloned();
+        return Ok(json!({"object": serde_json::to_value(o).unwrap_or(Value::Null), "pos": super::pos_json(&copy)}));
+    }
     if p::f32(v, "x").is_none() || p::f32(v, "y").is_none() {
         return Err(CmdError::Params("`x` and `y` are required".into()));
     }
-    let len = wordcraft_doc::para::OBJ.len_utf8();
-    let end = Pos { off: pos.off + len, ..pos.clone() };
     let frag = s.doc.copy_range(&pos, &end);
     s.sel = Selection::caret(end.clone());
     super::paste::insert(s, frag)?;
@@ -721,15 +780,39 @@ fn copy_to(s: &mut Session, v: &Value) -> CmdResult {
 /// text it lands on flows around it, and it moves with that text. On a page where no paragraph
 /// starts, it anchors to the nearest line and is positioned on the page. Returns the object's
 /// position afterwards.
+///
+/// A drop across pages can be thrown back: while the object sits on its old page it wraps text
+/// away from the paragraph it is anchored to, so once it has moved, that paragraph can move back
+/// onto the old page itself — and the object goes with it. Dropping near the top of the next
+/// page does it every time (the anchor is that page's first paragraph, which fits on the old page
+/// again once the object's wrap is gone). So a cross-page drop is anchored again until the object
+/// really stays on the page asked for: the later passes see the pagination as it now is. A
+/// same-page move (a resize, a nudge) places once, and a drop that still won't stay keeps its
+/// last place rather than failing.
 fn move_object(s: &mut Session, pos: Pos, page: Option<u64>, x: f32, y: f32, (w, h): (f32, f32)) -> Result<Pos, CmdError> {
+    let cur = s.layout().object(&pos, s.page_hint).ok_or_else(|| CmdError::Failed("the object isn't laid out".into()))?.page;
+    let target = page.map_or(cur, |n| usize::try_from(n).unwrap_or(usize::MAX));
+    let tries = if target == cur { 1 } else { 3 };
+    let mut at = pos;
+    for _ in 0..tries {
+        at = move_object_once(s, &at, target, x, y, (w, h))?;
+        s.touch();
+        if s.layout().object(&at, target).is_some_and(|hit| hit.page == target) {
+            break;
+        }
+    }
+    Ok(at)
+}
+
+/// [`move_object`]'s one placement: move the object's character to the anchor under (x, y) on
+/// `page` and offset it from there.
+fn move_object_once(s: &mut Session, pos: &Pos, page: usize, x: f32, y: f32, (w, h): (f32, f32)) -> Result<Pos, CmdError> {
     use wordcraft_doc::para::Anchor;
     if pos.path.depth() > 0 || !movable_story(s, pos.story) {
         return Err(CmdError::Disabled("only objects in the body text, headers and footers can be moved".into()));
     }
     let story = pos.story;
     let layout = s.layout();
-    let cur = layout.object(&pos, s.page_hint).ok_or_else(|| CmdError::Failed("the object isn't laid out".into()))?;
-    let page = page.map_or(cur.page, |n| usize::try_from(n).unwrap_or(usize::MAX));
     let pg = layout.pages.get(page).ok_or_else(|| CmdError::Params(format!("no page {page}")))?;
     // Keep a corner of it on the page.
     let x = x.max(12.0 - w).min(pg.w - 12.0);
@@ -741,11 +824,11 @@ fn move_object(s: &mut Session, pos: Pos, page: Option<u64>, x: f32, y: f32, (w,
     };
     // Move its character to the anchor (unless it's already in that paragraph).
     let at = if anchor.story == pos.story && anchor.path == pos.path && !on_page {
-        pos
+        pos.clone()
     } else {
-        let obj = s.doc.para_at(&pos).and_then(|p| p.object_at(pos.off)).cloned().ok_or_else(|| CmdError::Failed("object vanished".into()))?;
+        let obj = s.doc.para_at(pos).and_then(|p| p.object_at(pos.off)).cloned().ok_or_else(|| CmdError::Failed("object vanished".into()))?;
         let len = wordcraft_doc::para::OBJ.len_utf8();
-        s.doc.delete_range(&pos, &Pos { off: pos.off + len, ..pos.clone() })?;
+        s.doc.delete_range(pos, &Pos { off: pos.off + len, ..pos.clone() })?;
         let mut at = anchor;
         if at.story == pos.story && at.path == pos.path && at.off > pos.off {
             at.off = at.off.saturating_sub(len);
@@ -754,27 +837,27 @@ fn move_object(s: &mut Session, pos: Pos, page: Option<u64>, x: f32, y: f32, (w,
         s.doc.insert_object(&at, obj, &wordcraft_doc::CharProps::default())?;
         at
     };
-    let (h_rel, v_rel) = if on_page { (Anchor::Page, Anchor::Page) } else { (Anchor::Column, Anchor::Paragraph) };
+    // First on the page where it was dropped, so the text wraps around it as it will in the end.
     edit_float(s, &at, |f| {
         if f.wrap == Wrap::Inline {
             f.wrap = Wrap::Square;
         }
-        f.h_rel = h_rel;
-        f.v_rel = v_rel;
+        f.h_rel = Anchor::Page;
+        f.v_rel = Anchor::Page;
         f.h_align = None;
         f.v_align = None;
-        f.x = 0.0;
-        f.y = 0.0;
+        f.x = x.clamp(-MAX_OFFSET, MAX_OFFSET);
+        f.y = y.clamp(-MAX_OFFSET, MAX_OFFSET);
     })?;
-    // Offsets from where the anchor puts it (its paragraph may have moved with the edit).
-    let origin = if on_page {
-        wordcraft_geom::Point::new(0.0, 0.0)
-    } else {
-        s.touch(); // lay out the edit so far
-        let layout = s.layout();
-        layout.object(&at, page).ok_or_else(|| CmdError::Failed("the object isn't laid out".into()))?.origin
-    };
+    if on_page {
+        return Ok(at);
+    }
+    // Then offsets from its paragraph, as laid out with the object there.
+    s.touch();
+    let origin = s.layout().object(&at, page).ok_or_else(|| CmdError::Failed("the object isn't laid out".into()))?.origin;
     edit_float(s, &at, |f| {
+        f.h_rel = Anchor::Column;
+        f.v_rel = Anchor::Paragraph;
         f.x = (x - origin.x).clamp(-MAX_OFFSET, MAX_OFFSET);
         f.y = (y - origin.y).clamp(-MAX_OFFSET, MAX_OFFSET);
     })?;
@@ -924,7 +1007,7 @@ fn with_obj(s: &mut Session, f: impl Fn(&mut InlineObject)) -> CmdResult {
 }
 
 /// Change the object at `pos`; returns it afterwards.
-fn edit_obj(s: &mut Session, pos: &Pos, f: impl Fn(&mut InlineObject)) -> Result<InlineObject, CmdError> {
+pub(crate) fn edit_obj(s: &mut Session, pos: &Pos, f: impl Fn(&mut InlineObject)) -> Result<InlineObject, CmdError> {
     let para = s.doc.para_mut(pos.story, &pos.path)?;
     let o = para.object_at_mut(pos.off).ok_or_else(|| CmdError::Failed("object vanished".into()))?;
     f(o);
@@ -959,13 +1042,17 @@ fn with_float(s: &mut Session, f: impl Fn(&mut Float)) -> CmdResult {
 /// trims (or restores) — for a flipped picture that's the source's right/bottom — so what stays
 /// visible keeps its place on the page: a crop handle drop is one command.
 fn crop(s: &mut Session, v: &Value) -> CmdResult {
-    let c = [p::f32(v, "left"), p::f32(v, "top"), p::f32(v, "right"), p::f32(v, "bottom")].map(|x| x.unwrap_or(0.0).clamp(0.0, 0.45));
+    let mut c = [p::f32(v, "left"), p::f32(v, "top"), p::f32(v, "right"), p::f32(v, "bottom")].map(|x| x.unwrap_or(0.0).clamp(0.0, 0.95));
+    // The two sides of an axis keep at least 5% of the source between them, as the renderer
+    // draws it: the second side stops where the first one already left less than that.
+    c[2] = c[2].min(0.95 - c[0]);
+    c[3] = c[3].min(0.95 - c[1]);
     let size = |k: &str| p::f32(v, k).map(|x| x.clamp(1.0, 4000.0));
     let (nw, nh) = (size("width"), size("height"));
     with_obj(s, |o| {
         if let InlineObject::Image { crop, w, h, float, .. } = o {
             // The source's full size at the new display size (the visible part is 1-lo-hi of it).
-            let full = |len: f32, lo: f32, hi: f32| len / (1.0 - lo - hi).max(0.1);
+            let full = |len: f32, lo: f32, hi: f32| len / (1.0 - lo - hi).max(0.05);
             // Flipped, the source's right (bottom) edge is the one on the page's left (top).
             let (left, top) = (if float.flip_h { 2 } else { 0 }, if float.flip_v { 3 } else { 1 });
             if let Some(nw) = nw {
@@ -985,35 +1072,83 @@ fn crop(s: &mut Session, v: &Value) -> CmdResult {
     })
 }
 
+/// A picture's original size: its image's pixels at 96 ppi (the size Insert › Pictures gives it)
+/// or a metafile's own frame, before any crop.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OriginalSize {
+    /// Points.
+    pub w: f32,
+    pub h: f32,
+    /// A bitmap's pixels (None for a metafile).
+    pub pixels: Option<(u32, u32)>,
+}
+
+/// The original size of the picture showing `media`, read from the image its Picture Format
+/// adjustments started from (Compress Pictures may have resampled the current one); None when the
+/// image can't be read.
+pub fn original_size(s: &Session, media: &str) -> Option<OriginalSize> {
+    let key = s.originals.get(media).map_or(media, String::as_str);
+    let bytes = s.doc.media.get(key).or_else(|| s.doc.media.get(media))?;
+    if let Some((pw, ph)) = wordcraft_render::image_size(bytes) {
+        return Some(OriginalSize { w: pw as f32 * 0.75, h: ph as f32 * 0.75, pixels: Some((pw, ph)) });
+    }
+    let (w, h, _) = wordcraft_render::metafile_size(bytes)?;
+    Some(OriginalSize { w, h, pixels: None })
+}
+
+/// What a picture's crop leaves of its original size: the size Reset gives back and what a scale
+/// of the original counts from. None for anything but a picture whose image can be read.
+pub fn cropped_original_size(s: &Session, o: &InlineObject) -> Option<(f32, f32)> {
+    let InlineObject::Image { media, crop, .. } = o else { return None };
+    let orig = original_size(s, media)?;
+    let part = |lo: f32, hi: f32| (1.0 - lo - hi).max(0.05);
+    Some((orig.w * part(crop[0], crop[2]), orig.h * part(crop[1], crop[3])))
+}
+
+/// Size: `scale` is a percentage of the current size, or with `original` of what the crop leaves
+/// of the original size (`original` alone gives that back: the Size dialog's Reset); then `width`
+/// and `height`, where one alone keeps the proportions unless `lockAspect` is false.
 fn size(s: &mut Session, v: &Value) -> CmdResult {
     let (_, o) = selected(s).ok_or_else(|| CmdError::Disabled("no object".into()))?;
-    let (w0, h0) = obj_size(&o);
     let lock = p::bool(v, "lockAspect").unwrap_or(true);
-    let (mut w, mut h) = (w0, h0);
-    if let Some(sc) = p::f32(v, "scale") {
+    let (mut w, mut h) = obj_size(&o);
+    let scale = p::f32(v, "scale");
+    if p::bool(v, "original").unwrap_or(false) {
+        let (ow, oh) =
+            cropped_original_size(s, &o).ok_or_else(|| CmdError::Disabled("only a picture whose image can be read has an original size".into()))?;
+        let k = scale.unwrap_or(100.0) / 100.0;
+        (w, h) = (ow * k, oh * k);
+    } else if let Some(sc) = scale {
         w *= sc / 100.0;
         h *= sc / 100.0;
     }
-    match (p::f32(v, "width"), p::f32(v, "height")) {
+    let (nw, nh) = (p::f32(v, "width"), p::f32(v, "height"));
+    match (nw, nh) {
         (Some(nw), Some(nh)) => {
             w = nw;
             h = nh;
         }
         (Some(nw), None) => {
-            if lock && w0 > 0.0 {
-                h = h0 * nw / w0;
+            if lock && w > 0.0 {
+                h *= nw / w;
             }
             w = nw;
         }
         (None, Some(nh)) => {
-            if lock && h0 > 0.0 {
-                w = w0 * nh / h0;
+            if lock && h > 0.0 {
+                w *= nh / h;
             }
             h = nh;
         }
         _ => {}
     }
-    let (w, h) = (w.clamp(1.0, 4000.0), h.clamp(1.0, 4000.0));
+    // A size that keeps the proportions shrinks on both sides to fit, rather than flattening.
+    let keep = match (nw, nh) {
+        (Some(_), Some(_)) => false,
+        (None, None) => true,
+        _ => lock,
+    };
+    let (w, h) = fit_size(w, h, keep);
     // Any drawing: a group's members scale with its frame (its child space is kept); a chart or
     // SmartArt graphic lays itself out again at the new size.
     let theme = s.doc.settings.theme_colors.clone();
@@ -1022,6 +1157,27 @@ fn size(s: &mut Session, v: &Value) -> CmdResult {
         super::chart::redraw(o, &theme);
         super::smart_art::redraw(o, &theme);
     })
+}
+
+/// An object size within 1–4000 pt. With `keep`, both sides scale by one factor, the one nearest
+/// 1 that brings them within the limits, so the proportions hold; a shape too long and thin for any
+/// such factor is clamped side by side.
+pub fn fit_size(w: f32, h: f32, keep: bool) -> (f32, f32) {
+    let side = |x: f32| if x.is_nan() { 1.0 } else { x.clamp(1.0, 4000.0) };
+    if keep && w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0 {
+        let (lo, hi) = ((1.0 / w).max(1.0 / h), (4000.0 / w).min(4000.0 / h));
+        if lo <= hi {
+            let k = if lo > 1.0 {
+                lo
+            } else if hi < 1.0 {
+                hi
+            } else {
+                1.0
+            };
+            return (side(w * k), side(h * k));
+        }
+    }
+    (side(w), side(h))
 }
 
 /// Apply an image operation to the selected picture's bitmap (stored as a new PNG).
@@ -1062,6 +1218,97 @@ fn adjust_media(s: &mut Session, base: &str, f: impl Fn(image::DynamicImage) -> 
             *media = key.clone();
         }
     })
+}
+
+/// What Artistic Effects, Picture Styles and Picture Border drew on a picture's bitmap: the
+/// bitmap they started from and the effect, style and border on it, so the next one draws again
+/// from that bitmap instead of over the last result. Picking a second style replaces the first,
+/// as in Word, instead of framing the frame (#2052). Kept in [`Session::picture_looks`] under the
+/// media key of the drawn bitmap.
+#[derive(Clone, Debug, Default)]
+pub struct PictureLook {
+    /// The media key of the bitmap before any of them.
+    pub base: String,
+    pub effect: Option<String>,
+    pub style: Option<String>,
+    pub border: Option<(Rgb, u32)>,
+    /// The drawn bitmap: a media key that names other bytes later (undo then a new picture
+    /// reusing the key) is not this look's.
+    pub drawn: std::sync::Arc<Vec<u8>>,
+}
+
+/// Change the selected picture's effect, style or border and draw it again from the bitmap
+/// under them (effect, then style, then border).
+fn relook(s: &mut Session, change: impl FnOnce(&mut PictureLook)) -> CmdResult {
+    let (_, o) = selected(s).ok_or_else(|| CmdError::Disabled("no picture".into()))?;
+    let InlineObject::Image { media, .. } = o else { return Err(CmdError::Disabled("not a picture".into())) };
+    let cur = s.doc.media.get(&media).cloned();
+    let mut look = s
+        .picture_looks
+        .get(&media)
+        .filter(|l| cur.as_ref().is_some_and(|c| std::sync::Arc::ptr_eq(c, &l.drawn)) && s.doc.media.contains_key(&l.base))
+        .cloned()
+        .unwrap_or_else(|| PictureLook { base: media.clone(), ..Default::default() });
+    change(&mut look);
+    if look.effect.is_none() && look.style.is_none() && look.border.is_none() {
+        // Nothing left on it: the bitmap as it was.
+        let base = look.base.clone();
+        return with_obj(s, |o| {
+            if let InlineObject::Image { media, .. } = o {
+                *media = base.clone();
+            }
+        });
+    }
+    let l = look.clone();
+    let out = adjust_media(s, &look.base, move |img| {
+        let mut img = match &l.effect {
+            Some(e) => artistic_effect(img, e),
+            None => img,
+        };
+        if let Some(st) = &l.style {
+            img = picture_style(img, st);
+        }
+        if let Some((c, w)) = l.border {
+            img = frame(img, w, [c.0, c.1, c.2, 255]);
+        }
+        img
+    })?;
+    if let Some((_, InlineObject::Image { media, .. })) = selected(s)
+        && let Some(drawn) = s.doc.media.get(&media).cloned()
+    {
+        s.picture_looks.insert(media, PictureLook { drawn, ..look });
+    }
+    Ok(out)
+}
+
+fn artistic_effect(img: image::DynamicImage, effect: &str) -> image::DynamicImage {
+    match effect {
+        "blur" => img.blur(3.0),
+        "sharpen" => img.unsharpen(2.0, 2),
+        "invert" => {
+            let mut i = img;
+            i.invert();
+            i
+        }
+        "posterize" => {
+            let mut rgba = img.to_rgba8();
+            for px in rgba.pixels_mut() {
+                for c in px.0.iter_mut().take(3) {
+                    *c = (*c / 64) * 85;
+                }
+            }
+            image::DynamicImage::ImageRgba8(rgba)
+        }
+        "pixelate" => {
+            let (w, h) = (img.width().max(1), img.height().max(1));
+            img.resize_exact((w / 12).max(1), (h / 12).max(1), image::imageops::FilterType::Nearest).resize_exact(
+                w,
+                h,
+                image::imageops::FilterType::Nearest,
+            )
+        }
+        _ => img,
+    }
 }
 
 fn reset(s: &mut Session, _: &Value) -> CmdResult {
@@ -1359,6 +1606,9 @@ fn group(s: &mut Session, _: &Value) -> CmdResult {
 fn ungroup(s: &mut Session, _: &Value) -> CmdResult {
     let (pos, obj) = selected(s).ok_or_else(|| CmdError::Disabled("select a group first".into()))?;
     let InlineObject::Group { w, h, float, .. } = &obj else { return Err(CmdError::Disabled("select a group first".into())) };
+    if holds_ink(&obj) {
+        return Err(CmdError::Disabled(INK_GROUP.into()));
+    }
     // Its offsets, explicit: the members are placed from the same anchor.
     let pos = if float.wrap == Wrap::Inline {
         if pos.path.depth() > 0 || !movable_story(s, pos.story) {
@@ -1427,7 +1677,7 @@ fn shown_members(group: &InlineObject, [x, y, w, h]: [f32; 4]) -> Vec<([f32; 4],
         .collect()
 }
 
-fn all_objects(s: &Session) -> Vec<(Pos, InlineObject)> {
+pub(crate) fn all_objects(s: &Session) -> Vec<(Pos, InlineObject)> {
     let mut v = Vec::new();
     for path in s.doc.para_paths(StoryRef::Body) {
         let Some(p) = s.doc.para(StoryRef::Body, &path) else { continue };
@@ -1540,6 +1790,103 @@ mod tests {
         assert_eq!(count(&s), 1);
     }
 
+    /// The body's top-level paragraphs, an object's character shown as ▣.
+    fn body_text(s: &Session) -> String {
+        (0..2)
+            .filter_map(|i| s.doc.para(StoryRef::Body, &wordcraft_doc::Path::top(i)))
+            .map(|p| p.text.replace(wordcraft_doc::para::OBJ, "▣"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Two paragraphs, the second starting with an inline picture (bold, so its formatting can be
+    /// followed), selected.
+    fn inline_picture_session() -> Session {
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        s.run("text.insert", &json!({"text": "First paragraph."})).unwrap();
+        s.run("text.newParagraph", &json!({})).unwrap();
+        s.run("format.bold", &json!({})).unwrap();
+        let data = super::super::insert::base64_encode(&png(20, 10));
+        s.run("insert.picture", &json!({"data": data, "width": 100})).unwrap();
+        s.run("format.bold", &json!({})).unwrap();
+        s.run("text.insert", &json!({"text": " second paragraph."})).unwrap();
+        let pic = Pos::body(1, 0);
+        s.run("select.range", &json!({"anchor": pic, "focus": Pos { off: pic.off + wordcraft_doc::para::OBJ.len_utf8(), ..pic.clone() }})).unwrap();
+        assert!(selected(&s).is_some_and(|(_, o)| !o.is_floating()));
+        s
+    }
+
+    /// #2234: dragging an In Line with Text picture into the text (`to`) moves it there and it stays
+    /// inline, with its formatting, selected, in one undo step; it never floats.
+    #[test]
+    fn an_inline_picture_dragged_into_the_text_stays_inline() {
+        let mut s = inline_picture_session();
+        let text = body_text;
+        assert_eq!(text(&s), "First paragraph.\n▣ second paragraph.");
+        // Into the first paragraph, after "First".
+        let r = s.run("arrange.bounds", &json!({"to": Pos::body(0, 5)})).unwrap();
+        assert_eq!(text(&s), "First▣ paragraph.\n second paragraph.");
+        assert_eq!(r["object"]["float"]["wrap"], "inline", "{r}");
+        let (pos, obj) = selected(&s).expect("still selected");
+        assert_eq!(pos, Pos::body(0, 5));
+        assert!(!obj.is_floating());
+        assert!(s.doc.para_at(&pos).unwrap().props_of_char(pos.off).bold == Some(true), "keeps its run's formatting");
+        // Later in its own paragraph (after "paragraph", counted with it still there): the offset
+        // accounts for its own character leaving.
+        s.run("arrange.bounds", &json!({"to": Pos::body(0, 18)})).unwrap();
+        assert_eq!(text(&s), "First paragraph▣.\n second paragraph.");
+        // Each move is one undo step.
+        s.run("edit.undo", &json!({})).unwrap();
+        assert_eq!(text(&s), "First▣ paragraph.\n second paragraph.");
+        s.run("edit.undo", &json!({})).unwrap();
+        assert_eq!(text(&s), "First paragraph.\n▣ second paragraph.");
+        // Dropped on itself (either side): nothing changes.
+        let here = selected(&s).unwrap().0;
+        s.run("arrange.bounds", &json!({"to": here})).unwrap();
+        s.run("arrange.bounds", &json!({"to": Pos { off: here.off + wordcraft_doc::para::OBJ.len_utf8(), ..here.clone() }})).unwrap();
+        assert_eq!(text(&s), "First paragraph.\n▣ second paragraph.");
+        assert_eq!(selected(&s).unwrap().0, here);
+    }
+
+    /// `to` is only for In Line with Text objects, in their own text; bad targets change nothing.
+    #[test]
+    fn moving_into_the_text_refuses_bad_targets() {
+        let mut s = inline_picture_session();
+        let before = body_text(&s);
+        for bad in [
+            json!({"to": "junk"}),
+            json!({"to": {"story": "body", "path": [9], "off": 0}}),
+            json!({"to": Pos::body(0, 0), "x": 10, "y": 10}),
+            json!({"to": {"story": {"part": 99}, "path": [0], "off": 0}}),
+        ] {
+            assert!(s.run("arrange.bounds", &bad).is_err(), "{bad}");
+            assert!(s.run("arrange.copyTo", &bad).is_err(), "{bad}");
+        }
+        // A huge offset is clamped to the paragraph's end.
+        s.run("arrange.bounds", &json!({"to": {"story": "body", "path": [0], "off": 999_999}})).unwrap();
+        assert_eq!(body_text(&s), "First paragraph.▣\n second paragraph.");
+        assert_ne!(body_text(&s), before);
+        // A floating object is moved by x/y, not into the text.
+        s.run("arrange.bounds", &json!({"page": 0, "x": 200, "y": 300})).unwrap();
+        assert!(s.run("arrange.bounds", &json!({"to": Pos::body(1, 0)})).is_err());
+    }
+
+    /// Ctrl+drag of an inline picture into the text: a copy lands there, inline and selected; the
+    /// original stays.
+    #[test]
+    fn copying_an_inline_picture_into_the_text() {
+        let mut s = inline_picture_session();
+        s.clipboard_text = "keep".into();
+        s.run("arrange.copyTo", &json!({"to": Pos::body(0, 5)})).unwrap();
+        assert_eq!(body_text(&s), "First▣ paragraph.\n▣ second paragraph.");
+        let (pos, obj) = selected(&s).expect("the copy is selected");
+        assert_eq!(pos, Pos::body(0, 5));
+        assert!(!obj.is_floating());
+        assert_eq!(s.clipboard_text, "keep");
+        s.run("edit.undo", &json!({})).unwrap();
+        assert_eq!(body_text(&s), "First paragraph.\n▣ second paragraph.");
+    }
+
     #[test]
     fn shapes_can_be_clicked_resized_and_dragged() {
         for kind in ["rectangle", "ellipse", "star", "arrow"] {
@@ -1592,6 +1939,41 @@ mod tests {
         s.run("insert.picture", &json!({"data": data})).unwrap();
         s.run("insert.picture", &json!({"data": data})).unwrap();
         assert_eq!(s.run("arrange.selectionPane", &json!({})).unwrap().as_array().map(Vec::len), Some(2));
+    }
+
+    /// #2019: Insert › Shapes adds each new shape beside the selected one, as Word draws it, so
+    /// shapes inserted in a row are all kept (the second used to replace the first, which stays
+    /// selected after its insert). Selected text stays too, and the new shape is selected.
+    #[test]
+    fn shapes_inserted_in_a_row_are_all_kept_and_keep_selected_text() {
+        let objects = |s: &mut Session| s.run("arrange.selectionPane", &json!({})).unwrap().as_array().map(Vec::len);
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        for kind in ["rectangle", "ellipse", "star"] {
+            s.run("insert.shape", &json!({"kind": kind})).unwrap();
+        }
+        assert_eq!(objects(&mut s), Some(3));
+
+        let mut s = Session::new(wordcraft_doc::Document::from_text("Kiln room"));
+        s.run("select.text", &json!({"text": "Kiln"})).unwrap();
+        s.run("insert.shape", &json!({"kind": "rectangle"})).unwrap();
+        let text = s.doc.plain_text(StoryRef::Body);
+        assert!(text.starts_with("Kiln") && text.ends_with(" room"), "{text:?}");
+        assert_eq!(objects(&mut s), Some(1));
+        let (a, b) = s.sel.ordered();
+        let obj = wordcraft_doc::para::OBJ.len_utf8();
+        assert_eq!((a.off, b.off), (4, 4 + obj), "the new shape, after the text, is selected");
+    }
+
+    /// Insert › Pictures does replace a selected picture, as Word does (checked in Word for
+    /// Windows while fixing #2019): only shapes are added beside the selection.
+    #[test]
+    fn an_inserted_picture_replaces_a_selected_picture() {
+        let data = super::super::insert::base64_encode(&png(20, 10));
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        s.run("insert.picture", &json!({"data": data})).unwrap();
+        s.sel = crate::Selection { anchor: Pos::body(0, 0), focus: Pos::body(0, wordcraft_doc::para::OBJ.len_utf8()) };
+        s.run("insert.picture", &json!({"data": data})).unwrap();
+        assert_eq!(s.run("arrange.selectionPane", &json!({})).unwrap().as_array().map(Vec::len), Some(1));
     }
 
     #[test]
@@ -1667,6 +2049,59 @@ mod tests {
         );
         s.run("picture.reset", &json!({})).unwrap();
         assert_eq!(rgba(&s), orig, "reset still finds the original");
+    }
+
+    /// #2052: a picture style picked after another replaces it (Thick Frame then Simple Frame is
+    /// only the simple frame), a border replaces the border and keeps the style, an artistic
+    /// effect replaces the effect, and transparency 50% then 10% is 10%, as in Word.
+    #[test]
+    fn picture_styles_borders_and_effects_replace_the_last_one() {
+        let picture = || {
+            let mut s = Session::new(wordcraft_doc::Document::new());
+            s.run("insert.picture", &json!({"data": super::super::insert::base64_encode(&png(80, 40))})).unwrap();
+            s
+        };
+        let bitmap = |s: &Session| {
+            let (_, o) = selected(s).unwrap();
+            let InlineObject::Image { media, .. } = o else { panic!("a picture") };
+            image::load_from_memory(&s.doc.media.get(&media).cloned().unwrap()).unwrap().to_rgba8()
+        };
+        let after = |cmds: &[(&str, Value)]| {
+            let mut s = picture();
+            for (id, v) in cmds {
+                s.run(id, v).unwrap();
+            }
+            bitmap(&s)
+        };
+        let (thick, simple) = (json!({"style": "thickFrame"}), json!({"style": "simpleFrame"}));
+        assert_eq!(after(&[("picture.style", thick.clone()), ("picture.style", simple.clone())]), after(&[("picture.style", simple.clone())]));
+        let (wide, thin) = (json!({"width": 8}), json!({"width": 2}));
+        assert_eq!(
+            after(&[("picture.style", thick.clone()), ("picture.border", wide.clone()), ("picture.border", thin.clone())]),
+            after(&[("picture.style", thick.clone()), ("picture.border", thin.clone())]),
+            "a border replaces the border and keeps the style"
+        );
+        assert_eq!(
+            after(&[("picture.border", wide), ("picture.style", simple.clone())]),
+            after(&[("picture.style", simple)]),
+            "a style replaces the border too"
+        );
+        assert_eq!(
+            after(&[("picture.effects", json!({"effect": "invert"})), ("picture.effects", json!({"effect": "posterize"}))]),
+            after(&[("picture.effects", json!({"effect": "posterize"}))])
+        );
+        assert_eq!(after(&[("picture.effects", json!({"effect": "invert"})), ("picture.effects", json!({"effect": "none"}))]), bitmap(&picture()));
+        let fifty_then_ten = after(&[("picture.transparency", json!({"percent": 50})), ("picture.transparency", json!({"percent": 10}))]);
+        assert!(fifty_then_ten.pixels().all(|p| p.0[3] == 229), "255 * 0.9");
+
+        // Undo then a new edit reusing the drawn bitmap's media key starts from what is there.
+        let mut s = picture();
+        s.run("picture.style", &thick).unwrap();
+        s.run("edit.undo", &json!({})).unwrap();
+        s.run("picture.effects", &json!({"effect": "invert"})).unwrap();
+        s.run("picture.border", &json!({"width": 2})).unwrap();
+        let (w, h) = bitmap(&s).dimensions();
+        assert_eq!((w, h), (84, 44), "the effect and a 2 px border, no thick frame from before the undo");
     }
 
     /// #513: Wrap Text › Fix Position on Page / Move with Text re-anchor a floating picture
@@ -1925,6 +2360,67 @@ mod tests {
         assert_eq!(crop, [0.1, 0.2, 0.05, 0.0]);
     }
 
+    /// #2573: Size from the original. `original` alone gives the picture back its original size
+    /// (its pixels at 96 ppi, less what is cropped) and `scale` is a percentage of it; Compress
+    /// Pictures doesn't change what the original is. Only a picture has one.
+    #[test]
+    fn picture_size_counts_from_the_original() {
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        let data = super::super::insert::base64_encode(&png(40, 20));
+        s.run("insert.picture", &json!({"data": data})).unwrap();
+        let size = |s: &Session| obj_size(&selected(s).unwrap().1);
+        assert_eq!(size(&s), (30.0, 15.0), "40×20 px at 96 ppi");
+        s.run("picture.size", &json!({"width": 300.0, "height": 100.0, "lockAspect": false})).unwrap();
+        s.run("picture.compress", &json!({"maxPixels": 32})).unwrap();
+        let Some((_, InlineObject::Image { media, .. })) = selected(&s) else { panic!("a picture") };
+        assert_eq!(wordcraft_render::image_size(&s.doc.media[&media]), Some((32, 16)), "compressed");
+        assert_eq!(original_size(&s, &media), Some(OriginalSize { w: 30.0, h: 15.0, pixels: Some((40, 20)) }));
+        s.run("picture.size", &json!({"original": true})).unwrap();
+        assert_eq!(size(&s), (30.0, 15.0));
+        s.run("picture.size", &json!({"original": true, "scale": 250})).unwrap();
+        assert_eq!(size(&s), (75.0, 37.5));
+        // Half the width cropped away: half the original width is left.
+        s.run("picture.crop", &json!({"left": 0.25, "right": 0.25})).unwrap();
+        s.run("picture.size", &json!({"original": true})).unwrap();
+        assert_eq!(size(&s), (15.0, 15.0));
+        s.run("edit.undo", &json!({})).unwrap();
+        assert_eq!(size(&s), (75.0, 37.5), "one undo step");
+        s.run("insert.shape", &json!({"kind": "rectangle"})).unwrap();
+        assert!(s.run("picture.size", &json!({"original": true})).is_err(), "a shape has no original size");
+    }
+
+    /// #2573: a size past 4000 pt (or under 1 pt) that keeps the proportions scales as a whole
+    /// instead of flattening against the limit; both sides given are clamped each on its own.
+    #[test]
+    fn picture_size_past_the_limit_keeps_the_proportions() {
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        let data = super::super::insert::base64_encode(&png(40, 20));
+        s.run("insert.picture", &json!({"data": data})).unwrap();
+        let size = |s: &Session| obj_size(&selected(s).unwrap().1);
+        s.run("picture.size", &json!({"width": 9000.0})).unwrap();
+        assert_eq!(size(&s), (4000.0, 2000.0));
+        s.run("picture.size", &json!({"scale": 1000})).unwrap();
+        assert_eq!(size(&s), (4000.0, 2000.0));
+        s.run("picture.size", &json!({"width": 9000.0, "height": 10.0})).unwrap();
+        assert_eq!(size(&s), (4000.0, 10.0));
+        s.run("picture.size", &json!({"height": 30.0, "lockAspect": false})).unwrap();
+        assert_eq!(size(&s), (4000.0, 30.0));
+        // Below 1 pt as well: a 1% scale of 50×200 pt is 1×4 pt, not 1×2.
+        s.run("picture.size", &json!({"width": 50.0, "height": 200.0})).unwrap();
+        s.run("picture.size", &json!({"scale": 1})).unwrap();
+        assert_eq!(size(&s), (1.0, 4.0));
+        // Too long and thin for one factor: side by side. NaN and infinity stay in range.
+        assert_eq!(fit_size(0.5, 5000.0, true), (1.0, 4000.0));
+        assert_eq!(fit_size(f32::NAN, 10.0, true), (1.0, 10.0));
+        assert_eq!(fit_size(f32::INFINITY, 10.0, true), (4000.0, 10.0));
+        // Hostile values never leave the 1–4000 pt range.
+        for v in [json!({"scale": -50}), json!({"width": -1.0}), json!({"original": "yes", "scale": 1e30}), json!({"height": 1e30})] {
+            s.run("picture.size", &v).unwrap();
+            let (w, h) = size(&s);
+            assert!((1.0..=4000.0).contains(&w) && (1.0..=4000.0).contains(&h), "{v}: {w}×{h}");
+        }
+    }
+
     /// A crop handle drop: `picture.crop` with the new size is one edit, one undo step.
     #[test]
     fn picture_crop_with_size_is_one_undo_step() {
@@ -1940,12 +2436,43 @@ mod tests {
         assert_eq!(image(&s), (150.0, 90.0, [0.25, 0.0, 0.0, 0.1]));
         s.run("edit.undo", &json!({})).unwrap();
         assert_eq!(image(&s), (200.0, 100.0, [0.0; 4]));
-        // Clamps: each side at most 0.45; hostile sizes are ignored or clamped, never applied raw.
+        // Clamps: each side at most 0.95; hostile sizes are ignored or clamped, never applied raw.
         s.run("picture.crop", &json!({"left": 9.0, "right": -3.0, "width": "x", "height": -5.0})).unwrap();
         let (w, h, crop) = image(&s);
-        assert_eq!(crop, [0.45, 0.0, 0.0, 0.0]);
+        assert_eq!(crop, [0.95, 0.0, 0.0, 0.0]);
         assert_eq!(w, 200.0);
         assert!(h >= 1.0, "{h}");
+    }
+
+    /// #3135: a picture can be cropped to any part of itself, not just its middle. A side goes to
+    /// 0.95 (5% stays, as the renderer draws), and the two sides of an axis keep their 5%.
+    #[test]
+    fn a_picture_can_be_cropped_to_any_part_of_itself() {
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        let data = super::super::insert::base64_encode(&png(20, 10));
+        s.run("insert.picture", &json!({"data": data})).unwrap();
+        s.run("picture.size", &json!({"width": 200.0, "height": 100.0, "lockAspect": false})).unwrap();
+        let crop = |s: &Session| match selected(s) {
+            Some((_, InlineObject::Image { crop, .. })) => crop,
+            other => panic!("expected image, got {other:?}"),
+        };
+        let left = |s: &Session| {
+            let (_, o) = selected(s).unwrap();
+            super::cropped_original_size(s, &o).unwrap().0
+        };
+        // 90% off the left keeps the rightmost tenth: the side is not held at 45%.
+        s.run("picture.crop", &json!({"left": 0.9})).unwrap();
+        assert_eq!(crop(&s), [0.9, 0.0, 0.0, 0.0]);
+        assert!((left(&s) - 1.5).abs() < 1e-3, "a tenth of the 15 pt original: {}", left(&s));
+        // With the left at 0.9 the right can take only 5% more, and what the crop leaves of the
+        // original follows the crop down to that 5%.
+        s.run("picture.crop", &json!({"left": 0.9, "right": 0.9})).unwrap();
+        let c = crop(&s);
+        assert!((c[0] - 0.9).abs() < 1e-6 && (c[2] - 0.05).abs() < 1e-5 && c[1] == 0.0 && c[3] == 0.0, "{c:?}");
+        assert!((left(&s) - 0.75).abs() < 1e-3, "5% of the 15 pt original: {}", left(&s));
+        // A single side past the cap stops at 0.95.
+        s.run("picture.crop", &json!({"right": 4.0})).unwrap();
+        assert_eq!(crop(&s), [0.0, 0.0, 0.95, 0.0]);
     }
 
     /// Cropping a floating picture's left or top with its new size keeps the visible part where
@@ -2208,5 +2735,101 @@ mod tests {
         let mid = (cols[0].0 + cols[0].1) / 2.0;
         let got = anchor_paragraph(&s.doc, &layout, 1, (mid, top + 1.0), StoryRef::Body);
         assert_eq!(got, Some(wordcraft_doc::Path::top(plain)));
+    }
+
+    /// A Word file whose only paragraph holds a group of a rectangle and Word's own ink (with its
+    /// picture fallback).
+    fn group_with_word_ink() -> Vec<u8> {
+        use std::io::Write;
+        let ns = r#"xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk""#;
+        let rect = r#"<wps:wsp><wps:cNvPr id="2" name="Box"/><wps:cNvSpPr/><wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></wps:spPr><wps:bodyPr/></wps:wsp>"#;
+        let ink = r#"<mc:AlternateContent><mc:Choice Requires="wpi"><w14:contentPart bwMode="auto" r:id="rInk"><w14:nvContentPartPr><w14:cNvPr id="3" name="Ink 3"/><w14:cNvContentPartPr/></w14:nvContentPartPr><w14:xfrm><a:off x="914400" y="0"/><a:ext cx="914400" cy="457200"/></w14:xfrm></w14:contentPart></mc:Choice><mc:Fallback><pic:pic><pic:nvPicPr><pic:cNvPr id="3" name="Ink 3"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rPreview"/></pic:blipFill><pic:spPr><a:xfrm><a:off x="914400" y="0"/><a:ext cx="914400" cy="457200"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></mc:Fallback></mc:AlternateContent>"#;
+        let group = format!(
+            r#"<w:drawing><wp:anchor behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1" relativeHeight="1" simplePos="0" distT="0" distB="0" distL="0" distR="0"><wp:simplePos x="0" y="0"/><wp:positionH relativeFrom="column"><wp:posOffset>0</wp:posOffset></wp:positionH><wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV><wp:extent cx="1828800" cy="914400"/><wp:wrapNone/><wp:docPr id="1" name="Group 1"/><a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"><wpg:wgp><wpg:cNvGrpSpPr/><wpg:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1828800" cy="914400"/><a:chOff x="0" y="0"/><a:chExt cx="1828800" cy="914400"/></a:xfrm></wpg:grpSpPr>{rect}{ink}</wpg:wgp></a:graphicData></a:graphic></wp:anchor></w:drawing>"#
+        );
+        let rel = |id: &str, ty: &str, target: &str| {
+            format!(r#"<Relationship Id="{id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/{ty}" Target="{target}"/>"#)
+        };
+        let parts = [
+            ("_rels/.rels", format!(r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{}</Relationships>"#, rel("rId1", "officeDocument", "word/document.xml"))),
+            ("[Content_Types].xml", r#"<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/word/ink/ink1.xml" ContentType="application/inkml+xml"/><Default Extension="png" ContentType="image/png"/></Types>"#.to_string()),
+            ("word/document.xml", format!(r#"<w:document {ns}><w:body><w:p><w:r>{group}</w:r></w:p></w:body></w:document>"#)),
+            (
+                "word/_rels/document.xml.rels",
+                format!(r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{}{}</Relationships>"#, rel("rInk", "customXml", "ink/ink1.xml"), rel("rPreview", "image", "media/preview.png")),
+            ),
+            ("word/ink/ink1.xml", r#"<ink xmlns="http://www.w3.org/2003/InkML"><trace>0 0, 1 1</trace></ink>"#.to_string()),
+        ];
+        let mut zw = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        for (name, xml) in parts {
+            zw.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
+            zw.write_all(xml.as_bytes()).unwrap();
+        }
+        zw.start_file("word/media/preview.png", zip::write::SimpleFileOptions::default()).unwrap();
+        zw.write_all(&png(8, 4)).unwrap();
+        zw.finish().unwrap().into_inner()
+    }
+
+    fn ink_members(doc: &wordcraft_doc::Document) -> usize {
+        let groups: Vec<_> = doc.body.iter().filter_map(|b| b.as_para()).flat_map(|p| p.objects.iter()).collect();
+        let nested = groups
+            .iter()
+            .filter_map(|o| match o {
+                InlineObject::Group { children, .. } => Some(children.iter().filter(|c| matches!(c.obj, InlineObject::Graphic { .. })).count()),
+                _ => None,
+            })
+            .sum::<usize>();
+        let alone = groups.iter().filter(|o| matches!(o, InlineObject::Graphic { .. })).count();
+        nested + alone
+    }
+
+    /// Gap 2 review: a group holding Word's own ink can't be ungrouped (its ink can't stand alone
+    /// yet), so open → Ungroup → save → reopen keeps the ink in the group with its part.
+    #[test]
+    fn ungroup_refuses_a_group_holding_word_ink_and_the_ink_survives_saving() {
+        use std::io::Read;
+        let mut s = Session::new(wordcraft_docx::read(&group_with_word_ink()).unwrap());
+        assert_eq!(ink_members(&s.doc), 1, "the fixture's ink is read into the group");
+        let pos = Pos::body(0, 0);
+        s.sel = Selection { anchor: pos.clone(), focus: Pos { off: pos.off + wordcraft_doc::para::OBJ.len_utf8(), ..pos } };
+        assert!(matches!(selected(&s), Some((_, InlineObject::Group { .. }))));
+        let before = wordcraft_docx::write(&s.doc).unwrap();
+        assert!(has_group(&s).is_some(), "Ungroup is greyed out");
+        let err = s.run("arrange.ungroup", &json!({})).unwrap_err();
+        assert!(matches!(err, CmdError::Disabled(_)), "{err:?}");
+        let err = ungroup(&mut s, &json!({})).unwrap_err();
+        assert!(matches!(err, CmdError::Disabled(_)), "{err:?}");
+        let bytes = wordcraft_docx::write(&s.doc).unwrap();
+        let mut z = zip::ZipArchive::new(std::io::Cursor::new(bytes.clone())).unwrap();
+        let mut xml = String::new();
+        z.by_name("word/document.xml").unwrap().read_to_string(&mut xml).unwrap();
+        assert_eq!(xml.matches("<w14:contentPart").count(), 1, "{xml}");
+        assert!(xml.contains("<mc:Fallback>"), "{xml}");
+        assert_eq!(bytes, before, "the refused ungroup leaves the document unchanged");
+        let names: Vec<String> = z.file_names().map(String::from).collect();
+        assert_eq!(names.iter().filter(|n| n.starts_with("word/ink/")).count(), 1, "{names:?}");
+        let mut rels = String::new();
+        z.by_name("word/_rels/document.xml.rels").unwrap().read_to_string(&mut rels).unwrap();
+        assert_eq!(rels.matches("/customXml\"").count(), 1, "one ink relationship: {rels}");
+        let back = wordcraft_docx::read(&bytes).unwrap();
+        assert_eq!(ink_members(&back), 1);
+    }
+
+    /// Review: only Word's ink pins a group; a group of charts or diagrams ungroups as before.
+    #[test]
+    fn only_ink_members_pin_a_group() {
+        let s = Session::new(wordcraft_docx::read(&group_with_word_ink()).unwrap());
+        let pos = Pos::body(0, 0);
+        let mut s = s;
+        s.sel = Selection { anchor: pos.clone(), focus: Pos { off: pos.off + wordcraft_doc::para::OBJ.len_utf8(), ..pos } };
+        let Some((_, mut group)) = selected(&s) else { panic!("no group") };
+        assert!(holds_ink(&group));
+        let InlineObject::Group { children, .. } = &mut group else { panic!("not a group") };
+        for c in children.iter_mut() {
+            if let InlineObject::Graphic { graphic, .. } = &mut c.obj {
+                std::sync::Arc::make_mut(graphic).kind = GraphicKind::Chart;
+            }
+        }
+        assert!(!holds_ink(&group), "a group of charts is not pinned");
     }
 }

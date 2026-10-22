@@ -543,7 +543,13 @@ fn eval(e: &Expr, here: &Here) -> Result<Val, CmdError> {
             let mut v = Vec::new();
             let (r_end, g_end) = (here.t.rows.len().min(r1.saturating_add(1)), here.t.cols().min(g1.saturating_add(1)));
             for row in *r0..r_end {
+                let mut last_ci = None;
                 for g in *g0..g_end {
+                    let ci = here.t.cell_at_grid(row, g);
+                    if ci.is_some() && ci == last_ci {
+                        continue;
+                    }
+                    last_ci = ci;
                     v.extend(here.number_at(row, g)?);
                 }
             }
@@ -718,13 +724,21 @@ fn call(name: &str, args: &[Expr], here: &Here) -> Result<f64, CmdError> {
         }
         "ABS" => Ok(one(name, args, here)?.abs()),
         "INT" => Ok(one(name, args, here)?.floor()),
-        "SIGN" => Ok(one(name, args, here)?.signum()),
+        "SIGN" => {
+            let x = one(name, args, here)?;
+            Ok(if x == 0.0 { 0.0 } else { x.signum() })
+        }
         "ROUND" => match args {
             [a, b] => {
                 let x = scalar(eval(a, here)?)?;
                 let digits = scalar(eval(b, here)?)?.clamp(-15.0, 15.0).trunc();
                 let scale = 10f64.powi(digits as i32);
-                finite((x * scale).round() / scale)
+                let scaled = x * scale;
+                if !scaled.is_finite() {
+                    // Too large to have a fractional part at this precision.
+                    return finite(x);
+                }
+                finite(scaled.round() / scale)
             }
             _ => Err(CmdError::Failed("ROUND takes two arguments".into())),
         },
@@ -761,6 +775,16 @@ mod tests {
 
     fn ev(t: &Table, r: usize, c: usize, f: &str) -> Result<f64, CmdError> {
         evaluate(t, r, c, f)
+    }
+
+    #[test]
+    fn sign_of_zero_is_zero() {
+        let t = table(&[&["0", "5", "-5"]]);
+        assert_eq!(ev(&t, 0, 0, "=SIGN(0)"), Ok(0.0));
+        assert_eq!(ev(&t, 0, 0, "=SIGN(-0)"), Ok(0.0));
+        assert_eq!(ev(&t, 0, 1, "=SIGN(A1)"), Ok(0.0), "a cell holding 0");
+        assert_eq!(ev(&t, 0, 0, "=SIGN(5)"), Ok(1.0));
+        assert_eq!(ev(&t, 0, 0, "=SIGN(-5)"), Ok(-1.0));
     }
 
     #[test]
@@ -802,6 +826,14 @@ mod tests {
     }
 
     #[test]
+    fn round_large_values_return_input() {
+        let t = table(&[&["1", "2"], &["3", "4"], &["", ""]]);
+        let big = format!("1{}", "0".repeat(300));
+        assert_eq!(ev(&t, 2, 0, &format!("=ROUND({big},15)")), Ok(1e300));
+        assert_eq!(ev(&t, 2, 0, &format!("=ROUND({big},2)")), Ok(1e300));
+    }
+
+    #[test]
     fn ranges_and_references_and_operators() {
         let t = table(&[&["1", "2"], &["3", "4"], &["", ""]]);
         assert_eq!(ev(&t, 2, 0, "=SUM(A1:B2)"), Ok(10.0));
@@ -812,6 +844,16 @@ mod tests {
         assert_eq!(ev(&t, 2, 0, "=MAX(A1:B2)"), Ok(4.0));
         assert_eq!(ev(&t, 2, 0, "=ROUND(2.5, 0)"), Ok(3.0));
         assert_eq!(ev(&t, 2, 0, "=MOD(7, 3)"), Ok(1.0));
+    }
+
+    #[test]
+    fn range_over_spanning_cells_counts_each_cell_once() {
+        let mut t = table(&[&["50", "10"], &["", ""]]);
+        t.rows[0].cells[0].props.span = 2;
+        assert_eq!(t.cols(), 3);
+        assert_eq!(ev(&t, 1, 0, "=SUM(A1:B1)"), Ok(50.0), "spanning cell A1:B1 is evaluated once");
+        assert_eq!(ev(&t, 1, 0, "=COUNT(A1:B1)"), Ok(1.0), "spanning cell A1:B1 has count 1");
+        assert_eq!(ev(&t, 1, 0, "=SUM(A1:C1)"), Ok(60.0), "spanning cell A1:B1 plus cell C1 = 60");
     }
 
     #[test]

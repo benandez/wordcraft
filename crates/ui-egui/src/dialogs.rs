@@ -170,6 +170,10 @@ pub enum Dialog {
         hidden: bool,
         color: String,
         spacing: f32,
+        /// Kerning for fonts (`w:kern`), from the Advanced tab: `None` while the selected text
+        /// differs, shown neither on nor off; `kern_at` is its Points and above size.
+        kern: Option<bool>,
+        kern_at: f32,
         /// The properties the fields stood for when the dialog opened: OK sends only what the
         /// user changed, so formatting the dialog can't show (a double underline) or left
         /// alone stays as it is.
@@ -265,6 +269,10 @@ pub enum Dialog {
         message: String,
         /// Vertical alignment (`layout.verticalAlign`, applied only if changed).
         valign: wordcraft_doc::section::PageVAlign,
+        /// Headers and footers: different odd and even pages (the document's) and a different
+        /// first page (the section's), applied only if changed (#1230).
+        odd_even: bool,
+        first_page: bool,
     },
     Link {
         url: String,
@@ -749,6 +757,21 @@ pub struct RecipientFilter {
     pub rules: Vec<FilterRow>,
     /// Sort by, then by, then by: a field (empty: none) and descending.
     pub sort: [(String, bool); 3],
+    /// Find in list (#1576): only rows with a cell containing this (any case) are shown.
+    /// View only, like `only_merged`: neither changes the list or the merge.
+    pub find: String,
+    /// Show only the records the filter keeps (#1576).
+    pub only_merged: bool,
+    /// The grid's rows held while one of its cells is edited (see [`hold_rows`]).
+    #[serde(skip)]
+    pub(crate) held: Option<Vec<usize>>,
+    /// The grid cell that had the keyboard last frame.
+    #[serde(skip)]
+    pub(crate) editing: Option<egui::Id>,
+    /// The last merge order worked out, keyed by a hash of the list, filter and sort, so a long
+    /// list isn't filtered and sorted again on every frame.
+    #[serde(skip)]
+    pub(crate) order_cache: Option<(u64, Vec<Option<usize>>)>,
 }
 
 /// One filter condition row: `field op value`, joined to the row above with And or Or.
@@ -774,32 +797,125 @@ impl RecipientFilter {
         }
         let rules: Vec<FilterRow> =
             m.filter.iter().map(|r| FilterRow { field: r.field.clone(), op: r.op, value: r.value.clone(), or: r.or }).collect();
-        RecipientFilter { open: !rules.is_empty() || !m.sort.is_empty(), rules, sort }
+        RecipientFilter { open: !rules.is_empty() || !m.sort.is_empty(), rules, sort, ..Default::default() }
     }
 
-    fn engine(&self) -> (Vec<FilterRule>, Vec<SortKey>) {
+    /// The rules and sort keys on `fields` (a rule on a field renamed or removed in the table
+    /// drops, as the engine drops it when the list is edited).
+    fn engine(&self, fields: &[String]) -> (Vec<FilterRule>, Vec<SortKey>) {
+        let known = |f: &str| !f.trim().is_empty() && fields.iter().any(|h| h.trim().eq_ignore_ascii_case(f.trim()));
         let rules = self
             .rules
             .iter()
-            .filter(|r| !r.field.is_empty())
+            .filter(|r| known(&r.field))
             .map(|r| FilterRule { field: r.field.clone(), op: r.op, value: r.value.clone(), or: r.or })
             .collect();
-        let sort = self.sort.iter().filter(|(f, _)| !f.is_empty()).map(|(f, d)| SortKey { field: f.clone(), descending: *d }).collect();
+        let sort = self.sort.iter().filter(|(f, _)| known(f)).map(|(f, d)| SortKey { field: f.clone(), descending: *d }).collect();
         (rules, sort)
+    }
+
+    /// Each record's place in the merge (None: filtered out), from the cache when the list,
+    /// filter and sort haven't changed.
+    fn order(&mut self, fields: &[String], rows: &[Vec<String>]) -> &[Option<usize>] {
+        use std::hash::{Hash, Hasher};
+        let (rules, sort) = self.engine(fields);
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        fields.hash(&mut h);
+        rows.hash(&mut h);
+        for r in &rules {
+            (&r.field, r.op.id(), &r.value, r.or).hash(&mut h);
+        }
+        for k in &sort {
+            (&k.field, k.descending).hash(&mut h);
+        }
+        let key = h.finish();
+        if self.order_cache.as_ref().is_none_or(|(k, _)| *k != key) {
+            let mut order = vec![None; rows.len()];
+            for (n, i) in wordcraft_engine::cmd::mailings::select_records(fields, rows, &rules, &sort).into_iter().enumerate() {
+                if let Some(slot) = order.get_mut(i) {
+                    *slot = Some(n + 1);
+                }
+            }
+            self.order_cache = Some((key, order));
+        }
+        self.order_cache.as_ref().map_or(&[], |(_, o)| o.as_slice())
     }
 
     fn is_empty(&self) -> bool {
         self.rules.iter().all(|r| r.field.is_empty()) && self.sort.iter().all(|(f, _)| f.is_empty())
     }
 
-    /// `mailings.filterRecipients` params.
-    pub fn params(&self) -> Value {
-        let (rules, sort) = self.engine();
+    /// `mailings.filterRecipients` params for a list with `fields`.
+    pub fn params(&self, fields: &[String]) -> Value {
+        let (rules, sort) = self.engine(fields);
         json!({
             "rules": rules.iter().map(|r| json!({"field": r.field, "op": r.op.id(), "value": r.value, "join": if r.or { "or" } else { "and" }})).collect::<Vec<_>>(),
             "sort": sort.iter().map(|k| json!({"field": k.field, "descending": k.descending})).collect::<Vec<_>>(),
         })
     }
+}
+
+/// Each record's place in the merge (None: filtered out), when `filter` filters or sorts.
+#[cfg(test)]
+pub(crate) fn merge_order(fields: &[String], rows: &[Vec<String>], filter: &RecipientFilter) -> Option<Vec<Option<usize>>> {
+    (!filter.is_empty()).then(|| {
+        let (rules, sort) = filter.engine(fields);
+        let mut order = vec![None; rows.len()];
+        for (k, i) in wordcraft_engine::cmd::mailings::select_records(fields, rows, &rules, &sort).into_iter().enumerate() {
+            if let Some(slot) = order.get_mut(i) {
+                *slot = Some(k + 1);
+            }
+        }
+        order
+    })
+}
+
+/// The Recipient List grid's rows (#1576): real indices into `rows`, in list order, matching
+/// `find` and, with `only_merged`, kept by the filter (`order` from [`merge_order`]).
+pub(crate) fn visible_recipients(rows: &[Vec<String>], order: Option<&[Option<usize>]>, find: &str, only_merged: bool) -> Vec<usize> {
+    let needle: Vec<char> = find.trim().chars().flat_map(fold_char).collect();
+    let kept = |i: usize| !only_merged || order.is_none_or(|o| o.get(i).copied().flatten().is_some());
+    let found = |row: &Vec<String>| needle.is_empty() || row.iter().any(|c| contains_folded(c, &needle));
+    rows.iter().enumerate().filter(|(i, row)| kept(*i) && found(row)).map(|(i, _)| i).collect()
+}
+
+/// The rows the grid shows (#1576): `fresh`, except while a grid cell is being edited, when the
+/// rows shown as the edit began stay put, so a row the edit stops matching doesn't vanish (or
+/// slide another record under the cursor) mid-edit. `rows` is the list's length.
+pub(crate) fn hold_rows(fresh: Vec<usize>, held: &mut Option<Vec<usize>>, editing: bool, rows: usize) -> Vec<usize> {
+    if !editing {
+        *held = None;
+        return fresh;
+    }
+    match held {
+        Some(h) => h.iter().copied().filter(|&r| r < rows).collect(),
+        None => {
+            *held = Some(fresh.clone());
+            fresh
+        }
+    }
+}
+
+impl RecipientFilter {
+    /// New Entry: show every row again, so the new, empty entry can't be hidden by the view.
+    pub(crate) fn show_all(&mut self) {
+        self.find.clear();
+        self.only_merged = false;
+        self.held = None;
+    }
+}
+
+/// Lower-cases a char for searching; final sigma `ς` counts as `σ`, so `ΟΣ` matches `ος`.
+fn fold_char(c: char) -> impl Iterator<Item = char> {
+    c.to_lowercase().map(|l| if l == 'ς' { 'σ' } else { l })
+}
+
+/// Whether `hay` contains `needle` (folded chars) in any case, without allocating.
+fn contains_folded(hay: &str, needle: &[char]) -> bool {
+    hay.char_indices().any(|(i, _)| {
+        let mut h = hay.get(i..).unwrap_or_default().chars().flat_map(fold_char);
+        needle.iter().all(|n| h.next() == Some(*n))
+    })
 }
 
 /// A colour menu: a swatch with the colour grid and No Color. `value` is hex, empty for none.
@@ -940,6 +1056,7 @@ impl Dialog {
                     text
                 };
                 let asian = ["zh", "ja", "ko"].iter().any(|l| lang.starts_with(l)) || !font_ea.is_empty() || text.chars().any(east_asian_char);
+                let kern = st.get("kern").and_then(Value::as_f64);
                 let mut d = Dialog::Font {
                     font_was: font.clone(),
                     font,
@@ -958,6 +1075,8 @@ impl Dialog {
                     hidden: b("hidden"),
                     color: s("color"),
                     spacing: st.get("spacing").and_then(Value::as_f64).unwrap_or(0.0) as f32,
+                    kern: kern.map(|k| k > 0.0),
+                    kern_at: kern.filter(|k| *k > 0.0).unwrap_or(12.0) as f32,
                     start: serde_json::Map::new(),
                 };
                 let props = font_props(&d);
@@ -1056,6 +1175,8 @@ impl Dialog {
                     grid_was: grid,
                     rtl: sp.rtl,
                     valign: sp.valign,
+                    odd_even: app.session.doc.settings.even_odd_headers,
+                    first_page: sp.title_page,
                 }
             }
             "link" => {
@@ -1538,7 +1659,10 @@ pub(crate) fn buttons(ui: &mut Ui, ok: &str) -> (bool, bool) {
 
 /// The character properties the Font dialog's fields stand for.
 fn font_props(d: &Dialog) -> serde_json::Map<String, Value> {
-    let Dialog::Font { font, font_ea, size, bold, italic, underline, strike, sup, sub, small_caps, caps, hidden, color, spacing, .. } = d else {
+    let Dialog::Font {
+        font, font_ea, size, bold, italic, underline, strike, sup, sub, small_caps, caps, hidden, color, spacing, kern, kern_at, ..
+    } = d
+    else {
         return serde_json::Map::new();
     };
     let mut props = serde_json::Map::new();
@@ -1558,6 +1682,15 @@ fn font_props(d: &Dialog) -> serde_json::Map<String, Value> {
     props.insert("caps".into(), json!(*caps));
     props.insert("hidden".into(), json!(*hidden));
     props.insert("spacing".into(), json!(*spacing));
+    match kern {
+        Some(true) => {
+            props.insert("kern".into(), json!(kern_at.clamp(1.0, 1638.0)));
+        }
+        Some(false) => {
+            props.insert("kern".into(), json!(0.0));
+        }
+        None => {}
+    }
     if !font.trim().is_empty() {
         props.insert("font".into(), json!(font.trim()));
     }
@@ -1630,7 +1763,26 @@ fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             false
         }
 
-        Dialog::Font { font, font_ea, asian, size, bold, italic, underline, strike, sup, sub, small_caps, caps, hidden, color, spacing, .. } => {
+        Dialog::Font {
+            font,
+            font_ea,
+            asian,
+            size,
+            bold,
+            italic,
+            underline,
+            strike,
+            sup,
+            sub,
+            small_caps,
+            caps,
+            hidden,
+            color,
+            spacing,
+            kern,
+            kern_at,
+            ..
+        } => {
             // Build the sample text format for the preview pane below.
             let preview_size = size.trim().parse::<f32>().unwrap_or(12.0).clamp(6.0, 72.0);
             let preview_color = wordcraft_doc::Rgb::parse(color).map(crate::theme::c32).unwrap_or_else(|| ui.visuals().text_color());
@@ -1690,6 +1842,22 @@ fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 ui.end_row();
                 ui.label(tl!("Spacing (pt):"));
                 ui.add(egui::DragValue::new(spacing).speed(0.1).range(-20.0..=20.0));
+                ui.end_row();
+                let label = tl!("Kerning for fonts:");
+                match kern {
+                    Some(on) => {
+                        ui.checkbox(on, label);
+                    }
+                    None => {
+                        if ui.add(egui::Checkbox::new(&mut false, label).indeterminate(true)).clicked() {
+                            *kern = Some(true);
+                        }
+                    }
+                }
+                ui.horizontal(|ui| {
+                    ui.add_enabled(*kern == Some(true), egui::DragValue::new(kern_at).speed(0.5).range(1.0..=1638.0).max_decimals(1));
+                    ui.label(tl!("Points and above"));
+                });
                 ui.end_row();
             });
             ui.separator();
@@ -2029,7 +2197,24 @@ fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             }
             ok || cancel
         }
-        Dialog::PageSetup { top, bottom, left, right, landscape, mirror, rtl, grid, grid_was, paper, paper_was, paper_custom, message, valign } => {
+        Dialog::PageSetup {
+            top,
+            bottom,
+            left,
+            right,
+            landscape,
+            mirror,
+            rtl,
+            grid,
+            grid_was,
+            paper,
+            paper_was,
+            paper_custom,
+            message,
+            valign,
+            odd_even,
+            first_page,
+        } => {
             ui.label(egui::RichText::new(tl!("Margins")).font(semibold(12.5)));
             egui::Grid::new("ps").num_columns(4).show(ui, |ui| {
                 ui.label(tl!("Top:"));
@@ -2076,6 +2261,10 @@ fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 ui.label(egui::RichText::new(message.as_str()).small().color(ui.visuals().error_fg_color));
             }
             page_valign_combo(ui, valign);
+            // Word's Page Setup › Layout: a title page without the page number (#1230).
+            ui.label(egui::RichText::new(tl!("Headers and footers")).font(semibold(12.5)));
+            ui.checkbox(odd_even, tl!("Different Odd & Even Pages"));
+            ui.checkbox(first_page, tl!("Different First Page"));
             let (mut ok, cancel) = buttons(ui, tl!("OK"));
             if ok {
                 // Everything OK changes is one undo step; a refused command applies nothing.
@@ -2102,6 +2291,12 @@ fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                         }
                         if *valign != wordcraft_engine::cmd::page::sect(&app.session).valign {
                             commands.push(("layout.verticalAlign", json!({"value": page_valign_value(*valign)})));
+                        }
+                        if *odd_even != app.session.doc.settings.even_odd_headers {
+                            commands.push(("layout.differentOddEven", json!({"value": *odd_even})));
+                        }
+                        if *first_page != wordcraft_engine::cmd::page::sect(&app.session).title_page {
+                            commands.push(("layout.differentFirstPage", json!({"value": *first_page})));
                         }
                         run_as_one_step(app, commands)
                     });
@@ -2402,7 +2597,11 @@ fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 ui.ctx().input_mut(|i| i.events.retain(|e| !swallow_shortcut_text(swallow, e)));
             }
             let r = ui.add(egui::TextEdit::singleline(query).hint_text(tl!("Type a command, e.g. \"insert table\"")).desired_width(380.0));
-            r.request_focus();
+            // Only when it lacks focus: `request_focus` always interrupts IME, and on X11 that
+            // recreates the XIM context, so asking every frame left fcitx taking no keys (#2986).
+            if !r.has_focus() {
+                r.request_focus();
+            }
             let reg = app.session.registry.clone();
             // An empty box suggests a few common commands, as Word's Search does.
             let mut hits: Vec<&wordcraft_engine::CommandSpec> = if query.trim().is_empty() {
@@ -2853,7 +3052,7 @@ fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
 }
 
 /// The Recipient List dialog's body: a file button, the editable table, OK/Cancel. True to close.
-fn recipient_list(
+pub(crate) fn recipient_list(
     app: &mut WordApp,
     ui: &mut Ui,
     fields: &mut Vec<String>,
@@ -2866,19 +3065,13 @@ fn recipient_list(
     const ROW_H: f32 = 24.0;
     const NUM_W: f32 = 34.0;
     // Each record's place in the merge (None: filtered out), when there is a filter or sort.
-    let order: Option<Vec<Option<usize>>> = (!filter.is_empty()).then(|| {
-        let (rules, sort) = filter.engine();
-        let mut order = vec![None; rows.len()];
-        for (k, i) in wordcraft_engine::cmd::mailings::select_records(fields, rows, &rules, &sort).into_iter().enumerate() {
-            if let Some(slot) = order.get_mut(i) {
-                *slot = Some(k + 1);
-            }
-        }
-        order
-    });
+    let order: Option<Vec<Option<usize>>> = (!filter.is_empty()).then(|| filter.order(fields, rows).to_vec());
     // Wide enough for every field (up to a limit; more scroll sideways).
     let gap = ui.spacing().item_spacing.x;
-    let table_w = NUM_W + gap + fields.len() as f32 * (CELL_W + X_W + 2.0 * gap) + X_W + 2.0 * gap;
+    // Plus the rows' scroll bar, so each row's remove button stays in view (#1576).
+    let scroll = ui.spacing().scroll;
+    let bar = scroll.bar_width + scroll.bar_inner_margin + scroll.bar_outer_margin;
+    let table_w = NUM_W + gap + fields.len() as f32 * (CELL_W + X_W + 2.0 * gap) + X_W + 2.0 * gap + bar + X_W;
     ui.set_min_width(table_w.clamp(340.0, 720.0));
     ui.label(tl!("Type the recipients, or load them from a file."));
     if ui.button(tl!("Use an Existing List…")).clicked() {
@@ -2887,10 +3080,38 @@ fn recipient_list(
         return true;
     }
     ui.add_space(6.0);
+    // Find in list and the merged-only view (#1576) hide rows from the grid, never change them.
+    // Nothing to leave out without a filter: the box shows unticked.
+    if order.is_none() {
+        filter.only_merged = false;
+    }
+    // A grid cell still has the keyboard: its rows stay put (see `hold_rows`).
+    let editing = filter.editing.is_some_and(|id| ui.memory(|m| m.has_focus(id)));
+    if !editing {
+        filter.editing = None;
+    }
+    let merged_only = egui::Checkbox::new(&mut filter.only_merged, tl!("Show only records that will be merged"));
+    ui.add_enabled(order.is_some(), merged_only);
+    let visible = ui
+        .horizontal(|ui| {
+            ui.label(tl!("Find in list:"));
+            ui.add(egui::TextEdit::singleline(&mut filter.find).desired_width(180.0).hint_text(tl!("Any field")));
+            // The rows the grid shows, by real index: edits and removes go to the right record.
+            let fresh = visible_recipients(rows, order.as_deref(), &filter.find, filter.only_merged);
+            let visible = hold_rows(fresh, &mut filter.held, editing, rows.len());
+            if !filter.find.trim().is_empty() {
+                let count = visible.len().to_string();
+                ui.label(egui::RichText::new(crate::i18n::fmt(tl!("Matches: {count}"), &[("count", &count)])).weak());
+            }
+            visible
+        })
+        .inner;
+    ui.add_space(4.0);
     let mut remove_field = None;
     let can_remove = fields.len() > 1;
     let mut remove_row = None;
     let mut x_w = X_W;
+    let mut focused = None;
     egui::ScrollArea::horizontal().id_salt("recipients_h").max_width(720.0).show(ui, |ui| {
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
@@ -2905,21 +3126,29 @@ fn recipient_list(
                 }
             });
             ui.separator();
-            egui::ScrollArea::vertical().id_salt("recipients_v").max_height(260.0).show_rows(ui, ROW_H, rows.len(), |ui, range| {
-                for r in range {
+            egui::ScrollArea::vertical().id_salt("recipients_v").max_height(260.0).show_rows(ui, ROW_H, visible.len(), |ui, range| {
+                for k in range {
+                    let Some(&r) = visible.get(k) else { continue };
                     let Some(row) = rows.get_mut(r) else { continue };
-                    ui.horizontal(|ui| {
+                    // Striped rows, like a data grid: painted under the row once its size is known.
+                    let stripe = ui.painter().add(egui::Shape::Noop);
+                    let line = ui.horizontal(|ui| {
                         // The record's number in the merge, a dash when the filter leaves it out.
                         let (num, kept) = match order.as_ref().map(|o| o.get(r).copied().flatten()) {
                             None => ((r + 1).to_string(), true),
-                            Some(Some(k)) => (k.to_string(), true),
+                            Some(Some(n)) => (n.to_string(), true),
                             Some(None) => ("–".to_string(), false),
                         };
                         let num = egui::RichText::new(num).weak();
                         let (rect, _) = ui.allocate_exact_size(vec2(NUM_W, ROW_H - 4.0), Sense::hover());
                         ui.put(rect, egui::Label::new(if kept { num } else { num.strikethrough() }));
-                        for c in row.iter_mut() {
-                            ui.add_sized([CELL_W, ROW_H - 4.0], egui::TextEdit::singleline(c));
+                        for (j, c) in row.iter_mut().enumerate() {
+                            // Keyed on the record, not its place in the grid: when the view hides
+                            // or moves rows, the keyboard can't land in another record (#1576).
+                            let cell = ui.add_sized([CELL_W, ROW_H - 4.0], egui::TextEdit::singleline(c).id_salt(("recipient_cell", r, j)));
+                            if cell.has_focus() {
+                                focused = Some(cell.id);
+                            }
                             // Under the field's remove button.
                             ui.allocate_exact_size(vec2(x_w, X_W), Sense::hover());
                         }
@@ -2927,10 +3156,25 @@ fn recipient_list(
                             remove_row = Some(r);
                         }
                     });
+                    if k % 2 == 1 {
+                        let half = ui.spacing().item_spacing.y / 2.0;
+                        let rect = line.response.rect.expand2(vec2(0.0, half));
+                        ui.painter().set(stripe, egui::Shape::rect_filled(rect, 2.0, ui.visuals().faint_bg_color));
+                    }
                 }
             });
         });
     });
+    if focused.is_some() {
+        filter.editing = focused;
+    }
+    if remove_field.is_some() || remove_row.is_some() {
+        // Row numbers move: hold nothing, and let go of the focused cell (its id names a row).
+        filter.held = None;
+        if let Some(id) = filter.editing.take() {
+            ui.memory_mut(|m| m.surrender_focus(id));
+        }
+    }
     if let Some(i) = remove_field.filter(|_| fields.len() > 1) {
         fields.remove(i);
         for r in rows.iter_mut() {
@@ -2944,6 +3188,8 @@ fn recipient_list(
     }
     ui.horizontal(|ui| {
         if ui.button(tl!("New Entry")).clicked() {
+            // The view would hide the new, empty entry.
+            filter.show_all();
             rows.push(vec![String::new(); fields.len()]);
         }
         if ui.button(tl!("Add Field")).clicked() {
@@ -2978,7 +3224,7 @@ fn recipient_list(
     }
     let r = recipient_table(fields, rows).map_err(|e| tl!(e).to_string()).and_then(|params| app.load_recipients(params));
     // A new list starts unfiltered; the dialog's filter and sort apply to it.
-    let r = r.and_then(|_| if filter.is_empty() { Ok(Value::Null) } else { app.run("mailings.filterRecipients", filter.params()) });
+    let r = r.and_then(|_| if filter.is_empty() { Ok(Value::Null) } else { app.run("mailings.filterRecipients", filter.params(fields)) });
     match r {
         Ok(_) => true,
         Err(e) => {
@@ -3580,7 +3826,10 @@ fn goto_body(app: &mut WordApp, ui: &mut Ui, what: &mut GoToWhat, target: &mut S
         ui.vertical(|ui| match what {
             GoToWhat::Page => {
                 ui.label(tl!("Enter page number:"));
-                ui.add(egui::TextEdit::singleline(target).desired_width(220.0)).request_focus();
+                let r = ui.add(egui::TextEdit::singleline(target).desired_width(220.0));
+                if !r.has_focus() {
+                    r.request_focus();
+                }
                 ui.label(egui::RichText::new(tl!("Type +2 or -1 to move from the page you are on.")).weak());
             }
             GoToWhat::Bookmark => {
@@ -3657,7 +3906,10 @@ fn icons_body(app: &mut WordApp, ui: &mut Ui, query: &mut String, category: &mut
     let t = Tokens::get(ui.ctx());
     ui.set_width(560.0);
     // Typing goes to the search box (never to the document behind the dialog).
-    ui.add(egui::TextEdit::singleline(query).hint_text(tl!("Search icons")).desired_width(560.0)).request_focus();
+    let r = ui.add(egui::TextEdit::singleline(query).hint_text(tl!("Search icons")).desired_width(560.0));
+    if !r.has_focus() {
+        r.request_focus();
+    }
     ui.add_space(4.0);
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
@@ -3989,6 +4241,77 @@ mod tests {
         crate::i18n::set_current(crate::i18n::Lang::EN);
     }
 
+    /// #2986: a box that keeps the keyboard asks for focus only while it lacks it. `request_focus`
+    /// always interrupts IME; on X11 that recreates the XIM context, and Search asking every frame
+    /// left fcitx taking no keys at all. Once the box has focus, no frame interrupts, and typing lands;
+    /// after Tab takes the keyboard away, the box takes it back with one reset, not one per frame.
+    #[test]
+    fn boxes_that_keep_focus_do_not_interrupt_ime_every_frame() {
+        fn typed(d: Option<&Dialog>) -> Option<&str> {
+            match d? {
+                Dialog::Commands { query, .. } | Dialog::Icons { query, .. } => Some(query.as_str()),
+                Dialog::Find { goto_target, .. } => Some(goto_target.as_str()),
+                Dialog::Refs(r) => match r.as_ref() {
+                    crate::dialogs_refs::RefsDialog::NewLabel(f) => Some(f.new_label.as_str()),
+                    _ => None,
+                },
+                _ => None,
+            }
+        }
+        let key = |key| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::NONE };
+        for name in ["commands", "icons", "goto", "newLabel"] {
+            let mut app = app_with("Unchanged document");
+            let dialog = match name {
+                "newLabel" => Dialog::Refs(Box::new(crate::dialogs_refs::RefsDialog::NewLabel(crate::dialogs_refs::CaptionForm::read(&app)))),
+                _ => Dialog::open(name, &mut app).unwrap(),
+            };
+            app.dialog = Some(dialog);
+            let mut h = app_harness(app);
+            // The box takes the keyboard from the page in the first frames.
+            h.run_steps(4);
+            let interrupted =
+                |h: &egui_kittest::Harness<'_, WordApp>| h.output().platform_output.ime.as_ref().map(|i| i.should_interrupt_composition);
+            for frame in 0..6 {
+                h.step();
+                assert_eq!(interrupted(&h), Some(false), "{name}: frame {frame} resets the input method");
+            }
+            for (k, t) in [(egui::Key::A, "a"), (egui::Key::B, "b")] {
+                h.event(key(k));
+                h.event(egui::Event::Text(t.into()));
+                h.step();
+                assert_eq!(interrupted(&h), Some(false), "{name}: typing {t} resets the input method");
+            }
+            assert_eq!(typed(h.state().dialog.as_ref()), Some("ab"), "{name}: the keys reach the box");
+
+            // Tab moves the keyboard to the dialog's next control and the box takes it back. As
+            // egui-winit does, count a reset when IME comes back on or is interrupted while on (each
+            // recreates the XIM context): one or two for the round trip, then none, and the next
+            // key reaches the box.
+            let reset = |h: &egui_kittest::Harness<'_, WordApp>, on: &mut bool| {
+                let ime = h.output().platform_output.ime.as_ref();
+                let reset = ime.is_some_and(|i| !*on || i.should_interrupt_composition);
+                *on = ime.is_some();
+                reset
+            };
+            let mut on = true;
+            h.event(key(egui::Key::Tab));
+            let mut back = 0;
+            for _ in 0..4 {
+                h.step();
+                back += usize::from(reset(&h, &mut on));
+            }
+            assert!((1..=2).contains(&back), "{name}: Tab and back reset the input method {back} times");
+            for frame in 0..4 {
+                h.step();
+                assert!(!reset(&h, &mut on), "{name}: frame {frame} after Tab resets the input method");
+            }
+            h.event(key(egui::Key::C));
+            h.event(egui::Event::Text("c".into()));
+            h.step();
+            assert_eq!(typed(h.state().dialog.as_ref()), Some("abc"), "{name}: the box has the keyboard back after Tab");
+        }
+    }
+
     /// Open the Paragraph dialog and press OK without changing anything.
     fn ok_unchanged(app: &mut WordApp) {
         ok_edit(app, |_| {});
@@ -4288,6 +4611,42 @@ mod tests {
         apply_font(&mut app, &d);
         let c = app.session.doc.para_at(&wordcraft_doc::Pos::body(0, 0)).map(|p| p.props_of_char(0).clone()).unwrap_or_default();
         assert_eq!((c.small_caps, c.caps, c.size), (Some(false), Some(true), Some(14.0)));
+    }
+
+    /// Kerning for fonts and its Points and above size set `w:kern` on the selection in one undo
+    /// step; off is 0. Text that differs shows the box neither on nor off, and OK leaves each
+    /// run's own kerning.
+    #[test]
+    fn font_dialog_sets_kerning_for_fonts() {
+        let mut app = app_with("Kerned plain");
+        let _ = app.run("select.all", json!({}));
+        let _ = app.run("format.set", json!({"props": {"kern": 0}}));
+        let kern = |app: &WordApp, off| app.session.doc.para_at(&Pos::body(0, 0)).and_then(|p| p.props_of_char(off).kern);
+        let Some(mut d) = Dialog::open("font", &mut app) else { panic!("no font dialog") };
+        let Dialog::Font { kern: on, kern_at, .. } = &mut d else { panic!() };
+        assert_eq!((*on, *kern_at), (Some(false), 12.0), "off, offering 12 pt");
+        *on = Some(true);
+        *kern_at = 16.0;
+        apply_font(&mut app, &d);
+        assert_eq!((kern(&app, 0), kern(&app, 7)), (Some(16.0), Some(16.0)));
+        let _ = app.run("edit.undo", json!({}));
+        assert_eq!(kern(&app, 0), Some(0.0), "one undo step");
+        let _ = app.run("edit.redo", json!({}));
+        let Some(mut d) = Dialog::open("font", &mut app) else { panic!() };
+        let Dialog::Font { kern: on, kern_at, .. } = &mut d else { panic!() };
+        assert_eq!((*on, *kern_at), (Some(true), 16.0));
+        *on = Some(false);
+        apply_font(&mut app, &d);
+        assert_eq!((kern(&app, 0), kern(&app, 7)), (Some(0.0), Some(0.0)));
+        let _ = app.run("select.text", json!({"text": "Kerned"}));
+        let _ = app.run("format.set", json!({"props": {"kern": 14}}));
+        let _ = app.run("select.all", json!({}));
+        let Some(mut d) = Dialog::open("font", &mut app) else { panic!() };
+        let Dialog::Font { kern: on, size, .. } = &mut d else { panic!() };
+        assert_eq!(*on, None, "mixed kerning shows neither on nor off");
+        *size = "13".into();
+        apply_font(&mut app, &d);
+        assert_eq!((kern(&app, 0), kern(&app, 7)), (Some(14.0), Some(0.0)), "each run keeps its kerning");
     }
 
     /// #1178: Modify Style's font box is the ribbon's font box, so typing part of a name picks the
@@ -4704,5 +5063,99 @@ mod tests {
             h.step();
         }
         assert_eq!(wordcraft_engine::cmd::page::sect(&h.state().session).valign, PageVAlign::Justify);
+    }
+
+    /// #1230: Page Setup's Different first page check box gives the title page no page number
+    /// (its footer is the empty first-page one), in one undo step.
+    #[test]
+    fn page_setup_different_first_page_leaves_the_title_page_unnumbered() {
+        use egui_kittest::kittest::Queryable;
+        let mut app = app_with("Title");
+        app.run("insert.pageBreak", json!({})).unwrap();
+        app.run("text.insert", json!({"text": "Body"})).unwrap();
+        app.run("insert.pageNumber", json!({"position": "bottom", "align": "center"})).unwrap();
+        let _ = app.run("insert.closeHeader", json!({}));
+        assert!(app.session.layout().pages[0].footer_story.is_some(), "page 1 is numbered");
+        app.dialog = Dialog::open("pageSetup", &mut app);
+        assert!(matches!(app.dialog, Some(Dialog::PageSetup { first_page: false, odd_even: false, .. })));
+        let depth = app.session.undo_depth();
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            app,
+        );
+        for _ in 0..4 {
+            h.step();
+        }
+        assert!(h.query_by_label("Different Odd & Even Pages").is_some(), "the dialog has both check boxes");
+        h.get_by_label("Different First Page").click();
+        for _ in 0..2 {
+            h.step();
+        }
+        h.get_by_role_and_label(egui::accesskit::Role::Button, "OK").click();
+        for _ in 0..4 {
+            h.step();
+        }
+        let s = &mut h.state_mut().session;
+        assert!(wordcraft_engine::cmd::page::sect(s).title_page);
+        assert!(!s.doc.settings.even_odd_headers, "left as it was");
+        assert_eq!(s.undo_depth(), depth + 1);
+        let pages = &s.layout().pages;
+        assert!(pages[0].footer_story.is_none(), "the title page shows no page number");
+        assert!(pages[1].footer_story.is_some(), "the next page keeps its number");
+    }
+
+    /// #2701: in the SmartArt Text Pane, Tab demotes and Shift+Tab promotes the focused item, as
+    /// Word's pane does; the row keeps its focus, so the next Tab acts on the same item. An item
+    /// that can't go down a level (the one before it isn't deeper) is left as it is.
+    #[test]
+    fn text_pane_tab_demotes_and_shift_tab_promotes_the_focused_item() {
+        use egui_kittest::kittest::Queryable;
+        let mut app = WordApp::new(Session::new(wordcraft_doc::Document::new()), crate::Services::default());
+        app.run("insert.smartArt", json!({"layout": "hierarchy"})).unwrap();
+        app.run("smartArt.textPane", json!({"value": true})).unwrap();
+        let levels = |app: &WordApp| {
+            wordcraft_engine::cmd::smart_art::selected_smart_art(&app.session).map(|g| g.items.iter().map(|i| i.level).collect::<Vec<u8>>())
+        };
+        assert_eq!(levels(&app), Some([0, 1, 2, 1, 2, 2].to_vec()), "Lead, Design, Sketches, Build, Code, Tests");
+        let mut h = app_harness(app);
+        h.run_steps(2);
+        // Focus a pane row: the text box with this value (the graphic drawn on the page shows the
+        // same words as shape names, so match by role).
+        let focus_row = |h: &mut egui_kittest::Harness<'static, WordApp>, text: &str| {
+            let node = h
+                .query_all(egui_kittest::kittest::By::new().role(egui::accesskit::Role::TextInput).value(text))
+                .next()
+                .unwrap_or_else(|| panic!("no text box for {text}"));
+            node.focus();
+            h.run_steps(2);
+        };
+        let tab = |h: &mut egui_kittest::Harness<'static, WordApp>, shift: bool| {
+            if shift {
+                h.key_press_modifiers(egui::Modifiers::SHIFT, egui::Key::Tab);
+            } else {
+                h.key_press(egui::Key::Tab);
+            }
+            h.run_steps(2);
+        };
+        // Focus "Design" (the second top-level item, at level 1): Tab can't demote it, because
+        // the item before it ("Lead") is shallower — Word leaves the level alone.
+        focus_row(&mut h, "Design");
+        assert_eq!(h.state().smart_art_item, Some(1), "the pane remembers the focused row");
+        tab(&mut h, false);
+        assert_eq!(levels(h.state()), Some([0, 1, 2, 1, 2, 2].to_vec()), "Tab on an item that can't go down changes nothing");
+        assert_eq!(h.state().smart_art_item, Some(1), "the row keeps focus after a refused demote");
+        // Focus "Build" (level 1 after the deeper "Sketches"): Tab demotes it and its sub-items,
+        // and the next Tab (the row stayed focused) demotes them again; Shift+Tab promotes back.
+        focus_row(&mut h, "Build");
+        tab(&mut h, false);
+        assert_eq!(levels(h.state()), Some([0, 1, 2, 2, 3, 3].to_vec()), "Tab demotes the focused item");
+        tab(&mut h, false);
+        assert_eq!(levels(h.state()), Some([0, 1, 2, 3, 4, 4].to_vec()), "the same row takes the next Tab");
+        tab(&mut h, true);
+        assert_eq!(levels(h.state()), Some([0, 1, 2, 2, 3, 3].to_vec()), "Shift+Tab promotes them back");
     }
 }

@@ -149,6 +149,11 @@ impl FieldCode {
         self.switches.iter().any(|(k, _)| *k == c)
     }
 
+    /// A table of figures (`TOC \c` or `TOC \a`, ECMA-376 §17.16.5.68), not a table of contents.
+    pub fn is_table_of_figures(&self) -> bool {
+        self.name == "TOC" && (self.has('c') || self.has('a'))
+    }
+
     /// The argument of switch `c`, if the switch is there with one.
     pub fn arg(&self, c: char) -> Option<&str> {
         self.switches.iter().find(|(k, _)| *k == c).and_then(|(_, a)| a.as_deref())
@@ -360,7 +365,7 @@ fn convertible_toc_range(s: &Session, r: &wordcraft_doc::FieldRange) -> bool {
     let field = FieldCode::parse(&r.instr);
     toc_range(s).is_none()
         && field.name == "TOC"
-        && !field.has('c')
+        && !field.is_table_of_figures()
         && r.depth == 0
         && !r.locked
         && r.start.path.depth() == 0
@@ -425,7 +430,7 @@ fn toc_field(p: &Paragraph) -> Option<String> {
     p.objects.iter().find_map(|o| match o {
         InlineObject::Field { instr, .. } => {
             let f = FieldCode::parse(instr);
-            (f.name == "TOC" && !f.has('c')).then(|| instr.clone())
+            (f.name == "TOC" && !f.is_table_of_figures()).then(|| instr.clone())
         }
         _ => None,
     })
@@ -436,7 +441,7 @@ fn cached_toc_tabs(s: &Session) -> Vec<(String, Vec<TabStop>)> {
     let span = toc_range(s).map(|(start, end)| (start.saturating_add(1), end)).or_else(|| {
         s.doc.field_ranges(StoryRef::Body).into_iter().find_map(|r| {
             let f = FieldCode::parse(&r.instr);
-            (r.depth == 0 && !r.locked && r.start.path.depth() == 0 && r.end.path.depth() == 0 && f.name == "TOC" && !f.has('c'))
+            (r.depth == 0 && !r.locked && r.start.path.depth() == 0 && r.end.path.depth() == 0 && f.name == "TOC" && !f.is_table_of_figures())
                 .then_some((r.start.path.last(), r.end.path.last()))
         })
     });
@@ -560,7 +565,7 @@ fn regenerate_toc(s: &mut Session, leader: Option<TabLeader>, tabs: &[(String, V
         for o in &mut p.objects {
             if let InlineObject::Field { instr, result, .. } = o {
                 let f = FieldCode::parse(instr);
-                if f.name == "TOC" && !f.has('c') {
+                if f.name == "TOC" && !f.is_table_of_figures() {
                     result.clear();
                 }
             }
@@ -837,14 +842,24 @@ fn caption(s: &mut Session, v: &Value) -> CmdResult {
     if !text.is_empty() {
         para.insert_text(para.len(), &format!(": {text}"), &CharProps::default())?;
     }
-    // Next to the caret's top-level block: a paragraph, or the whole table it is in.
+    // A selected picture, shape or chart: next to the paragraph holding it, in the same cell or
+    // text box (#1230). Otherwise next to the caret's top-level block: a paragraph, or the whole
+    // table it is in.
     let f = s.sel.focus.clone();
-    let top = f.path.0.first().copied().unwrap_or(0) as usize;
-    let i = if above { top } else { top.saturating_add(1) };
-    s.doc.insert_block(f.story, &Path::top(i), Block::Para(para))?;
+    let at = match super::objects::object_selection(s) {
+        Some((pos, _)) => {
+            let k = pos.path.last();
+            pos.path.with_last(if above { k } else { k.saturating_add(1) })
+        }
+        None => {
+            let top = f.path.0.first().copied().unwrap_or(0) as usize;
+            Path::top(if above { top } else { top.saturating_add(1) })
+        }
+    };
+    s.doc.insert_block(f.story, &at, Block::Para(para))?;
     update_seq(s)?;
-    let off = s.doc.para(f.story, &Path::top(i)).map_or(0, |p| p.len());
-    s.sel = Selection::caret(Pos { story: f.story, path: Path::top(i), off });
+    let off = s.doc.para(f.story, &at).map_or(0, |p| p.len());
+    s.sel = Selection::caret(Pos { story: f.story, path: at, off });
     sel_result(s)
 }
 
@@ -1003,6 +1018,19 @@ pub fn update_fields_in(s: &mut Session, all: bool) -> Result<(), CmdError> {
                 "TITLE" => updates.push((k, s.doc.core.title.clone())),
                 "AUTHOR" => updates.push((k, s.doc.core.creator.clone())),
                 "NUMWORDS" => updates.push((k, s.doc.word_count().to_string())),
+                // DOCPROPERTY <name>: a custom property first, then a built-in one (#1798).
+                "DOCPROPERTY" => {
+                    if let Some(name) = doc_property_arg(instr)
+                        && let Some(v) = doc_property(&s.doc, &name)
+                    {
+                        updates.push((k, v));
+                    }
+                }
+                "FILENAME" => {
+                    let (fn_name, fn_path) = s.resolved_filenames();
+                    let text = if has_switch(instr, 'p') { fn_path } else { fn_name };
+                    updates.push((k, text));
+                }
                 _ => {}
             }
         }
@@ -1062,6 +1090,38 @@ pub fn refresh_date_fields(doc: &mut wordcraft_doc::Document) {
             para.touch();
         }
     }
+}
+
+/// The property name of a `DOCPROPERTY` field: the word (or quoted text) after the field name,
+/// before any switch (`DOCPROPERTY "Project Name" \* MERGEFORMAT`).
+fn doc_property_arg(instr: &str) -> Option<String> {
+    let rest = instr.trim().split_once(char::is_whitespace)?.1.trim_start();
+    let name = match rest.strip_prefix('"') {
+        Some(q) => q.split('"').next().unwrap_or(""),
+        None => rest.split([' ', '\\']).next().unwrap_or(""),
+    };
+    (!name.is_empty()).then(|| name.to_string())
+}
+
+/// The value of a document property under the name a `DOCPROPERTY` field uses: a custom property
+/// when one has this name, else the built-in property (English names, case-insensitively, as
+/// Word's field accepts). `None` for a name this application doesn't know.
+fn doc_property(doc: &wordcraft_doc::Document, name: &str) -> Option<String> {
+    if let Some(v) = doc.custom_prop(name) {
+        return Some(v.to_string());
+    }
+    let c = &doc.core;
+    Some(match name.trim().to_ascii_lowercase().as_str() {
+        "title" => c.title.clone(),
+        "subject" => c.subject.clone(),
+        "author" | "creator" => c.creator.clone(),
+        "keywords" => c.keywords.clone(),
+        "comments" | "description" => c.description.clone(),
+        "category" => c.category.clone(),
+        "lastmodifiedby" | "last modified by" | "lastsavedby" | "last saved by" => c.last_modified_by.clone(),
+        "revisionnumber" | "revision number" | "revision" => c.revision.to_string(),
+        _ => return None,
+    })
 }
 
 /// A field's `\@` date picture: the quoted text after it (switches may follow), or one word.
@@ -1315,6 +1375,48 @@ mod tests {
         out
     }
 
+    #[test]
+    fn update_fields_filename() {
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        s.path = Some(std::path::PathBuf::from("/docs/my_thesis.docx"));
+        s.run("insert.field", &serde_json::json!({"instr": "FILENAME"})).unwrap();
+        let fields = story_fields(&s, StoryRef::Body);
+        assert_eq!(fields[0], ("FILENAME".into(), "my_thesis.docx".into()));
+
+        s.run("insert.field", &serde_json::json!({"instr": r"FILENAME \p"})).unwrap();
+        let fields = story_fields(&s, StoryRef::Body);
+        assert_eq!(fields[1], (r"FILENAME \p".into(), "/docs/my_thesis.docx".into()));
+    }
+
+    #[test]
+    fn update_fields_filename_titled_unsaved() {
+        let mut doc = wordcraft_doc::Document::new();
+        doc.core.title = "Important Document".into();
+        let mut s = Session::new(doc);
+        s.run("insert.field", &serde_json::json!({"instr": "FILENAME"})).unwrap();
+        let fields = story_fields(&s, StoryRef::Body);
+        assert_eq!(fields[0], ("FILENAME".into(), "Document1".into()));
+
+        let l = s.layout();
+        let text: String = l.pages[0]
+            .items
+            .iter()
+            .filter_map(|it| {
+                if let wordcraft_layout::Placed::Lines { para, .. } = it {
+                    Some(para.shown.iter().map(|x| x.1.clone()).collect::<String>())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert!(text.contains("Document1"), "live layout renders Document1: {text}");
+        assert!(!text.contains("Important Document"), "live layout must not render title: {text}");
+
+        s.run("references.updateFields", &serde_json::json!({})).unwrap();
+        let fields_after = story_fields(&s, StoryRef::Body);
+        assert_eq!(fields_after[0], ("FILENAME".into(), "Document1".into()));
+    }
+
     /// #1706 (Word check): Update Field with the caret in the body leaves a header's fields alone.
     #[test]
     fn update_fields_in_the_body_leaves_headers_alone() {
@@ -1376,5 +1478,38 @@ mod tests {
             )
             .unwrap();
         assert_eq!(cached_toc_tabs(&s), vec![("TOC2".into(), vec![stop(24.0)])]);
+    }
+
+    /// #1230: a selected picture or shape in a table cell gets its caption in the cell, under
+    /// (or over) the paragraph that holds it, not after the whole table; the number counts on.
+    #[test]
+    fn caption_for_an_object_in_a_cell_stays_in_the_cell() {
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        s.run("insert.table", &json!({"rows": 1, "cols": 2})).unwrap();
+        s.run("insert.shape", &json!({"kind": "ellipse", "width": 60, "height": 40})).unwrap();
+        let (at, _) = crate::cmd::objects::selected(&s).expect("the shape is selected");
+        let (table, r, c) = at.path.cell().expect("the shape is in a cell");
+        s.run("references.caption", &json!({"label": "Figure", "text": "Kiln"})).unwrap();
+        let cell = |s: &Session| s.doc.table(StoryRef::Body, &table).unwrap().rows[r].cells[c].blocks.clone();
+        let texts: Vec<String> = cell(&s).iter().filter_map(|b| b.as_para()).map(|p| p.plain_text()).collect();
+        assert_eq!(texts.len(), 2, "{texts:?}");
+        assert_eq!(texts[1], "Figure 1: Kiln", "the caption is under the shape, in the cell");
+        assert_eq!(s.doc.body.iter().filter(|b| b.as_para().is_some_and(|p| p.props.style.as_deref() == Some("Caption"))).count(), 0);
+        // Above: over the shape's paragraph, and it is Figure 1 (the one below becomes 2).
+        let end = Pos { off: at.off + wordcraft_doc::para::OBJ.len_utf8(), ..at.clone() };
+        s.sel = Selection { anchor: at.clone(), focus: end };
+        assert!(crate::cmd::objects::object_selection(&s).is_some());
+        s.run("references.caption", &json!({"label": "Figure", "text": "Lid", "position": "above"})).unwrap();
+        let texts: Vec<String> = cell(&s).iter().filter_map(|b| b.as_para()).map(|p| p.plain_text()).collect();
+        assert_eq!(texts.len(), 3, "{texts:?}");
+        assert_eq!((texts[0].as_str(), texts[2].as_str()), ("Figure 1: Lid", "Figure 2: Kiln"));
+        // A picture outside a table: the caption goes right after its paragraph.
+        let mut s = Session::new(wordcraft_doc::Document::from_text("Before\nAfter"));
+        s.run("select.text", &json!({"text": "Before"})).unwrap();
+        s.run("caret.end", &json!({})).unwrap();
+        s.run("insert.shape", &json!({"kind": "ellipse", "width": 60, "height": 40})).unwrap();
+        s.run("references.caption", &json!({})).unwrap();
+        let texts: Vec<String> = s.doc.body.iter().filter_map(|b| b.as_para()).map(|p| p.plain_text()).collect();
+        assert_eq!(texts.get(1).map(String::as_str), Some("Figure 1"), "{texts:?}");
     }
 }

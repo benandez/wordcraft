@@ -1,8 +1,9 @@
 //! References dialogs (#402): Caption (with New Label and Numbering), Cross-reference (#916),
-//! Index and Mark Index Entry, Custom Table of Contents (with Options and the TOC styles), and the
-//! Source Manager with Create / Edit Source. Each fills a form from the session and ends in a
-//! command (`references.caption`, `insert.crossReference`, `references.index`,
-//! `references.markEntry`, `references.toc`, `references.sources`, `references.citation`), so
+//! Index and Mark Index Entry, Custom Table of Contents (with Options and the TOC styles), Table of
+//! Figures (#3013), and the Source Manager with Create / Edit Source. Each fills a form from the
+//! session and ends in a command (`references.caption`, `insert.crossReference`, `references.index`,
+//! `references.markEntry`, `references.toc`, `references.tableOfFigures`, `references.sources`,
+//! `references.citation`), so
 //! agents get the same result without the dialog. Shown through [`crate::dialogs::Dialog::Refs`].
 
 use egui::{Sense, Ui, vec2};
@@ -13,6 +14,8 @@ use wordcraft_engine::cmd::references::FieldCode;
 
 use crate::WordApp;
 use crate::dialogs::{Dialog, buttons};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::file_dialogs::{AfterPick, Asked, FileDialogRequest};
 use crate::theme::{Tokens, semibold};
 
 #[derive(Clone, Debug, Serialize)]
@@ -42,6 +45,7 @@ pub enum RefsDialog {
         form: TocForm,
         level: u8,
     },
+    Figures(FiguresForm),
     Sources {
         selected: Option<usize>,
     },
@@ -60,6 +64,7 @@ impl RefsDialog {
             RefsDialog::Toc(_) => "toc",
             RefsDialog::TocOptions { .. } => "tocOptions",
             RefsDialog::TocStyles { .. } => "tocStyles",
+            RefsDialog::Figures(_) => "tableOfFigures",
             RefsDialog::Sources { .. } => "sourceManager",
             RefsDialog::Source(f) if f.edit => "editSource",
             RefsDialog::Source(_) => "createSource",
@@ -78,6 +83,7 @@ impl RefsDialog {
             RefsDialog::Toc(_) => "Table of Contents",
             RefsDialog::TocOptions { .. } => "Table of Contents Options",
             RefsDialog::TocStyles { .. } => "Table of Contents Styles",
+            RefsDialog::Figures(_) => "Table of Figures",
             RefsDialog::Sources { .. } => "Source Manager",
             RefsDialog::Source(f) if f.edit => "Edit Source",
             RefsDialog::Source(_) => "Create Source",
@@ -86,7 +92,7 @@ impl RefsDialog {
 }
 
 /// The dialog `ui.dialog` opens by `name`: `caption`, `crossReference`, `index`, `markEntry`, `toc`,
-/// `sourceManager` or `createSource` (which inserts a citation of the new source).
+/// `tableOfFigures`, `sourceManager` or `createSource` (which inserts a citation of the new source).
 pub fn open(name: &str, app: &WordApp) -> Option<RefsDialog> {
     Some(match name {
         "caption" => RefsDialog::Caption(CaptionForm::read(app)),
@@ -94,6 +100,7 @@ pub fn open(name: &str, app: &WordApp) -> Option<RefsDialog> {
         "index" => RefsDialog::Index(IndexForm::read(app)),
         "markEntry" => RefsDialog::MarkEntry(MarkForm::read(app)),
         "toc" => RefsDialog::Toc(TocForm::read(app)),
+        "tableOfFigures" => RefsDialog::Figures(FiguresForm::read(app)),
         "sourceManager" => RefsDialog::Sources { selected: None },
         "createSource" => RefsDialog::Source(Box::new(SourceForm::new(true, false))),
         _ => return None,
@@ -112,6 +119,7 @@ pub fn body(app: &mut WordApp, ui: &mut Ui, d: &mut RefsDialog) -> bool {
         RefsDialog::Toc(f) => toc_ui(app, ui, f),
         RefsDialog::TocOptions { form, was } => toc_options_ui(app, ui, form, was),
         RefsDialog::TocStyles { form, level } => toc_styles_ui(app, ui, form, level),
+        RefsDialog::Figures(f) => figures_ui(app, ui, f),
         RefsDialog::Sources { selected } => sources_ui(app, ui, selected),
         RefsDialog::Source(f) => source_ui(app, ui, f),
     };
@@ -240,16 +248,19 @@ impl CaptionForm {
                 labels.push(l.clone());
             }
         }
-        // In a table the caption is for the table.
-        let in_table = app.session.sel.focus.path.depth() > 0
+        // In a table the caption is for the table, unless a picture or shape in it is selected.
+        let in_table = wordcraft_engine::cmd::objects::object_selection(&app.session).is_none()
+            && app.session.sel.focus.path.depth() > 0
             && app
                 .session
                 .doc
                 .body
                 .get(app.session.sel.focus.path.0.first().copied().unwrap_or(0) as usize)
                 .is_some_and(|b| matches!(&**b, Block::Table(_)));
+        let last = &app.ui.last_caption_label;
+        let label = if labels.contains(last) { last.as_str() } else { "Figure" };
         CaptionForm {
-            label: if in_table { "Table" } else { "Figure" }.into(),
+            label: if in_table { "Table" } else { label }.into(),
             labels,
             text: String::new(),
             position: "below".into(),
@@ -290,6 +301,13 @@ impl CaptionForm {
             v["separator"] = json!(self.separator);
         }
         v
+    }
+
+    /// Insert the caption and remember its label for next time.
+    pub fn insert(&self, app: &mut WordApp) -> Result<(), String> {
+        app.run("references.caption", self.params())?;
+        app.ui.last_caption_label = self.label.clone();
+        Ok(())
     }
 }
 
@@ -336,7 +354,7 @@ fn caption_ui(app: &mut WordApp, ui: &mut Ui, f: &mut CaptionForm) -> Next {
         return go(g);
     }
     let (ok, cancel) = buttons(ui, tl!("OK"));
-    if ok && let Err(e) = app.run("references.caption", f.params()) {
+    if ok && let Err(e) = f.insert(app) {
         app.status(e);
     }
     if ok || cancel { Next::Close } else { Next::Stay }
@@ -349,11 +367,26 @@ fn caption_ui(app: &mut WordApp, ui: &mut Ui, f: &mut CaptionForm) -> Next {
 const REF_TYPES: [(&str, &str); 5] =
     [("heading", "Heading"), ("bookmark", "Bookmark"), ("equation", "Equation"), ("figure", "Figure"), ("table", "Table")];
 
+/// The Reference types to pick from: [`REF_TYPES`], then each caption label of the person's own
+/// (Insert Caption › New Label, or already in the document's captions) as `label:<Name>` (#2940).
+fn ref_types(app: &WordApp) -> Vec<(String, String)> {
+    let mut types: Vec<(String, String)> = REF_TYPES.iter().map(|(v, l)| (v.to_string(), l.to_string())).collect();
+    let in_document = wordcraft_engine::cmd::citations::caption_labels(&app.session);
+    for l in app.ui.caption_labels.iter().chain(&in_document) {
+        let value = format!("label:{l}");
+        if !BUILT_IN_LABELS.contains(&l.as_str()) && !types.iter().any(|(v, _)| *v == value) {
+            types.push((value, l.clone()));
+        }
+    }
+    types
+}
+
 /// The Cross-reference dialog's fields.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CrossRefForm {
-    /// `heading`, `bookmark`, `equation`, `figure` or `table`.
+    /// `heading`, `bookmark`, `equation`, `figure`, `table`, or `label:<Name>` for a caption label
+    /// of the person's own.
     pub to: String,
     /// `text`, `page`, `number` or `aboveBelow`.
     pub show: String,
@@ -389,7 +422,8 @@ fn cross_ref_ui(app: &mut WordApp, ui: &mut Ui, f: &mut CrossRefForm) -> Next {
     let was = f.to.clone();
     egui::Grid::new("xref_opts").num_columns(2).spacing(vec2(10.0, 6.0)).show(ui, |ui| {
         ui.label(tl!("Reference type:"));
-        let types: Vec<(String, &str)> = REF_TYPES.iter().map(|(v, l)| (v.to_string(), *l)).collect();
+        let types = ref_types(app);
+        let types: Vec<(String, &str)> = types.iter().map(|(v, l)| (v.clone(), l.as_str())).collect();
         choice(ui, "xref_type", &mut f.to, &types);
         ui.end_row();
         ui.label(tl!("Insert reference to:"));
@@ -465,7 +499,9 @@ fn numbering_ui(ui: &mut Ui, f: &mut CaptionForm, was: &CaptionForm) -> Next {
 fn new_label_ui(app: &mut WordApp, ui: &mut Ui, f: &mut CaptionForm) -> Next {
     ui.label(tl!("Label:"));
     let r = ui.add(egui::TextEdit::singleline(&mut f.new_label).desired_width(260.0));
-    r.request_focus();
+    if !r.has_focus() {
+        r.request_focus();
+    }
     let (ok, cancel) = buttons(ui, tl!("OK"));
     let name: String = f.new_label.chars().filter(|c| !matches!(c, '"' | '\\') && !c.is_control()).take(40).collect::<String>().trim().to_string();
     if ok && !name.is_empty() {
@@ -499,7 +535,7 @@ pub struct IndexForm {
 fn body_field(app: &WordApp, name: &str) -> Option<FieldCode> {
     app.session.doc.body.iter().filter_map(|b| b.as_para()).flat_map(|p| p.objects.iter()).find_map(|o| match o {
         wordcraft_doc::InlineObject::Field { instr, .. } => {
-            Some(FieldCode::parse(instr)).filter(|f| f.name == name && (name != "TOC" || !f.has('c')))
+            Some(FieldCode::parse(instr)).filter(|f| f.name == name && (name != "TOC" || !f.is_table_of_figures()))
         }
         _ => None,
     })
@@ -883,6 +919,85 @@ fn toc_styles_ui(app: &mut WordApp, ui: &mut Ui, f: &mut TocForm, level: &mut u8
 }
 
 // ---------------------------------------------------------------------------------------------
+// Table of Figures
+
+/// The Table of Figures dialog's fields (#3013).
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FiguresForm {
+    /// The caption label whose captions are listed.
+    pub label: String,
+    /// Built-in labels, the user's own and any the document's captions use.
+    pub labels: Vec<String>,
+    pub include_label: bool,
+    pub page_numbers: bool,
+    pub right_align: bool,
+    pub leader: String,
+}
+
+impl FiguresForm {
+    pub fn read(app: &WordApp) -> FiguresForm {
+        let mut labels: Vec<String> = BUILT_IN_LABELS.iter().map(|l| l.to_string()).collect();
+        for l in app.ui.caption_labels.iter().cloned().chain(wordcraft_engine::cmd::citations::caption_labels(&app.session)) {
+            if !labels.contains(&l) {
+                labels.push(l);
+            }
+        }
+        FiguresForm { label: "Figure".into(), labels, include_label: true, page_numbers: true, right_align: true, leader: "dot".into() }
+    }
+
+    /// `references.tableOfFigures` parameters.
+    pub fn params(&self) -> Value {
+        json!({
+            "label": self.label,
+            "includeLabel": self.include_label,
+            "pageNumbers": self.page_numbers,
+            "rightAlign": self.right_align,
+            "tabLeader": self.leader,
+        })
+    }
+}
+
+fn figures_ui(app: &mut WordApp, ui: &mut Ui, f: &mut FiguresForm) -> Next {
+    let lines: Vec<(usize, String, String)> = [(1, "1"), (2, "3")]
+        .iter()
+        .map(|(n, page)| {
+            let text = if f.include_label { format!("{} {n}: {}", tl!(&f.label), tl!("Text")) } else { tl!("Text").to_string() };
+            (0, text, if f.page_numbers { page.to_string() } else { String::new() })
+        })
+        .collect();
+    sample(ui, &lines, f.right_align, leader_char(&f.leader));
+    ui.add_space(6.0);
+    ui.horizontal(|ui| {
+        ui.label(tl!("Label:"));
+        let labels: Vec<(String, &str)> = f.labels.iter().map(|l| (l.clone(), l.as_str())).collect();
+        egui::ComboBox::from_id_salt("tof_label").selected_text(tl!(&f.label)).width(150.0).show_ui(ui, |ui| {
+            for (v, l) in &labels {
+                ui.selectable_value(&mut f.label, v.clone(), tl!(l));
+            }
+        });
+    });
+    ui.checkbox(&mut f.include_label, tl!("Include label and number"));
+    ui.checkbox(&mut f.page_numbers, tl!("Include page numbers"));
+    ui.add_enabled_ui(f.page_numbers, |ui| {
+        ui.checkbox(&mut f.right_align, tl!("Page numbers at the right margin"));
+        ui.horizontal(|ui| {
+            ui.label(tl!("Tab leader:"));
+            ui.add_enabled_ui(f.right_align, |ui| {
+                let opts: Vec<(String, &str)> = LEADERS.iter().map(|(v, l)| (v.to_string(), *l)).collect();
+                choice(ui, "tof_leader", &mut f.leader, &opts);
+            });
+        });
+    });
+    ui.add_space(4.0);
+    let (ok, cancel) = buttons(ui, tl!("OK"));
+    if ok && let Err(e) = app.run("references.tableOfFigures", f.params()) {
+        app.status(e);
+    }
+    if ok || cancel { Next::Close } else { Next::Stay }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Sources
 
 /// Source types with their fields: (kind, label, recommended fields). A field is (key, label).
@@ -1064,6 +1179,8 @@ fn source_ui(app: &mut WordApp, ui: &mut Ui, f: &mut SourceForm) -> Next {
     if ok || cancel { Next::Close } else { Next::Stay }
 }
 
+/// The Source Manager: the document's sources with New…, Import…, Edit…, Delete and Insert
+/// Citation; each button runs the command an agent would.
 fn sources_ui(app: &mut WordApp, ui: &mut Ui, selected: &mut Option<usize>) -> Next {
     let t = Tokens::get(ui.ctx());
     let list: Vec<String> = app
@@ -1096,6 +1213,14 @@ fn sources_ui(app: &mut WordApp, ui: &mut Ui, selected: &mut Option<usize>) -> N
     ui.horizontal(|ui| {
         if ui.button(tl!("New…")).clicked() {
             next = go(RefsDialog::Source(Box::new(SourceForm::new(false, true))));
+        }
+        // Import… (desktop): a Word bibliography file (`b:Sources`, Word's own Sources.xml) adds
+        // its sources to this document (#2640); the list above follows on the next frame.
+        #[cfg(not(target_arch = "wasm32"))]
+        if ui.button(tl!("Import…")).clicked()
+            && let Asked::Done(Err(e)) = app.ask_file(FileDialogRequest::Open { purpose: "sources".into() }, AfterPick::Sources)
+        {
+            app.status(e);
         }
         if ui.add_enabled(src.is_some(), egui::Button::new(tl!("Edit…"))).clicked()
             && let Some(s) = &src
@@ -1192,6 +1317,46 @@ mod tests {
         assert_eq!(a.prefs().caption_labels, vec!["Plate".to_string()]);
     }
 
+    /// #3120: Insert Caption picks the label used last, and saves it with the preferences.
+    #[test]
+    fn caption_dialog_remembers_the_last_label() {
+        use egui::accesskit::Role;
+        use egui_kittest::kittest::Queryable;
+        let mut a = app("A chart\nA photo");
+        a.ui.caption_labels.push("Diagram".into());
+        a.run("select.text", json!({"text": "A chart"})).unwrap();
+        a.run("references.caption", json!({})).unwrap();
+        let mut h = egui_kittest::Harness::builder().with_size(vec2(1440.0, 900.0)).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            a,
+        );
+        h.run_steps(4);
+        h.get_by_value("Figure").click();
+        h.run_steps(3);
+        h.get_by_label("Diagram").click();
+        h.run_steps(3);
+        h.get_by_role_and_label(Role::Button, "OK").click();
+        h.run_steps(3);
+        assert!(h.state().dialog.is_none(), "OK closes the dialog");
+        assert!(h.state().session.doc.plain_text(StoryRef::Body).contains("Diagram 1"));
+        h.state_mut().run("select.text", json!({"text": "A photo"})).unwrap();
+        h.state_mut().run("references.caption", json!({})).unwrap();
+        h.run_steps(4);
+        h.get_by_value("Diagram");
+        assert_eq!(h.state().prefs().last_caption_label, "Diagram");
+        // In a table it is still Table; a deleted label falls back to Figure.
+        let a = h.state_mut();
+        a.run("insert.table", json!({"rows": 1, "cols": 2})).unwrap();
+        assert_eq!(CaptionForm::read(a).label, "Table");
+        a.run("select.text", json!({"text": "A chart"})).unwrap();
+        a.ui.caption_labels.clear();
+        assert_eq!(CaptionForm::read(a).label, "Figure");
+    }
+
     /// #916: Cross-reference from the ribbon opens a dialog listing the targets of each type
     /// (equation captions too) and inserts a `REF` field to the one picked.
     #[test]
@@ -1214,6 +1379,68 @@ mod tests {
         assert!(a.session.doc.plain_text(StoryRef::Body).ends_with("See Equation 1"));
         // Nothing to pick: nothing to insert.
         assert_eq!(CrossRefForm::read(&a, "table").params(), None);
+    }
+
+    /// #2940: a label made with Insert Caption › New Label is a Reference type of the
+    /// Cross-reference dialog, whether the document has a caption with it yet or came with one.
+    #[test]
+    fn cross_reference_dialog_offers_custom_caption_labels() {
+        let mut a = app("Rock\nSee ");
+        let types = |a: &WordApp| ref_types(a).into_iter().map(|(v, _)| v).collect::<Vec<_>>();
+        assert_eq!(types(&a), ["heading", "bookmark", "equation", "figure", "table"]);
+        // Made in the Caption dialog but not used yet: listed, with nothing to pick.
+        a.ui.caption_labels.push("Plate".into());
+        assert!(types(&a).contains(&"label:Plate".to_string()));
+        assert_eq!(CrossRefForm::read(&a, "label:Plate").params(), None);
+        // A document's own captions bring theirs, once, and Figure stays the built-in one.
+        a.ui.caption_labels.clear();
+        a.run("select.text", json!({"text": "Rock"})).unwrap();
+        a.run("references.caption", json!({"label": "Specimen", "text": "A rock"})).unwrap();
+        a.run("caret.docEnd", json!({})).unwrap();
+        a.run("references.caption", json!({"label": "Figure", "text": "Another"})).unwrap();
+        let t = types(&a);
+        assert_eq!(t.iter().filter(|v| v.as_str() == "label:Specimen").count(), 1, "{t:?}");
+        assert!(!t.iter().any(|v| v == "label:Figure"), "{t:?}");
+        let mut f = CrossRefForm::read(&a, "label:Specimen");
+        assert_eq!(f.targets, vec!["Specimen 1: A rock".to_string()]);
+        f.show = "number".into();
+        a.dialog = None;
+        a.run("caret.docEnd", json!({})).unwrap();
+        a.run("insert.crossReference", f.params().unwrap()).unwrap();
+        assert!(a.session.doc.plain_text(StoryRef::Body).ends_with("Specimen 1"), "{}", a.session.doc.plain_text(StoryRef::Body));
+    }
+
+    /// #2940: through the window: the dialog open on a custom label lists its caption, and the
+    /// Insert button puts a reference to it in the text. (The Reference type box and its items
+    /// are not in the accessibility tree the test harness clicks, so the type is set on the form.)
+    #[test]
+    fn cross_reference_dialog_inserts_a_reference_to_a_custom_label() {
+        use egui::accesskit::Role;
+        use egui_kittest::kittest::Queryable;
+        let mut a = app("Rock\nSee ");
+        a.run("select.text", json!({"text": "Rock"})).unwrap();
+        a.run("references.caption", json!({"label": "Specimen", "text": "A rock", "format": "ROMAN"})).unwrap();
+        a.run("caret.docEnd", json!({})).unwrap();
+        assert_eq!(a.run("insert.crossReference", json!({})).unwrap(), json!({"pending": "crossReference"}));
+        let form = CrossRefForm::read(&a, "label:Specimen");
+        assert_eq!(form.targets, vec!["Specimen I: A rock".to_string()]);
+        a.dialog = Some(Dialog::Refs(Box::new(RefsDialog::CrossRef(form))));
+        let mut h = egui_kittest::Harness::builder().with_size(vec2(1440.0, 900.0)).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            a,
+        );
+        h.run_steps(4);
+        h.get_by_role_and_label(Role::Window, "Cross-reference");
+        h.get_all_by_role_and_label(Role::Button, "Insert").last().expect("the dialog's Insert button").click();
+        h.run_steps(3);
+        assert!(h.state().dialog.is_none(), "Insert closes the dialog");
+        let text = h.state().session.doc.plain_text(StoryRef::Body);
+        assert!(text.ends_with("See Specimen I: A rock"), "{text}");
+        assert!(instrs(h.state()).iter().any(|i| i.starts_with("REF _Ref")), "{:?}", instrs(h.state()));
     }
 
     /// #402: Mark Entry opens with the selection; Insert Index opens with Word's defaults and
@@ -1265,6 +1492,72 @@ mod tests {
         assert_eq!(TocForm::read(&a), f);
     }
 
+    /// #3013: Insert Table of Figures opens its dialog, which offers the document's own caption
+    /// labels, so a list of tables (or of a custom label) can be built next to a list of figures.
+    #[test]
+    fn table_of_figures_dialog_picks_the_caption_label() {
+        use egui::accesskit::Role;
+        use egui_kittest::kittest::{NodeT, Queryable};
+        let mut a = app("Kiln\nPress\nRock\n");
+        for (text, label) in [("Kiln", "Figure"), ("Press", "Table"), ("Rock", "Specimen")] {
+            a.run("select.text", json!({"text": text})).unwrap();
+            a.run("references.caption", json!({"label": label, "text": text})).unwrap();
+        }
+        a.run("caret.docEnd", json!({})).unwrap();
+        assert_eq!(a.run("references.tableOfFigures", json!({})).unwrap(), json!({"pending": "tableOfFigures"}));
+        let RefsDialog::Figures(mut f) = form(&a) else { panic!() };
+        assert_eq!(f.label, "Figure");
+        assert_eq!(f.labels, ["Equation", "Figure", "Table", "Specimen"]);
+        f.label = "Table".into();
+        f.leader = "underscore".into();
+        a.dialog = Some(Dialog::Refs(Box::new(RefsDialog::Figures(f))));
+        let mut h = egui_kittest::Harness::builder().with_size(vec2(1440.0, 900.0)).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            a,
+        );
+        h.run_steps(4);
+        h.get_by_role_and_label(Role::Window, "Table of Figures");
+        // Without page numbers there is nothing to align: the margin choice is off until they are back.
+        let margin = |h: &egui_kittest::Harness<'_, WordApp>| {
+            h.get_by_role_and_label(Role::CheckBox, "Page numbers at the right margin").accesskit_node().is_disabled()
+        };
+        assert!(!margin(&h));
+        h.get_by_role_and_label(Role::CheckBox, "Include page numbers").click();
+        h.run_steps(2);
+        assert!(margin(&h), "no page numbers: no right margin choice");
+        h.get_by_role_and_label(Role::CheckBox, "Include page numbers").click();
+        h.run_steps(2);
+        assert!(!margin(&h));
+        h.get_all_by_role_and_label(Role::Button, "OK").last().expect("the dialog's OK button").click();
+        h.run_steps(3);
+        assert!(h.state().dialog.is_none(), "OK closes the dialog");
+        let mut a = h.into_state();
+        assert!(instrs(&a).contains(&r#"TOC \c "Table""#.to_string()), "{:?}", instrs(&a));
+        let entries: Vec<(String, Option<wordcraft_doc::props::TabLeader>)> = a
+            .session
+            .doc
+            .body
+            .iter()
+            .filter_map(|b| b.as_para())
+            .filter(|p| p.props.style.as_deref() == Some("ListEntry"))
+            .map(|p| (p.plain_text(), p.props.tabs.as_ref().and_then(|t| t.last()).map(|t| t.leader)))
+            .collect();
+        assert_eq!(entries, [("Table 1: Press\t1".to_string(), Some(wordcraft_doc::props::TabLeader::Underscore))]);
+        a.run("caret.docEnd", json!({})).unwrap();
+        a.run("ui.dialog", json!({"name": "tableOfFigures"})).unwrap();
+        let RefsDialog::Figures(mut f) = form(&a) else { panic!() };
+        f.label = "Specimen".into();
+        f.include_label = false;
+        f.right_align = false;
+        a.run("references.tableOfFigures", f.params()).unwrap();
+        assert!(instrs(&a).contains(&r#"TOC \a "Specimen" \p " ""#.to_string()), "{:?}", instrs(&a));
+        assert!(a.session.doc.plain_text(StoryRef::Body).contains("Rock 1"));
+    }
+
     /// #402: Insert Citation without a source opens Create Source; the type picks the fields,
     /// "show all" adds the rest, and Edit Source from the Source Manager updates the citation.
     #[test]
@@ -1292,5 +1585,54 @@ mod tests {
         a.run("references.sources", json!({"add": src})).unwrap();
         assert!(a.session.doc.plain_text(StoryRef::Body).contains("(Rivera, 2025)"), "{}", a.session.doc.plain_text(StoryRef::Body));
         assert_eq!(a.session.doc.sources.len(), 1);
+    }
+
+    /// #2640: the Source Manager's Import… asks the host's file dialog for a Word bibliography
+    /// file (`b:Sources`, Word's own `Sources.xml`) and adds its sources to the document, shown
+    /// in the list at once.
+    #[test]
+    fn the_source_manager_imports_a_word_sources_file() {
+        use egui_kittest::kittest::Queryable;
+
+        let dir = std::env::temp_dir().join(format!("wc-refs-import-sources-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("Sources.xml");
+        std::fs::write(
+            &path,
+            r#"<b:Sources xmlns:b="http://schemas.openxmlformats.org/officeDocument/2006/bibliography">
+  <b:Source><b:Tag>Riv21</b:Tag><b:SourceType>Book</b:SourceType><b:Title>Shared Spaces</b:Title><b:Year>2021</b:Year></b:Source>
+  <b:Source><b:Tag>Oka19</b:Tag><b:SourceType>Book</b:SourceType><b:Title>Kilns and Clay</b:Title><b:Year>2019</b:Year></b:Source>
+</b:Sources>"#,
+        )
+        .unwrap();
+
+        let mut a = app("Studios matter ");
+        let asked = std::rc::Rc::new(std::cell::RefCell::new(String::new()));
+        let (seen, picked) = (asked.clone(), path.to_string_lossy().to_string());
+        a.services.pick_open = Some(Box::new(move |purpose| {
+            *seen.borrow_mut() = purpose.to_string();
+            Some(picked.clone())
+        }));
+        assert_eq!(a.run("references.sources", json!({})).unwrap(), json!({"pending": "sourceManager"}));
+        let mut h = egui_kittest::Harness::builder().with_size(vec2(1440.0, 900.0)).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            a,
+        );
+        for _ in 0..4 {
+            h.step();
+        }
+        h.get_by_label("Import…").click();
+        for _ in 0..4 {
+            h.step();
+        }
+        assert_eq!(*asked.borrow(), "sources", "the host can offer Word sources files");
+        assert_eq!(h.state().session.doc.sources.len(), 2);
+        assert!(h.state().status_msg.as_ref().is_some_and(|(m, _)| m.contains("Imported 2 sources")), "{:?}", h.state().status_msg);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

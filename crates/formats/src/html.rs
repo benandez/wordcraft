@@ -4,15 +4,18 @@
 //! HTML's implicit closes for `p`, `li`, `tr`, `td`/`th` and headings. It understands `p`, `div`,
 //! `h1`–`h6`, `b`/`strong`, `i`/`em`, `u`, `s`/`strike`/`del`, `sup`/`sub`, `code`/`kbd`, `a`
 //! (links and `id`/`name` anchors), `br`, `hr`, `ul`/`ol`/`li` (nested), `table`/`tr`/`td`/`th`
-//! (colspan/rowspan), `img` (`data:` URIs, other sources through a caller's [`ImageLoader`]), `blockquote`, `pre`, `font`, and the CSS
+//! (colspan/rowspan), `img` (`data:` URIs, other sources through a caller's [`ImageLoader`]), `blockquote`, `pre`, `font`, `ruby`
+//! (`rb`/`rt`/`rp`: furigana and other phonetic guides, #1681), and the CSS
 //! properties `color`, `background-color`, `font-weight`, `font-style`, `font-size`,
 //! `font-family`, `text-decoration`, `vertical-align`, `text-align`, `white-space` and page
 //! breaks. Scripts and styles are skipped; nesting is capped.
 //!
-//! Export writes clean semantic HTML with inline CSS and pictures as `data:` URIs.
+//! Export writes clean semantic HTML with inline CSS, pictures as `data:` URIs and ruby as
+//! `<ruby>`.
 
 use std::sync::Arc;
 
+use wordcraft_doc::props::VAlign;
 use wordcraft_doc::{Align, Document};
 
 use crate::model::{
@@ -28,7 +31,14 @@ const MAX_STACK: usize = 256;
 /// Decode an entity body (`amp`, `#38`, `#x26`) to its text.
 pub fn decode_entity(name: &str) -> Option<String> {
     if let Some(num) = name.strip_prefix('#') {
-        let v = if let Some(h) = num.strip_prefix(['x', 'X']) { u32::from_str_radix(h, 16).ok()? } else { num.parse::<u32>().ok()? };
+        let (digits, radix) = match num.strip_prefix(['x', 'X']) {
+            Some(h) => (h, 16),
+            None => (num, 10),
+        };
+        if !digits.chars().all(|c| c.is_digit(radix)) {
+            return None;
+        }
+        let v = u32::from_str_radix(digits, radix).ok()?;
         let c = match v {
             0 => '\u{FFFD}',
             0x80..=0x9F => crate::txt::cp1252(v as u8),
@@ -280,15 +290,27 @@ pub fn unescape(s: &str) -> String {
     out
 }
 
-/// Decode HTML bytes: BOM, then a `charset` in the first 2 KB, else UTF-8 with a Windows-1252
-/// fallback.
+fn sniff_charset(head: &str) -> Option<&str> {
+    let (i, n) = head.find("charset").map(|i| (i, 7)).or_else(|| head.find("encoding").map(|i| (i, 8)))?;
+    let after = head.get(i + n..)?.trim_start().strip_prefix('=')?;
+    let trimmed = after.trim_start().trim_start_matches(['"', '\'']);
+    let end = trimmed.find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | ';' | '>' | '/')).unwrap_or(trimmed.len());
+    let label = trimmed[..end].trim();
+    if label.is_empty() { None } else { Some(label) }
+}
+
+/// Decode HTML bytes: BOM, then a `charset` in the first 2 KB, else UTF-8 with a legacy fallback.
 pub fn decode(b: &[u8]) -> String {
     if b.starts_with(&[0xFF, 0xFE]) || b.starts_with(&[0xFE, 0xFF]) || b.starts_with(&[0xEF, 0xBB, 0xBF]) {
         return crate::txt::decode(b);
     }
     let head = String::from_utf8_lossy(b.get(..b.len().min(2048)).unwrap_or(b)).to_ascii_lowercase();
-    let latin = head.contains("charset=windows-1252") || head.contains("charset=iso-8859-1") || head.contains("charset=\"windows-1252\"");
-    if !latin && let Ok(s) = std::str::from_utf8(b) {
+    if let Some(label) = sniff_charset(&head)
+        && let Some(s) = crate::txt::decode_as(b, label)
+    {
+        return s;
+    }
+    if let Ok(s) = std::str::from_utf8(b) {
         return s.to_string();
     }
     crate::txt::decode(b)
@@ -325,6 +347,29 @@ impl Lexer<'_> {
             None => self.pos = self.s.len(),
         }
         found.map(|k| start + k).unwrap_or(self.s.len())
+    }
+
+    /// Skip past the next matching end tag `</tag...>` (ASCII case-insensitive), or to the end.
+    fn skip_past_end_tag(&mut self, tag: &str) {
+        let prefix = format!("</{tag}");
+        let p = prefix.as_bytes();
+        while self.pos < self.s.len() {
+            let hay = self.rest().as_bytes();
+            let found = hay.windows(p.len().max(1)).position(|w| w.eq_ignore_ascii_case(p));
+            let Some(k) = found else {
+                self.pos = self.s.len();
+                return;
+            };
+            let after_tag = k + p.len();
+            let next_byte = hay.get(after_tag);
+            if next_byte.is_none_or(|b| b.is_ascii_whitespace() || *b == b'>' || *b == b'/') {
+                self.pos += after_tag;
+                self.skip_past(">");
+                return;
+            } else {
+                self.pos += k + 2;
+            }
+        }
     }
 
     fn next(&mut self) -> Option<Tok> {
@@ -616,14 +661,26 @@ pub fn css_len_pt(v: &str) -> Option<f32> {
         match v.as_str() {
             "xx-small" => Some(7.0),
             "x-small" => Some(7.5),
-            "small" => Some(10.0),
+            "small" | "smaller" => Some(10.0),
             "medium" => Some(12.0),
-            "large" => Some(13.5),
+            "large" | "larger" => Some(13.5),
             "x-large" => Some(18.0),
             "xx-large" => Some(24.0),
+            "xxx-large" => Some(36.0),
             _ => num(&v).map(|p| p * 0.75),
         }
     }
+}
+
+fn strip_important(v: &str) -> &str {
+    let s = v.trim();
+    if let Some(pos) = s.rfind('!') {
+        let after = s[pos + 1..].trim();
+        if after.eq_ignore_ascii_case("important") {
+            return s[..pos].trim();
+        }
+    }
+    s
 }
 
 /// Apply a `style` attribute to formatting / block properties.
@@ -631,7 +688,7 @@ fn apply_style(css: &str, f: &mut Fmt, align: &mut Option<Align>, preserve: &mut
     for decl in css.split(';').take(64) {
         let Some((k, v)) = decl.split_once(':') else { continue };
         let k = k.trim().to_ascii_lowercase();
-        let v = v.trim().trim_end_matches("!important").trim();
+        let v = strip_important(v);
         let lv = v.to_ascii_lowercase();
         match k.as_str() {
             "font-weight" => f.bold = lv.starts_with("bold") || lv.parse::<u32>().is_ok_and(|w| w >= 600),
@@ -768,7 +825,7 @@ impl<'r> Builder<'r> {
                 }
             }
             if let (Some((o, _)), Some(li)) = (list_level, li_at) {
-                p.list = Some(ListInfo { ordered: o, level: lists.saturating_sub(1).min(8) as u8 });
+                p.list = Some(ListInfo { ordered: o, level: lists.saturating_sub(1).min(8) as u8, start: 1 });
                 self.para_cont = self.stack.get(li).is_some_and(|e| e.used);
                 if let Some(e) = self.stack.get_mut(li) {
                     e.used = true;
@@ -906,6 +963,21 @@ impl<'r> Builder<'r> {
             self.pre_lead = Some(preserved);
         }
         self.pre_tail = preserved;
+    }
+
+    /// Add a `<ruby>` element's base text and reading as one inline (#1681). Half-marked ruby (no
+    /// base, or no reading) is plain text instead: a guide that annotates nothing is no guide, and
+    /// the text it held is never lost.
+    fn push_ruby(&mut self, base: &str, ruby: &str) {
+        let preserve = self.preserve();
+        let text = |s: &str| if preserve { s.to_string() } else { collapse_ws(s) };
+        let (base, ruby) = (text(base), text(ruby));
+        let f = self.fmt();
+        if base.is_empty() || ruby.is_empty() {
+            self.start_para().push_text(if base.is_empty() { &ruby } else { &base }, &f);
+            return;
+        }
+        self.start_para().inlines.push(Inline::Ruby { base, ruby, fmt: f });
     }
 
     fn pre_fresh(&self) -> bool {
@@ -1143,6 +1215,8 @@ impl<'r> Builder<'r> {
             "code" | "kbd" | "tt" | "samp" => fmt.code = true,
             "sup" => fmt.sup = true,
             "sub" => fmt.sub = true,
+            "small" => fmt.size = Some(fmt.size.map_or(10.0, |s| (s * 0.833).max(1.0))),
+            "big" => fmt.size = Some(fmt.size.map_or(14.0, |s| (s * 1.2).min(1638.0))),
             "mark" => fmt.background = Some(wordcraft_doc::Rgb(255, 255, 0)),
             "font" => {
                 if let Some(c) = attr(attrs, "color").and_then(parse_color) {
@@ -1156,8 +1230,18 @@ impl<'r> Builder<'r> {
                         fmt.font = Some(fam);
                     }
                 }
-                if let Some(sz) = attr(attrs, "size").and_then(|s| s.trim().parse::<i32>().ok()) {
-                    fmt.size = Some([7.5, 10.0, 12.0, 13.5, 18.0, 24.0, 36.0].get((sz.clamp(1, 7) - 1) as usize).copied().unwrap_or(12.0));
+                if let Some(sz) = attr(attrs, "size") {
+                    let s = sz.trim();
+                    let val = if let Some(rest) = s.strip_prefix('+') {
+                        rest.parse::<i32>().ok().map(|d| 3 + d)
+                    } else if let Some(rest) = s.strip_prefix('-') {
+                        rest.parse::<i32>().ok().map(|d| 3 - d)
+                    } else {
+                        s.parse::<i32>().ok()
+                    };
+                    if let Some(sz) = val {
+                        fmt.size = Some([7.5, 10.0, 12.0, 13.5, 18.0, 24.0, 36.0].get((sz.clamp(1, 7) - 1) as usize).copied().unwrap_or(12.0));
+                    }
                 }
             }
             "a" => {
@@ -1212,6 +1296,26 @@ impl<'r> Builder<'r> {
                 }
                 let num = |k: &str| attr(attrs, k).and_then(|v| v.trim().parse::<u32>().ok()).map(|v| v.clamp(1, 63));
                 let shading = attr(attrs, "bgcolor").and_then(parse_color).or(fmt.background);
+                let mut valign = attr(attrs, "valign").and_then(|v| match v.trim().to_ascii_lowercase().as_str() {
+                    "top" => Some(VAlign::Top),
+                    "middle" | "center" => Some(VAlign::Center),
+                    "bottom" => Some(VAlign::Bottom),
+                    _ => None,
+                });
+                if let Some(st) = attr(attrs, "style") {
+                    for decl in st.split(';') {
+                        if let Some((k, v)) = decl.split_once(':')
+                            && k.trim().eq_ignore_ascii_case("vertical-align")
+                        {
+                            match v.trim().to_ascii_lowercase().as_str() {
+                                "top" => valign = Some(VAlign::Top),
+                                "middle" | "center" => valign = Some(VAlign::Center),
+                                "bottom" => valign = Some(VAlign::Bottom),
+                                _ => {}
+                            }
+                        }
+                    }
+                }
                 self.cells.push(Cell {
                     blocks: Vec::new(),
                     colspan: num("colspan").unwrap_or(1),
@@ -1220,6 +1324,7 @@ impl<'r> Builder<'r> {
                     header: name == "th",
                     shading,
                     borders: None,
+                    valign,
                 });
                 fmt.background = None;
                 self.containers.push(Vec::new());
@@ -1293,9 +1398,15 @@ pub fn parse_with(s: &str, images: ImageLoader) -> Flow {
                     }
                     continue;
                 }
+                if name == "ruby" && !self_close {
+                    let r = read_ruby(&mut lx);
+                    if !b.in_head() {
+                        b.push_ruby(&r.base, &r.ruby);
+                    }
+                    continue;
+                }
                 if matches!(name.as_str(), "script" | "style" | "noscript" | "template" | "textarea") && !self_close {
-                    lx.skip_past(&format!("</{name}"));
-                    lx.skip_past(">");
+                    lx.skip_past_end_tag(&name);
                     continue;
                 }
                 b.start(&name, &attrs, self_close);
@@ -1386,6 +1497,96 @@ fn skip_math(lx: &mut Lexer, first: Tok) {
     }
 }
 
+/// A `<ruby>` element's base text and reading (#1681).
+#[derive(Default)]
+struct RubyText {
+    base: String,
+    ruby: String,
+}
+
+/// Which part of a `<ruby>` element the text being read belongs to.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RubyPart {
+    /// The text being annotated: an `<rb>` child, or the text outside `<rt>`/`<rp>`.
+    Base,
+    /// The reading: an `<rt>` child.
+    Ruby,
+    /// `<rp>` fallback parentheses, which are not text: browsers show them only where ruby isn't
+    /// supported.
+    Fallback,
+}
+
+/// A block-level tag ends an open `<ruby>` implicitly, as it does in a browser.
+fn ends_ruby(t: &Tok) -> bool {
+    match t {
+        Tok::Start { name, .. } | Tok::End(name) => block_kind(name).is_some(),
+        Tok::Text(_) => false,
+    }
+}
+
+/// Read a `<ruby>` element's content: its base text from `<rb>` children (or the text outside
+/// them), its reading from `<rt>` children, and `<rp>` fallback parentheses dropped. Tolerant,
+/// like the rest of the reader: tags inside are ignored, an unclosed element ends at the next
+/// block-level tag (handed back to the caller) or with the input, and the tokens read are capped.
+fn read_ruby(lx: &mut Lexer) -> RubyText {
+    /// Most tokens one `<ruby>` element is read from: a missing end tag must not scan the rest of
+    /// a hostile file here.
+    const MAX_TOKENS: usize = 4096;
+    let mut out = RubyText::default();
+    let mut part = RubyPart::Base;
+    let mut nested = 0usize;
+    let mut count = 0usize;
+    while count < MAX_TOKENS {
+        count += 1;
+        let start = lx.pos;
+        let Some(t) = lx.next() else { break };
+        if nested == 0 && ends_ruby(&t) {
+            // The boundary ends the element: give the token back to the main reader.
+            lx.pos = start;
+            break;
+        }
+        match t {
+            Tok::Text(t) => match part {
+                RubyPart::Base => out.base.push_str(&t),
+                RubyPart::Ruby => out.ruby.push_str(&t),
+                RubyPart::Fallback => {}
+            },
+            // The self-closing slash is ignored on HTML elements (`<rt/>` opens an `rt`), as in a
+            // browser's parser.
+            Tok::Start { name, self_close, .. } => match name.as_str() {
+                "rb" => part = RubyPart::Base,
+                "rt" => part = RubyPart::Ruby,
+                "rp" => part = RubyPart::Fallback,
+                "ruby" if !self_close => nested += 1,
+                _ => {}
+            },
+            Tok::End(name) => match name.as_str() {
+                "rb" | "rt" | "rp" => part = RubyPart::Base,
+                "ruby" if nested > 0 => nested -= 1,
+                "ruby" => break,
+                _ => {}
+            },
+        }
+    }
+    out
+}
+
+/// Collapse white space inside ruby markup as body text does (HTML's white space only: an
+/// ideographic space is text), without the space the element's indentation leaves at the edges.
+fn collapse_ws(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if matches!(c, ' ' | '\t' | '\n' | '\r' | '\u{000C}') {
+            if !out.ends_with(' ') {
+                out.push(' ');
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out.trim_matches(' ').to_string()
+}
+
 /// Parse HTML into a document.
 pub fn import(s: &str) -> Document {
     model::to_doc(&parse(s))
@@ -1430,9 +1631,9 @@ fn align_css(a: Option<Align>) -> Option<&'static str> {
     }
 }
 
-fn text_html(t: &str) -> String {
+fn text_html(t: &str, at_start: bool) -> String {
     let mut o = String::new();
-    let mut prev_space = false;
+    let mut prev_space = at_start;
     for c in t.chars() {
         match c {
             '\n' => {
@@ -1449,62 +1650,81 @@ fn text_html(t: &str) -> String {
     o
 }
 
+/// The tags that carry `f`'s character formatting: what opens them, and what closes them
+/// (innermost last, so the closes are written in reverse).
+fn fmt_tags(f: &Fmt) -> (String, Vec<&'static str>) {
+    let mut open = String::new();
+    let mut close: Vec<&str> = Vec::new();
+    // A script or other non-web target is written as plain text (`is_safe_href`).
+    if let Some(l) = f.link.as_deref().filter(|l| wordcraft_doc::link::is_safe_href(l)) {
+        open.push_str(&format!("<a href=\"{}\">", esc(l)));
+        close.push("</a>");
+    }
+    let mut tag = |o: &str, c: &'static str| {
+        open.push_str(o);
+        close.push(c);
+    };
+    if f.bold {
+        tag("<strong>", "</strong>");
+    }
+    if f.italic {
+        tag("<em>", "</em>");
+    }
+    if f.underline {
+        tag("<u>", "</u>");
+    }
+    if f.strike {
+        tag("<s>", "</s>");
+    }
+    if f.sup {
+        tag("<sup>", "</sup>");
+    } else if f.sub {
+        tag("<sub>", "</sub>");
+    }
+    if f.code {
+        tag("<code>", "</code>");
+    }
+    let mut css = Vec::new();
+    if let Some(c) = f.color {
+        css.push(format!("color:#{}", c.hex()));
+    }
+    if let Some(c) = f.background {
+        css.push(format!("background-color:#{}", c.hex()));
+    }
+    if let Some(s) = f.size {
+        css.push(format!("font-size:{}pt", trim_num(s)));
+    }
+    if let Some(fam) = &f.font {
+        css.push(format!("font-family:'{}'", esc(&fam.replace('\'', ""))));
+    }
+    if !css.is_empty() {
+        open.push_str(&format!("<span style=\"{}\">", css.join(";")));
+        close.push("</span>");
+    }
+    (open, close)
+}
+
 /// Inline spans → HTML.
 pub fn inlines_html(inlines: &[Inline]) -> String {
     let mut o = String::new();
     for i in inlines.iter() {
         match i {
             Inline::Text(t, f) => {
-                let mut open = String::new();
-                let mut close: Vec<&str> = Vec::new();
-                // A script or other non-web target is written as plain text (`is_safe_href`).
-                if let Some(l) = f.link.as_deref().filter(|l| wordcraft_doc::link::is_safe_href(l)) {
-                    open.push_str(&format!("<a href=\"{}\">", esc(l)));
-                    close.push("</a>");
-                }
-                let mut tag = |o: &str, c: &'static str| {
-                    open.push_str(o);
-                    close.push(c);
-                };
-                if f.bold {
-                    tag("<strong>", "</strong>");
-                }
-                if f.italic {
-                    tag("<em>", "</em>");
-                }
-                if f.underline {
-                    tag("<u>", "</u>");
-                }
-                if f.strike {
-                    tag("<s>", "</s>");
-                }
-                if f.sup {
-                    tag("<sup>", "</sup>");
-                } else if f.sub {
-                    tag("<sub>", "</sub>");
-                }
-                if f.code {
-                    tag("<code>", "</code>");
-                }
-                let mut css = Vec::new();
-                if let Some(c) = f.color {
-                    css.push(format!("color:#{}", c.hex()));
-                }
-                if let Some(c) = f.background {
-                    css.push(format!("background-color:#{}", c.hex()));
-                }
-                if let Some(s) = f.size {
-                    css.push(format!("font-size:{}pt", trim_num(s)));
-                }
-                if let Some(fam) = &f.font {
-                    css.push(format!("font-family:'{}'", esc(&fam.replace('\'', ""))));
-                }
-                if !css.is_empty() {
-                    open.push_str(&format!("<span style=\"{}\">", css.join(";")));
-                    close.push("</span>");
-                }
+                let (open, close) = fmt_tags(f);
+                let at_start = o.is_empty();
                 o.push_str(&open);
-                o.push_str(&text_html(t));
+                o.push_str(&text_html(t, at_start));
+                for c in close.iter().rev() {
+                    o.push_str(c);
+                }
+            }
+            // A phonetic guide: the base text with its reading in `<rt>` (#1681). HTML ruby has
+            // no alignment or size, so the guide's own attributes stay in the document model.
+            Inline::Ruby { base, ruby, fmt } => {
+                let (open, close) = fmt_tags(fmt);
+                let at_start = o.is_empty();
+                o.push_str(&open);
+                o.push_str(&format!("<ruby>{}<rt>{}</rt></ruby>", text_html(base, at_start), text_html(ruby, false)));
                 for c in close.iter().rev() {
                     o.push_str(c);
                 }
@@ -1573,7 +1793,12 @@ fn table_html(t: &FTable, out: &mut String, depth: usize) {
             if c.rowspan > 1 {
                 attrs.push_str(&format!(" rowspan=\"{}\"", c.rowspan));
             }
-            let mut css = vec!["padding:4px 6px".to_string(), "vertical-align:top".to_string()];
+            let v_css = match c.valign {
+                Some(VAlign::Center) => "vertical-align:middle",
+                Some(VAlign::Bottom) => "vertical-align:bottom",
+                _ => "vertical-align:top",
+            };
+            let mut css = vec!["padding:4px 6px".to_string(), v_css.to_string()];
             if !t.borderless {
                 css.insert(0, "border:1px solid #999".to_string());
             }
@@ -1736,6 +1961,13 @@ pub fn export_flow(flow: &Flow, lang: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn numeric_entity_rejects_sign() {
+        assert_eq!(unescape("a&#+65;b"), "a&#+65;b");
+        assert_eq!(unescape("a&#x+41;b"), "a&#x+41;b");
+        assert_eq!(unescape("a&#65;&#x41;b"), "aAAb");
+    }
 
     fn texts(f: &Flow) -> Vec<String> {
         f.blocks
@@ -1940,5 +2172,257 @@ mod tests {
         assert_eq!(paras2.len(), 2);
         assert!(!paras2[0].page_break);
         assert!(paras2[1].page_break);
+    }
+
+    #[test]
+    fn font_size_relative_and_absolute() {
+        let f = parse("<font size=\"+1\">larger</font><font size=\"-1\">smaller</font><font size=\"5\">huge</font>");
+        let inls = match &f.blocks[0] {
+            FBlock::Para(p) => &p.inlines,
+            _ => panic!("expected para"),
+        };
+        let sizes: Vec<Option<f32>> = inls
+            .iter()
+            .map(|i| match i {
+                Inline::Text(_, fmt) => fmt.size,
+                _ => None,
+            })
+            .collect();
+        assert_eq!(sizes, vec![Some(13.5), Some(10.0), Some(18.0)]);
+    }
+
+    #[test]
+    fn decode_with_charset_declarations() {
+        let iso = b"<html><head><meta charset=\"iso-8859-1\"></head><body>\xE9l\xE8ve</body></html>";
+        assert!(decode(iso).contains("élève"));
+
+        let win = b"<html><head><meta charset='windows-1252'></head><body>\x80100</body></html>";
+        assert!(decode(win).contains("€100"));
+
+        let gbk = b"<html><head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=gbk\"></head><body>\xC4\xE3\xBA\xC3</body></html>";
+        assert!(decode(gbk).contains("你好"));
+
+        let xml = b"<?xml version=\"1.0\" encoding=\"utf-8\"?><html><body>hello</body></html>";
+        assert!(decode(xml).contains("hello"));
+    }
+
+    #[test]
+    fn raw_text_elements_skip_only_matching_end_tag() {
+        let f = parse("<script>var a = \"</scripted>\"; var b = \"<b>malicious</b>\";</script><p>Hello</p>");
+        assert_eq!(f.blocks.len(), 1);
+        let p = match &f.blocks[0] {
+            FBlock::Para(p) => p,
+            b => panic!("expected para, got {b:?}"),
+        };
+        assert_eq!(p.text(), "Hello");
+
+        let f = parse("<style>/* </styles> */ p { color: red; }</style><p>World</p>");
+        assert_eq!(f.blocks.len(), 1);
+        let p = match &f.blocks[0] {
+            FBlock::Para(p) => p,
+            b => panic!("expected para, got {b:?}"),
+        };
+        assert_eq!(p.text(), "World");
+    }
+
+    #[test]
+    fn leading_space_survives_round_trip() {
+        let doc = Document::from_text(" lead");
+        let html = export(&doc);
+        assert!(!html.contains("<p> lead"), "{html}");
+        let back = import(&html);
+        assert_eq!(back.plain_text(Default::default()).replace('\u{a0}', " "), " lead");
+    }
+
+    /// A document that reads "I read " then a phonetic guide over `base`, then " daily.".
+    fn ruby_doc(base: &str, ruby: &str) -> Document {
+        let props = wordcraft_doc::CharProps::default();
+        let mut p = wordcraft_doc::Paragraph::with_text("I read ", props.clone());
+        let n = p.len();
+        p.insert_object(n, crate::model::ruby_object(base.into(), ruby.into(), 20.0), &props).unwrap();
+        let n = p.len();
+        p.insert_text(n, " daily.", &props).unwrap();
+        let mut d = Document::new();
+        d.body = vec![wordcraft_doc::para_block(p)];
+        d
+    }
+
+    /// The first flow ruby: its base text and reading.
+    fn ruby_of(f: &Flow) -> Option<(String, String)> {
+        f.blocks.iter().find_map(|b| match b {
+            FBlock::Para(p) => p.inlines.iter().find_map(|i| match i {
+                Inline::Ruby { base, ruby, .. } => Some((base.clone(), ruby.clone())),
+                _ => None,
+            }),
+            _ => None,
+        })
+    }
+
+    /// The first document ruby: its base text and reading.
+    fn doc_ruby(d: &Document) -> Option<(String, String)> {
+        d.body.iter().find_map(|b| match &**b {
+            wordcraft_doc::Block::Para(p) => p.objects.iter().find_map(|o| match o {
+                wordcraft_doc::InlineObject::Ruby { base, ruby, .. } => Some((base.clone(), ruby.clone())),
+                _ => None,
+            }),
+            _ => None,
+        })
+    }
+
+    /// The first document ruby: base size, ruby size, raise and alignment.
+    fn doc_ruby_attrs(d: &Document) -> Option<(f32, f32, f32, wordcraft_doc::para::RubyAlign)> {
+        d.body.iter().find_map(|b| match &**b {
+            wordcraft_doc::Block::Para(p) => p.objects.iter().find_map(|o| match o {
+                wordcraft_doc::InlineObject::Ruby { base_size, size, raise, align, .. } => Some((*base_size, *size, *raise, *align)),
+                _ => None,
+            }),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn ruby_exports_as_ruby_markup() {
+        // #1681: the base text with its reading in `<rt>`, not plain base text.
+        let out = export(&ruby_doc("漢字", "かんじ"));
+        assert!(out.contains("<p>I read <ruby>漢字<rt>かんじ</rt></ruby> daily.</p>"), "{out}");
+        // The base and the reading are escaped like any other text.
+        let out = export(&ruby_doc("A&B", "x<y"));
+        assert!(out.contains("<ruby>A&amp;B<rt>x&lt;y</rt></ruby>"), "{out}");
+    }
+
+    #[test]
+    fn ruby_imports_with_its_surrounding_text() {
+        let f = parse("<p>I read <ruby>漢字<rt>かんじ</rt></ruby> daily.</p>");
+        assert_eq!(ruby_of(&f), Some(("漢字".into(), "かんじ".into())));
+        assert_eq!(texts(&f), vec!["NormalNone:I read 漢字 daily."]);
+        let FBlock::Para(p) = &f.blocks[0] else { panic!() };
+        assert!(matches!(&p.inlines[0], Inline::Text(t, _) if t == "I read "), "{:?}", p.inlines);
+        assert!(matches!(p.inlines.last(), Some(Inline::Text(t, _)) if t == " daily."), "{:?}", p.inlines);
+        // One document object, holding the base text and the reading.
+        assert_eq!(doc_ruby(&crate::model::to_doc(&f)), Some(("漢字".into(), "かんじ".into())));
+    }
+
+    #[test]
+    fn ruby_rb_and_rp_fallbacks_import_as_one_guide() {
+        // `<rb>` holds the base text and `<rp>` the fallback parentheses for browsers without
+        // ruby: the parentheses are not text, and the base pieces join.
+        let f = parse("<p><ruby><rb>漢</rb><rb>字</rb><rp>(</rp><rt>かんじ</rt><rp>)</rp></ruby></p>");
+        assert_eq!(ruby_of(&f), Some(("漢字".into(), "かんじ".into())));
+        assert_eq!(texts(&f), vec!["NormalNone:漢字"]);
+        assert_eq!(doc_ruby(&crate::model::to_doc(&f)), Some(("漢字".into(), "かんじ".into())));
+    }
+
+    #[test]
+    fn ruby_import_uses_the_phonetic_guide_defaults() {
+        // HTML states no alignment, size or raise: the Phonetic Guide's own defaults over a
+        // 20 pt run (half the base size, raised clear of the base text, centred)…
+        let d = crate::html::import("<p style='font-size:20pt'><ruby>漢字<rt>かんじ</rt></ruby></p>");
+        let Some((base_size, size, raise, align)) = doc_ruby_attrs(&d) else { panic!("no ruby") };
+        assert_eq!((base_size, size, align.ooxml()), (20.0, 10.0, "center"));
+        assert!((raise - 18.0).abs() < 0.001, "{raise}");
+        // …and the guide's 10.5 pt fallback base size when the source states none.
+        let d = crate::html::import("<p><ruby>漢字<rt>かんじ</rt></ruby></p>");
+        let Some((base_size, size, raise, _)) = doc_ruby_attrs(&d) else { panic!("no ruby") };
+        assert_eq!((base_size, size), (10.5, 5.0));
+        assert!((raise - 9.4).abs() < 0.001, "{raise}");
+    }
+
+    #[test]
+    fn ruby_survives_an_html_round_trip() {
+        let html = export(&ruby_doc("漢字", "かんじ"));
+        assert_eq!(ruby_of(&parse(&html)), Some(("漢字".into(), "かんじ".into())));
+        let back = crate::html::import(&html);
+        assert_eq!(doc_ruby(&back), Some(("漢字".into(), "かんじ".into())));
+        assert_eq!(back.plain_text(Default::default()), "I read 漢字 daily.");
+    }
+
+    #[test]
+    fn ruby_keeps_the_run_formatting() {
+        let props = wordcraft_doc::CharProps { bold: Some(true), ..Default::default() };
+        let mut p = wordcraft_doc::Paragraph::with_text("I read ", props.clone());
+        let n = p.len();
+        p.insert_object(n, crate::model::ruby_object("漢字".into(), "かんじ".into(), 20.0), &props).unwrap();
+        let mut d = Document::new();
+        d.body = vec![wordcraft_doc::para_block(p)];
+        assert!(export(&d).contains("<strong><ruby>漢字<rt>かんじ</rt></ruby></strong>"), "{}", export(&d));
+        // Importing it back keeps the formatting for the base text and the reading.
+        let f = parse("<p><strong><ruby>漢字<rt>かんじ</rt></ruby></strong></p>");
+        let FBlock::Para(p) = &f.blocks[0] else { panic!() };
+        assert!(matches!(&p.inlines[0], Inline::Ruby { fmt, .. } if fmt.bold), "{:?}", p.inlines);
+    }
+
+    #[test]
+    fn malformed_ruby_keeps_its_text() {
+        // No reading, an empty reading, a missing base, an unclosed element and a block boundary
+        // closing it: none of them panics, and the text inside is kept.
+        let cases: [(&str, &[&str]); 7] = [
+            ("<p>a <ruby>漢字</ruby> b</p>", &["NormalNone:a 漢字 b"]),
+            ("<p>a <ruby>漢字<rt></rt></ruby> b</p>", &["NormalNone:a 漢字 b"]),
+            ("<p>a <ruby><rt>かんじ</rt></ruby> b</p>", &["NormalNone:a かんじ b"]),
+            ("<p>a <ruby><rt></rt></ruby> b</p>", &["NormalNone:a b"]),
+            ("<ruby>", &[]),
+            ("<p>a <ruby>漢字<rt>かんじ</rt> b</p><p>next</p>", &["NormalNone:a 漢字 b", "NormalNone:next"]),
+            ("<p>a <ruby>漢字<rt>かんじ</rt></p><p>next</p>", &["NormalNone:a 漢字", "NormalNone:next"]),
+        ];
+        for (src, want) in cases {
+            assert_eq!(texts(&parse(src)), want, "{src}");
+        }
+        // Ruby in ruby: the inner element's text joins the outer guide's.
+        assert_eq!(ruby_of(&parse("<p><ruby>漢字<ruby>字<rt>じ</rt></ruby><rt>かんじ</rt></ruby></p>")), Some(("漢字字".into(), "じかんじ".into())));
+    }
+
+    #[test]
+    fn small_big_and_css_font_sizes() {
+        let f = parse(
+            "<p><small>small</small> <big>big</big> <span style=\"font-size: xxx-large\">huge</span> <span style=\"font-size: smaller\">tiny</span></p>",
+        );
+        let FBlock::Para(p) = &f.blocks[0] else { panic!() };
+        let sz = |i: usize| match &p.inlines[i] {
+            Inline::Text(_, f) => f.size,
+            _ => None,
+        };
+        assert_eq!(sz(0), Some(10.0));
+        assert_eq!(sz(2), Some(14.0));
+        assert_eq!(sz(4), Some(36.0));
+        assert_eq!(sz(6), Some(10.0));
+    }
+
+    #[test]
+    fn css_important_casing_and_spacing() {
+        let f = parse(
+            "<p style='color: #ff0000 !IMPORTANT; font-size: 16pt ! important; font-weight: 700 !Important; text-align: center !IMPORTANT'>Styled</p>",
+        );
+        assert_eq!(f.blocks.len(), 1);
+        let p = match &f.blocks[0] {
+            FBlock::Para(p) => p,
+            b => panic!("expected para, got {b:?}"),
+        };
+        assert_eq!(p.align, Some(Align::Center));
+        match &p.inlines[0] {
+            Inline::Text(_, fmt) => {
+                assert_eq!(fmt.color, Some(wordcraft_doc::props::Rgb(0xFF, 0x00, 0x00)));
+                assert_eq!(fmt.size, Some(16.0));
+                assert!(fmt.bold);
+            }
+            i => panic!("expected text inline, got {i:?}"),
+        }
+    }
+
+    #[test]
+    fn table_cell_vertical_alignment() {
+        let f = parse("<table><tr><td valign=top>top</td><td valign=\"center\">mid</td><td style=\"vertical-align: bottom\">bot</td></tr></table>");
+        let FBlock::Table(t) = &f.blocks[0] else { panic!() };
+        assert_eq!(t.rows[0][0].valign, Some(VAlign::Top));
+        assert_eq!(t.rows[0][1].valign, Some(VAlign::Center));
+        assert_eq!(t.rows[0][2].valign, Some(VAlign::Bottom));
+        let doc = crate::model::to_doc(&f);
+        let wordcraft_doc::Block::Table(dt) = &*doc.body[0] else { panic!() };
+        assert_eq!(dt.rows[0].cells[0].props.valign, Some(VAlign::Top));
+        assert_eq!(dt.rows[0].cells[1].props.valign, Some(VAlign::Center));
+        assert_eq!(dt.rows[0].cells[2].props.valign, Some(VAlign::Bottom));
+        let html = export(&doc);
+        assert!(html.contains("vertical-align:top"));
+        assert!(html.contains("vertical-align:middle"));
+        assert!(html.contains("vertical-align:bottom"));
     }
 }

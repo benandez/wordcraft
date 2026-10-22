@@ -47,12 +47,37 @@ impl Rgb {
     }
     /// Parse `RRGGBB` or `#RRGGBB`.
     pub fn parse(s: &str) -> Option<Rgb> {
-        let s = s.trim().trim_start_matches('#');
-        if s.len() != 6 || !s.is_ascii() {
+        let s = s.trim();
+        let s = s.strip_prefix('#').unwrap_or(s);
+        if s.len() != 6 || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
             return None;
         }
         let p = |i: usize| s.get(i..i + 2).and_then(|h| u8::from_str_radix(h, 16).ok());
         Some(Rgb(p(0)?, p(2)?, p(4)?))
+    }
+    /// This colour with the DrawingML colour modifier `name` (`lumMod`, `lumOff`, `tint`,
+    /// `shade`, `satMod`, ECMA-376 §20.1.2.3) at `v` (1.0 = 100%); other names leave it
+    /// unchanged.
+    pub fn modified(self, name: &str, v: f64) -> Rgb {
+        match name {
+            "lumMod" => adjust_lum(self, |l| l * v),
+            "lumOff" => adjust_lum(self, |l| l + v),
+            "tint" => mix(self, 255.0, v),
+            "shade" => mix(self, 0.0, v),
+            "satMod" => {
+                let (h, sat, l) = to_hsl(self);
+                from_hsl(h, (sat * v).clamp(0.0, 1.0), l)
+            }
+            _ => self,
+        }
+    }
+    /// The colour with hue `h` (0..1 of a turn), saturation `s` and lightness `l` (0..1).
+    pub fn from_hsl(h: f64, s: f64, l: f64) -> Rgb {
+        from_hsl(h, s, l)
+    }
+    /// This colour with its HSL luminance changed by `f`.
+    pub fn with_lum(self, f: impl Fn(f64) -> f64) -> Rgb {
+        adjust_lum(self, f)
     }
     pub fn luma(self) -> f32 {
         0.299 * self.0 as f32 + 0.587 * self.1 as f32 + 0.114 * self.2 as f32
@@ -326,6 +351,11 @@ pub struct CharProps {
     pub style: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub font: Option<String>,
+    /// The symbol's own font (OOXML `w:sym/@w:font`, ECMA-376 §17.3.3.30), set on a symbol
+    /// character from a `w:sym` or Insert › Symbol: it is shown in this font whatever `font` is,
+    /// so changing the text's font keeps the symbol. `None` = the run's font.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sym_font: Option<String>,
     /// Points.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub size: Option<f32>,
@@ -416,6 +446,9 @@ pub struct CharProps {
     /// BCP 47 language of complex-script text (`w:lang/@w:bidi`, e.g. `fa-IR`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lang_bidi: Option<String>,
+    /// BCP 47 language of East Asian text (`w:lang/@w:eastAsia`, e.g. `zh-CN`, `ja-JP`, `ko-KR`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lang_ea: Option<String>,
     /// East Asian typography: two lines in one and horizontal in vertical (`w:eastAsianLayout`).
     /// Kept for round trip; layout doesn't apply it yet.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -542,9 +575,9 @@ impl CharProps {
     /// The fields of `self` that differ from `base` (equal ones unset): what `self` adds when
     /// overlaid on `base`.
     pub fn minus(mut self, base: &CharProps) -> CharProps {
-        drop_same_fields!(self, base; style, font, size, bold, italic, underline, underline_color, strike, double_strike, color, highlight,
+        drop_same_fields!(self, base; style, font, sym_font, size, bold, italic, underline, underline_color, strike, double_strike, color, highlight,
             shading, border, vert_align, caps, small_caps, hidden, spacing, scale, position, kern, outline, shadow, emboss, engrave, lang, no_proof, rtl,
-            cs, font_cs, size_cs, bold_cs, italic_cs, lang_bidi, east_asian_layout, link, ins, del, ligatures);
+            cs, font_cs, font_ea, size_cs, bold_cs, italic_cs, lang_bidi, lang_ea, east_asian_layout, link, ins, del, ligatures);
         self
     }
 
@@ -553,9 +586,9 @@ impl CharProps {
     /// Plain and complex-script properties inherit independently. Commands that intend to
     /// format both scripts must set both values explicitly.
     pub fn overlay(&mut self, patch: &CharProps) {
-        overlay_fields!(self, patch; style, font, size, bold, italic, underline, underline_color, strike, double_strike, color, highlight,
+        overlay_fields!(self, patch; style, font, sym_font, size, bold, italic, underline, underline_color, strike, double_strike, color, highlight,
             shading, border, vert_align, caps, small_caps, hidden, spacing, scale, position, kern, outline, shadow, emboss, engrave, lang, no_proof, rtl,
-            cs, font_cs, font_ea, size_cs, bold_cs, italic_cs, lang_bidi, east_asian_layout, link, ins, del, fmt_change, ligatures);
+            cs, font_cs, font_ea, size_cs, bold_cs, italic_cs, lang_bidi, lang_ea, east_asian_layout, link, ins, del, fmt_change, ligatures);
         if let Some(p) = &patch.text_effects {
             self.text_effects.get_or_insert_with(Default::default).overlay(p);
         }
@@ -567,10 +600,29 @@ impl CharProps {
     pub fn is_empty(&self) -> bool {
         *self == CharProps::default()
     }
+    /// The font a character of this run is shown in: the symbol's own font when it has one
+    /// ([`Self::sym_font`]), else the run's font.
+    pub fn shown_font(&self) -> Option<&str> {
+        self.sym_font.as_deref().filter(|f| !f.trim().is_empty()).or(self.font.as_deref())
+    }
+    /// The same formatting for text typed or painted next to a symbol: without the symbol's own
+    /// font.
+    pub fn without_symbol(mut self) -> CharProps {
+        self.sym_font = None;
+        self
+    }
     /// Clear direct formatting but keep what isn't "formatting" (links, revisions, character style
     /// is cleared too, as Word's Clear Formatting does).
     pub fn cleared(&self) -> CharProps {
-        CharProps { link: self.link.clone(), ins: self.ins, del: self.del, fmt_change: self.fmt_change.clone(), ..Default::default() }
+        CharProps {
+            link: self.link.clone(),
+            ins: self.ins,
+            del: self.del,
+            fmt_change: self.fmt_change.clone(),
+            // A symbol stays the symbol it is.
+            sym_font: self.sym_font.clone(),
+            ..Default::default()
+        }
     }
     /// Just the formatting: without the link, revision marks and tracked formatting change.
     pub fn formatting(&self) -> CharProps {
@@ -895,6 +947,16 @@ pub struct ParaProps {
     /// Drop cap: lines to drop (0 = none) — applies to the first character(s).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub drop_cap: Option<u8>,
+    /// Drop cap "In margin" (`w:dropCap="margin"`): the letter hangs in the left margin and the
+    /// text keeps its indent. Unset = dropped into the text.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drop_cap_margin: Option<bool>,
+    /// The drop cap's distance from the text, in points (`w:hSpace`). Unset = 0.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drop_cap_distance: Option<f32>,
+    /// The drop cap letter's font family (the cap run's `w:rFonts`). Unset = the text's font.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drop_cap_font: Option<String>,
     /// A text frame (`w:framePr` other than a drop cap): the paragraph is placed apart from the
     /// text, which may wrap around it — a footer's page number in a frame, for instance.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -935,7 +997,7 @@ impl ParaProps {
     pub fn overlay(&mut self, patch: &ParaProps) {
         overlay_fields!(self, patch; style, align, indent_left, indent_right, indent_first, indent_left_chars, indent_right_chars, indent_first_chars, space_before, space_after, space_before_auto, space_after_auto, line_spacing,
             contextual_spacing, mirror_indents, keep_next, keep_lines, page_break_before, widow_control, outline_level, numbering, tabs, shading, borders,
-            suppress_hyphens, suppress_line_numbers, bidi, drop_cap, frame, kinsoku, word_wrap, overflow_punct, top_line_punct, auto_space_de, auto_space_dn,
+            suppress_hyphens, suppress_line_numbers, bidi, drop_cap, drop_cap_margin, drop_cap_distance, drop_cap_font, frame, kinsoku, word_wrap, overflow_punct, top_line_punct, auto_space_de, auto_space_dn,
             snap_to_grid);
     }
     pub fn overlaid(mut self, patch: &ParaProps) -> ParaProps {
@@ -1264,6 +1326,60 @@ impl CellProps {
     }
 }
 
+/// `tint` (towards `to` = 255) and `shade` (towards 0): `v` is the share of the original colour kept.
+fn mix(c: Rgb, to: f64, v: f64) -> Rgb {
+    let f = |x: u8| (x as f64 * v + to * (1.0 - v)).round().clamp(0.0, 255.0) as u8;
+    Rgb(f(c.0), f(c.1), f(c.2))
+}
+
+/// `c` with its HSL luminance changed by `f`.
+fn adjust_lum(c: Rgb, f: impl Fn(f64) -> f64) -> Rgb {
+    let (h, s, l) = to_hsl(c);
+    from_hsl(h, s, f(l).clamp(0.0, 1.0))
+}
+
+fn to_hsl(c: Rgb) -> (f64, f64, f64) {
+    let (r, g, b) = (c.0 as f64 / 255.0, c.1 as f64 / 255.0, c.2 as f64 / 255.0);
+    let (max, min) = (r.max(g).max(b), r.min(g).min(b));
+    let l = (max + min) / 2.0;
+    if max == min {
+        return (0.0, 0.0, l);
+    }
+    let d = max - min;
+    let s = if l > 0.5 { d / (2.0 - max - min) } else { d / (max + min) };
+    let h = if max == r {
+        (g - b) / d + if g < b { 6.0 } else { 0.0 }
+    } else if max == g {
+        (b - r) / d + 2.0
+    } else {
+        (r - g) / d + 4.0
+    };
+    (h / 6.0, s, l)
+}
+
+fn from_hsl(h: f64, s: f64, l: f64) -> Rgb {
+    let byte = |v: f64| (v * 255.0).round().clamp(0.0, 255.0) as u8;
+    if s == 0.0 {
+        return Rgb(byte(l), byte(l), byte(l));
+    }
+    let q = if l < 0.5 { l * (1.0 + s) } else { l + s - l * s };
+    let p = 2.0 * l - q;
+    let channel = |t: f64| {
+        let t = t.rem_euclid(1.0);
+        let v = if t < 1.0 / 6.0 {
+            p + (q - p) * 6.0 * t
+        } else if t < 0.5 {
+            q
+        } else if t < 2.0 / 3.0 {
+            p + (q - p) * (2.0 / 3.0 - t) * 6.0
+        } else {
+            p
+        };
+        byte(v)
+    };
+    Rgb(channel(h + 1.0 / 3.0), channel(h), channel(h - 1.0 / 3.0))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1274,6 +1390,16 @@ mod tests {
         assert_eq!(Rgb::parse("#FF0010"), Some(Rgb(255, 0, 16)));
         assert_eq!(Rgb::parse("zzzzzz"), None);
         assert_eq!(Rgb::parse("é1234"), None);
+    }
+
+    #[test]
+    fn rgb_parse_rejects_non_hex() {
+        assert_eq!(Rgb::parse("+1+2+3"), None);
+        assert_eq!(Rgb::parse("-1-2-3"), None);
+        assert_eq!(Rgb::parse("##ff0000"), None);
+        assert_eq!(Rgb::parse("ff00 0"), None);
+        assert_eq!(Rgb::parse("#ff0000"), Some(Rgb(255, 0, 0)));
+        assert_eq!(Rgb::parse("ff0000"), Some(Rgb(255, 0, 0)));
     }
 
     #[test]
@@ -1403,5 +1529,20 @@ mod tests {
         assert_eq!(s, r#"{"bold":true}"#);
         let back: CharProps = serde_json::from_str(&s).unwrap();
         assert_eq!(back, p);
+    }
+
+    #[test]
+    fn symbol_font_is_optional_in_json_and_survives_font_changes() {
+        // Older documents (no `symFont`) still load.
+        let old: CharProps = serde_json::from_str(r#"{"font":"Arial"}"#).unwrap();
+        assert_eq!(old.sym_font, None);
+        let p = CharProps { font: Some("Arial".into()), sym_font: Some("Wingdings".into()), ..Default::default() };
+        let s = serde_json::to_string(&p).unwrap();
+        assert!(s.contains(r#""symFont":"Wingdings""#), "{s}");
+        assert_eq!(serde_json::from_str::<CharProps>(&s).unwrap(), p);
+        // A font change keeps the symbol's own font; Clear Formatting too.
+        let changed = p.clone().overlaid(&CharProps { font: Some("Times New Roman".into()), ..Default::default() });
+        assert_eq!(changed.sym_font.as_deref(), Some("Wingdings"));
+        assert_eq!(p.cleared().sym_font.as_deref(), Some("Wingdings"));
     }
 }
