@@ -223,15 +223,17 @@ impl Package {
             let room = max_part.min(max_total.saturating_sub(total));
             let mut buf = Vec::with_capacity(f.size().min(16 * 1024 * 1024) as usize);
             let read = (&mut f).take(room + 1).read_to_end(&mut buf);
+            // Charged whether or not the read succeeds: an entry inflates in full before its CRC
+            // is checked, so failed entries would otherwise inflate without limit (#3723).
+            total = total.saturating_add(buf.len() as u64);
+            if buf.len() as u64 > room {
+                return Err(DocxError::Limit(format!("part {name} decompresses past the size limit")));
+            }
             if let Err(e) = read {
                 // A corrupt entry: keep going unless it's a part we can't do without.
                 log::warn!("docx: zip entry {name} unreadable: {e}");
                 continue;
             }
-            if buf.len() as u64 > room {
-                return Err(DocxError::Limit(format!("part {name} decompresses past the size limit")));
-            }
-            total = total.saturating_add(buf.len() as u64);
             files.insert(name, Arc::new(buf));
         }
         Ok(Package { files })
@@ -419,6 +421,26 @@ mod tests {
         assert!(matches!(Package::open_limited(&z, 1_000_000, 10_000_000), Err(DocxError::Limit(_))));
         assert!(matches!(Package::open_limited(&z, 10_000_000, 1_000_000), Err(DocxError::Limit(_))));
         assert!(Package::open_limited(&z, 10_000_000, 10_000_000).is_ok());
+    }
+
+    #[test]
+    fn entries_that_fail_their_check_still_count_against_the_total() {
+        // Each entry inflates in full before its CRC is checked; a failed one was dropped without
+        // being charged, so any number of them inflated (#3723).
+        let names: Vec<String> = (0..20).map(|i| format!("p{i}.bin")).collect();
+        let entries: Vec<(&str, Vec<u8>)> = names.iter().map(|n| (n.as_str(), vec![0u8; 1_000_000])).collect();
+        let mut z = zip_of(&entries);
+        let mut patched = 0;
+        for sig in [[0x50u8, 0x4B, 0x01, 0x02], [0x50, 0x4B, 0x03, 0x04]] {
+            let crc_at = if sig[2] == 1 { 16 } else { 14 };
+            let found: Vec<usize> = z.windows(4).enumerate().filter(|(_, w)| *w == sig).map(|(i, _)| i).collect();
+            for pos in found {
+                z[pos + crc_at] ^= 0xFF;
+                patched += 1;
+            }
+        }
+        assert_eq!(patched, 40);
+        assert!(matches!(Package::open_limited(&z, 2_000_000, 4_000_000), Err(DocxError::Limit(_))));
     }
 
     #[test]
