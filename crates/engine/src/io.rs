@@ -527,11 +527,17 @@ impl LocalImages {
 /// Up to `limit + 1` bytes of the regular file at `path` (more than `limit` means too large), or
 /// `None` for anything else. A named pipe blocks when opened and a device reports a length of 0
 /// and may never end, so the path is checked before opening, the opened handle is checked again,
-/// and the read is bounded whatever length the file reports.
+/// and the read is bounded whatever length the file reports. Public for the app (a copied picture
+/// file, Paste Special).
 #[cfg(not(target_arch = "wasm32"))]
-fn read_regular_file(path: &std::path::Path, limit: u64) -> Option<Vec<u8>> {
+pub fn read_regular_file(path: &std::path::Path, limit: u64) -> Option<Vec<u8>> {
     let (file, meta) = open_regular_file(path).ok()?;
     read_bounded(file, &meta, limit).ok()
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn read_regular_file(_path: &std::path::Path, _limit: u64) -> Option<Vec<u8>> {
+    None
 }
 
 /// The regular file at `path`, opened once, with the opened handle's metadata. The path is

@@ -141,24 +141,9 @@ pub(crate) fn clipboard_png(app: &WordApp) -> Option<Vec<u8>> {
 }
 
 /// The bytes of the regular file at `path` when it holds at most `limit` of them; `None` for
-/// anything else. A copied path can name a device such as `/dev/zero`, which reports a length of 0
-/// and never ends, so the path is checked before opening, the opened handle is checked again (it
-/// may not be the file just looked at), and at most `limit + 1` bytes are read whatever length it
-/// reports. Residual race: a named pipe swapped in between the check and the open still blocks the
-/// open until a writer appears, as std has no portable non-blocking open.
+/// anything else, such as a device like `/dev/zero` that never ends (#3692).
 fn read_picture_file(path: &Path, limit: u64) -> Option<Vec<u8>> {
-    use std::io::Read;
-    if !std::fs::metadata(path).ok()?.is_file() {
-        return None;
-    }
-    let file = std::fs::File::open(path).ok()?;
-    let meta = file.metadata().ok()?;
-    if !meta.is_file() || meta.len() > limit {
-        return None;
-    }
-    let mut out = Vec::new();
-    file.take(limit.saturating_add(1)).read_to_end(&mut out).ok()?;
-    (out.len() as u64 <= limit).then_some(out)
+    wordcraft_engine::io::read_regular_file(path, limit).filter(|b| b.len() as u64 <= limit)
 }
 
 /// Paste text naming copied picture files: insert the pictures when the clipboard holds those
