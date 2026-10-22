@@ -332,3 +332,23 @@ fn dib_conversion_caps_header_and_encoded_bytes() {
     assert!(normal.bytes.len() > bmp_size && normal.bytes.len() <= 512);
     assert_eq!(image::load_from_memory(&normal.bytes).unwrap().width(), 1);
 }
+
+/// #3709: every anchor of one inline picture got its own copy of the alt text (up to 4096
+/// UTF-16 units). Copies are charged to the document's work budget; past it alt is empty.
+#[test]
+fn alt_text_copies_across_many_anchors_are_bounded() {
+    let alt: String = "€".repeat(4096); // 12 KB as UTF-8
+    let shape = sp(&[fsp(75, 1025, 0xA00), fopt(&[(0x0104, 1)], &[(0x0381, wz(&alt))])]);
+    let data = picf_shape(&[shape, fbse_png(&tiny_png())].concat());
+    let text: &'static str = Box::leak(format!("{}\r", "\u{1}".repeat(8000)).into_boxed_str());
+    let ccp = text.chars().count() as u32;
+    let spec = StructSpec { text, data_stream: data, chpx_runs: vec![(0, grpprl(&[(0x6A03, &0u32.to_le_bytes())]))], ..structured_spec(text, ccp) };
+    let doc = read(&struct_doc(&spec)).expect("opens");
+    let p0 = doc.body.first().and_then(|b| b.as_para()).expect("para");
+    let alts: Vec<&str> = p0.objects.iter().filter_map(|o| if let InlineObject::Image { alt, .. } = o { Some(alt.as_str()) } else { None }).collect();
+    assert_eq!(alts.len(), 8000, "every anchor keeps its picture");
+    assert_eq!(alts.first().copied(), Some(alt.as_str()));
+    let total: usize = alts.iter().map(|a| a.len()).sum();
+    assert!(total <= 64 << 20, "alt bytes {total}");
+    assert_eq!(alts.last().copied(), Some(""));
+}

@@ -67,16 +67,15 @@ impl Pictures {
     /// The inline picture at `fc_pic` in the Data stream, copying its bytes the first time.
     /// `None` when the header is malformed, the picture can't be read, or a picture
     /// count/byte cap is reached.
-    pub(crate) fn get(&mut self, data: &[u8], fc_pic: u32) -> Option<Inline> {
-        if let Some(hit) = self.by_fc.get(&fc_pic) {
-            return hit.clone();
+    pub(crate) fn get(&mut self, data: &[u8], fc_pic: u32) -> Option<&Inline> {
+        if !self.by_fc.contains_key(&fc_pic) {
+            if self.by_fc.len().saturating_add(self.by_bse.len()) >= MAX_PICTURES {
+                return None;
+            }
+            let pic = self.read(data, fc_pic);
+            self.by_fc.insert(fc_pic, pic);
         }
-        if self.by_fc.len().saturating_add(self.by_bse.len()) >= MAX_PICTURES {
-            return None;
-        }
-        let pic = self.read(data, fc_pic);
-        self.by_fc.insert(fc_pic, pic.clone());
-        pic
+        self.by_fc.get(&fc_pic)?.as_ref()
     }
 
     /// Read the inline picture at `fc_pic`: nothing is decoded or copied beyond what is left of

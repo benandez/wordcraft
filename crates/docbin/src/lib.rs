@@ -49,9 +49,10 @@ const MAX_PARTS: usize = 50_000;
 /// headers, notes, text boxes), whatever the file's size. The working budget is tied to the
 /// WordDocument stream (see [`read`]); this caps even a maximal stream.
 const MAX_TOTAL_CHARS: u64 = 64 << 20;
-/// Bytes of piece Prm grpprls (Prcs, up to 64 KB each) interpreted per document; past it the
-/// remaining pieces' Prm formatting is skipped (#3692).
-const MAX_PRM_WORK: u64 = 64 << 20;
+/// Bytes of repeated work per document beyond the text itself: piece Prm grpprls (Prcs, up
+/// to 64 KB each) interpreted (#3692), hyperlink targets (#3708) and picture alt text (#3709)
+/// copied into every run or anchor. Past it Prms are skipped and copies left empty.
+const MAX_WORK: u64 = 64 << 20;
 /// `sprmCPicLocation`: the fc of a picture in the Data stream.
 const C_PIC_LOCATION: u16 = 0x6A03;
 /// `sprmCSymbol`: the record font and character of a symbol character ([MS-DOC] §2.6.1); the
@@ -242,7 +243,7 @@ pub fn read_with_password(bytes: &[u8], password: Option<&str>) -> Result<Docume
     // many times can, so the walk is held to twice the stream's size — generous for real files,
     // tight against aliasing — and never past the absolute ceiling.
     let budget = std::cell::Cell::new((word.len() as u64).saturating_mul(2).min(MAX_TOTAL_CHARS));
-    let prm_work = std::cell::Cell::new(MAX_PRM_WORK);
+    let work = std::cell::Cell::new(MAX_WORK);
 
     let ctx = WalkCtx {
         word: &word,
@@ -258,7 +259,7 @@ pub fn read_with_password(bytes: &[u8], password: Option<&str>) -> Result<Docume
         drawn: &[],
         sect_ends: &[],
         budget: &budget,
-        prm_work: &prm_work,
+        work: &work,
     };
 
     // Drawings: text box stories become parts first, then the floating shapes and pictures
@@ -403,8 +404,8 @@ struct WalkCtx<'a> {
     /// footnotes, text boxes) are hostile and can each span a whole subdocument, so thousands of
     /// them could otherwise materialise the same text thousands of times; this bounds the total.
     budget: &'a std::cell::Cell<u64>,
-    /// Prm grpprl bytes still to interpret ([`MAX_PRM_WORK`]).
-    prm_work: &'a std::cell::Cell<u64>,
+    /// Repeated-work bytes left ([`MAX_WORK`]).
+    work: &'a std::cell::Cell<u64>,
 }
 
 /// State while assembling one paragraph from per-CP formatting.
@@ -570,7 +571,7 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                         f.depth -= 1;
                         field = Some(f);
                     } else {
-                        finish_field(&mut pb, f, ctx.budget);
+                        finish_field(&mut pb, f, ctx.work);
                     }
                 }
                 cp = cp.saturating_add(1);
@@ -582,12 +583,21 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                 let fc_pic = pic_location(ctx.chpx_bins.chpx(ctx.word, fc));
                 match fc_pic.and_then(|at| pics.get(ctx.data, at)) {
                     Some(p) => {
+                        // Every anchor of a picture gets its own copy of the alt text; the
+                        // copies are charged to the work budget (#3709).
+                        let alt = match ctx.work.get().checked_sub(p.alt.len() as u64) {
+                            Some(left) => {
+                                ctx.work.set(left);
+                                p.alt.clone()
+                            }
+                            None => String::new(),
+                        };
                         pb.push('\u{FFFC}', CharProps::default());
                         pb.objects.push(InlineObject::Image {
-                            media: p.key,
+                            media: p.key.clone(),
                             w: p.w,
                             h: p.h,
-                            alt: p.alt,
+                            alt,
                             float: Default::default(),
                             crop: p.crop,
                             ole: None,
@@ -648,9 +658,9 @@ struct FieldBuild {
 /// field becomes one inline object with its cached result.
 ///
 /// The target is copied once per run of equally formatted result text, not per character,
-/// and each copy is charged to the document's character `budget`; once that is spent the
-/// rest of the result is kept as plain text (#3708).
-fn finish_field(pb: &mut ParaBuild, f: FieldBuild, budget: &std::cell::Cell<u64>) {
+/// and each copy is charged to `work` ([`MAX_WORK`]); once that is spent the rest of the
+/// result is kept as plain text (#3708).
+fn finish_field(pb: &mut ParaBuild, f: FieldBuild, work: &std::cell::Cell<u64>) {
     let instr = f.instr.trim().to_string();
     let result = f.sep.unwrap_or_default();
     if let Some(target) = hyperlink_target(&instr) {
@@ -662,8 +672,8 @@ fn finish_field(pb: &mut ParaBuild, f: FieldBuild, budget: &std::cell::Cell<u64>
                 continue;
             }
             let mut linked = props.clone();
-            if budget.get() >= cost {
-                budget.set(budget.get() - cost);
+            if let Some(left) = work.get().checked_sub(cost) {
+                work.set(left);
                 linked.link = Some(target.clone());
             }
             pb.push(c, linked);
@@ -814,7 +824,7 @@ fn push_formatted<'a>(pb: &mut ParaBuild, cp: u32, c: char, ctx: &WalkCtx<'a>, f
                 }
             };
             let mut props = char_props(grpprl, ctx.fonts, base);
-            apply_prm(&mut props, ctx.pieces.piece_prm(cp), ctx.fonts, base, ctx.prm_work);
+            apply_prm(&mut props, ctx.pieces.piece_prm(cp), ctx.fonts, base, ctx.work);
             *memo = Some(FmtMemo { chpx: grpprl, prm, style: style.map(str::to_owned), props: props.clone() });
             props
         }

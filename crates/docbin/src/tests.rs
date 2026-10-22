@@ -1732,9 +1732,9 @@ fn picture_bytes_are_capped_per_document() {
     let data: Vec<u8> = [a.clone(), b].concat();
     let mut pics = crate::media::Pictures::default();
     pics.limit = 1000;
-    let first = pics.get(&data, 0).expect("first fits");
+    let first = pics.get(&data, 0).cloned().expect("first fits");
     // Same location again: no new bytes.
-    assert_eq!(pics.get(&data, 0).map(|p| p.key), Some(first.key.clone()));
+    assert_eq!(pics.get(&data, 0).map(|p| p.key.clone()), Some(first.key.clone()));
     // A second distinct picture would exceed the cap.
     assert!(pics.get(&data, a.len() as u32).is_none());
     assert_eq!(pics.media.len(), 1);
@@ -1754,8 +1754,8 @@ fn rejected_inline_pictures_are_not_read_again() {
     assert!(pics.get(&small, 0).is_none());
     // The rejected picture took nothing off the cap, and anchors sharing a picture share it.
     let at = big.len() as u32;
-    let fits = pics.get(&data, at).expect("fits");
-    assert_eq!(pics.get(&data, at).map(|p| p.key), Some(fits.key));
+    let fits = pics.get(&data, at).cloned().expect("fits");
+    assert_eq!(pics.get(&data, at).map(|p| p.key.clone()), Some(fits.key));
     assert_eq!(pics.media.len(), 1);
     // Filling the cap exactly works; after that, a place never tried before isn't read.
     let rest = picf_with_png(700);
@@ -2447,9 +2447,9 @@ fn a_long_hyperlink_over_a_long_result_is_one_linked_run() {
 }
 
 /// #3708: a result whose formatting changes every character pays for a target copy per run
-/// out of the character budget; past it the text stays, unlinked.
+/// out of the work budget; past it the text stays, unlinked.
 #[test]
-fn hyperlink_target_copies_are_charged_to_the_char_budget() {
+fn hyperlink_target_copies_are_charged_to_the_work_budget() {
     use wordcraft_doc::props::CharProps;
     let bold = CharProps { bold: Some(true), ..Default::default() };
     let result: Vec<(char, CharProps)> = (0..1000).map(|i| ('a', if i % 2 == 0 { bold.clone() } else { CharProps::default() })).collect();
