@@ -758,7 +758,9 @@ struct Exporter<'a> {
     /// Bookmark positions by name (the first of a name wins), gathered once: looking each internal
     /// link up by walking the whole document made a long document with a linked table of contents
     /// take seconds to export.
-    bookmarks: std::cell::OnceCell<HashMap<String, wordcraft_doc::Pos>>,
+    /// Bookmarks by exact name, and by ASCII-lowercased name for the case-blind fallback; the
+    /// first in document order wins either way.
+    bookmarks: std::cell::OnceCell<(HashMap<String, wordcraft_doc::Pos>, HashMap<String, wordcraft_doc::Pos>)>,
 }
 
 /// What the content being drawn is, for tagging.
@@ -1549,14 +1551,15 @@ impl Exporter<'_> {
     /// Where a bookmark is: (output page, x, y) — the page and line its start lands on, which
     /// in a paragraph split across pages need not be the paragraph's first page.
     fn bookmark(&self, name: &str) -> Option<(usize, f32, f32)> {
-        let marks = self.bookmarks.get_or_init(|| {
-            let mut m = HashMap::new();
+        let (exact, folded) = self.bookmarks.get_or_init(|| {
+            let (mut exact, mut folded) = (HashMap::new(), HashMap::new());
             for (n, pos) in self.doc.bookmarks() {
-                m.entry(n).or_insert(pos);
+                folded.entry(n.to_ascii_lowercase()).or_insert_with(|| pos.clone());
+                exact.entry(n).or_insert(pos);
             }
-            m
+            (exact, folded)
         });
-        let pos = marks.get(name).or_else(|| marks.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v))?.clone();
+        let pos = exact.get(name).or_else(|| folded.get(&name.to_ascii_lowercase()))?.clone();
         if let Some(c) = self.lay.caret(&pos)
             && let Some(out) = self.out_index.get(&c.page)
         {

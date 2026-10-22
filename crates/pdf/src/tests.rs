@@ -1249,6 +1249,7 @@ fn bookmark_destination_is_the_page_of_its_start() {
     let mut p = Paragraph::with_text("Paragraph start\u{c}Bookmark target", CharProps::default());
     let at = "Paragraph start\u{c}".len();
     p.insert_object(at, InlineObject::BookmarkStart { name: "target".into() }, &CharProps::default()).unwrap();
+    p.insert_object(at, InlineObject::BookmarkStart { name: "First".into() }, &CharProps::default()).unwrap();
     p.insert_object(0, InlineObject::BookmarkStart { name: "first".into() }, &CharProps::default()).unwrap();
     d.body = vec![para_block(p)];
     let lay = layout(&d, &mut LayoutCache::new(), &LayoutOptions::default());
@@ -1280,6 +1281,13 @@ fn bookmark_destination_is_the_page_of_its_start() {
     let (page_ci, x_ci, y_ci) = ex.bookmark("TARGET").unwrap();
     assert_eq!(page_ci, 1);
     assert_eq!((x_ci, y_ci), (x, y));
+    // An exact name wins; names that differ only in case fall back to the first in the document
+    // (a folded index, not a scan of a hash map in arbitrary order for every link).
+    assert_eq!(ex.bookmark("First").map(|b| b.0), Some(1));
+    assert_eq!(ex.bookmark("FIRST").map(|b| b.0), Some(0));
+    assert!(ex.bookmark("absent").is_none());
+    let (exact, folded) = ex.bookmarks.get().unwrap();
+    assert_eq!((exact.len(), folded.len()), (3, 2));
 
     // Whitespace in ISO date string is parsed successfully
     assert!(parse_iso("  2024-05-06T07:08:09Z \n").is_some());
