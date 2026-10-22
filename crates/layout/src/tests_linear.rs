@@ -155,3 +155,32 @@ fn selecting_a_long_header_takes_linear_time() {
     assert_linear("header selection", ratio);
 }
 
+/// A table of `n` rows of 60 cells, each row exactly half a point high, so every cell clips its
+/// (empty) paragraph and the whole table fits on the first page.
+fn clipped_table(n: usize) -> Document {
+    let mut t = Table::new(n, 60, 468.0);
+    for row in &mut t.rows {
+        row.props.height = Some(0.5);
+        row.props.height_rule = HeightRule::Exact;
+    }
+    let mut d = Document::from_text("x");
+    d.insert_block(StoryRef::Body, &Path::top(0), Block::Table(t)).unwrap();
+    d
+}
+
+/// Finding 1: drawing a line in a clipped cell looked through every clipped cell on the page.
+#[test]
+fn drawing_many_clipped_cells_takes_linear_time() {
+    let (ds, db) = (clipped_table(16), clipped_table(SCALE * 16));
+    let (ls, lb) = (lay(&ds, &LayoutOptions::default()), lay(&db, &LayoutOptions::default()));
+    let clips = |d: &Document, l: &DocLayout| {
+        l.pages
+            .first()
+            .map_or(0, |p| display::page_display(d, p, &Default::default()).iter().filter(|i| matches!(i, display::Draw::Clip { .. })).count())
+    };
+    assert_eq!(clips(&db, &lb), SCALE * 16 * 60, "every cell's line is clipped, all on the first page");
+    let opts = display::DisplayOptions::default();
+    let ratio = ratio_of(4, &(&ds, &ls), &(&db, &lb), |(d, l)| drop(std::hint::black_box(display::page_display(d, &l.pages[0], &opts))));
+    assert_linear("clipped cells", ratio);
+}
+

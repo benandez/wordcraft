@@ -1,5 +1,7 @@
 //! Page → draw items, shared by the raster renderer, the PDF exporter and thumbnails.
 
+use std::collections::HashMap;
+
 use wordcraft_doc::graphic::{Graphic, GraphicItem, GraphicKind, PathSeg, TextAlign};
 use wordcraft_doc::para::{InlineObject, ShapeKind};
 use wordcraft_doc::props::{Border, BorderStyle, Rgb, TextColor, TextDirection, Underline};
@@ -616,24 +618,31 @@ pub fn object_display(doc: &Document, page: &Page, o: &InlineObject, rect: Rect,
 }
 
 /// The cells among `items` whose content is cut off at their edge (see [`Placed::Cell`]'s
-/// `clip`): their story, the path of their content (table, row, cell) and their area.
-fn clipped_cells(items: &[Placed]) -> Vec<(StoryRef, Vec<u32>, Rect)> {
-    items
-        .iter()
-        .filter_map(|it| match it {
-            Placed::Cell { rect, table, row, cell, story, clip: true, .. } => {
-                let mut prefix = table.0.clone();
-                prefix.extend([u32::try_from(*row).ok()?, u32::try_from(*cell).ok()?]);
-                Some((*story, prefix, *rect))
-            }
-            _ => None,
-        })
-        .collect()
+/// `clip`), by story and the path of their content (table, row, cell): their area, and the
+/// order they come in (the first of two that hold a line clips it).
+type Clips = HashMap<StoryRef, HashMap<Vec<u32>, (usize, Rect)>>;
+
+fn clipped_cells(items: &[Placed]) -> Clips {
+    let mut clips = Clips::new();
+    let cells = items.iter().filter_map(|it| match it {
+        Placed::Cell { rect, table, row, cell, story, clip: true, .. } => {
+            let mut prefix = table.0.clone();
+            prefix.extend([u32::try_from(*row).ok()?, u32::try_from(*cell).ok()?]);
+            Some((*story, prefix, *rect))
+        }
+        _ => None,
+    });
+    for (i, (story, prefix, rect)) in cells.enumerate() {
+        clips.entry(story).or_default().entry(prefix).or_insert((i, rect));
+    }
+    clips
 }
 
-/// The area to clip a line at `path` of `story` to: its cell's, when that cell is clipped.
-fn cell_clip(clips: &[(StoryRef, Vec<u32>, Rect)], story: StoryRef, path: &[u32]) -> Option<Rect> {
-    clips.iter().find(|(s, prefix, _)| *s == story && path.starts_with(prefix)).map(|(_, _, r)| *r)
+/// The area to clip a line at `path` of `story` to: its cell's, when that cell is clipped. Only
+/// the cells holding the line are looked up, not every clipped cell on the page.
+fn cell_clip(clips: &Clips, story: StoryRef, path: &[u32]) -> Option<Rect> {
+    let cells = clips.get(&story)?;
+    (0..=path.len()).filter_map(|n| cells.get(path.get(..n)?)).min_by_key(|(i, _)| *i).map(|(_, r)| *r)
 }
 
 /// The text boxes among `items` whose text is warped (Text Effects › Transform, drawn bent): their
