@@ -19,10 +19,14 @@ fi
 
 TMP="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 KEYCHAIN="$TMP/wordcraft-signing.keychain-db"
-CERT="$TMP/wordcraft-signing.p12"
 KC_PASS="${KEYCHAIN_PASSWORD:-$(openssl rand -hex 24)}"
 
-trap 'rm -f "$CERT"' EXIT
+# The decoded bundle goes in a fresh private directory: a predictable name in a shared temp folder
+# could be a planted link that sends the key somewhere readable (#3692). The keychain itself is
+# kept for the signing steps that follow.
+CERT_DIR="$(mktemp -d "$TMP/wordcraft-signing.XXXXXXXX")"
+CERT="$CERT_DIR/wordcraft-signing.p12"
+trap 'rm -rf "$CERT_DIR"' EXIT
 printf '%s' "$APPLE_CERTIFICATE" | base64 --decode >"$CERT"
 security create-keychain -p "$KC_PASS" "$KEYCHAIN"
 security set-keychain-settings -lut 21600 "$KEYCHAIN"
