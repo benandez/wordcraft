@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use kurbo::BezPath;
 use skrifa::instance::{Location, LocationRef, Size};
-use skrifa::outline::{DrawSettings, Engine, HintingInstance, HintingOptions, OutlinePen, Target};
+use skrifa::outline::{DrawSettings, Engine, Hinting, HintingInstance, HintingOptions, OutlinePen, Target};
 use skrifa::raw::FileRef;
 use skrifa::string::StringId;
 use skrifa::{GlyphId, MetadataProvider};
@@ -88,7 +88,23 @@ pub struct FontFace {
     bmp: std::sync::OnceLock<Box<[u64]>>,
     // Some legacy CJK fonts assemble their contours with TrueType instructions.
     outline_hinter: std::sync::OnceLock<Option<HintingInstance>>,
+    /// Set once a hinted glyph ran too long: the face is drawn unhinted from then on.
+    hinting_off: std::sync::atomic::AtomicBool,
 }
+
+/// Limits on what a face's TrueType instructions may run over (#3692). skrifa's interpreter budget
+/// counts instructions, not the points each one moves (SHZ, IUP… walk a whole zone), so a font with
+/// huge zones turns a short program into billions of point moves. Real fonts stay far below: a
+/// twilight zone of tens to hundreds of points, a stack of up to ~2,000 values, a few thousand
+/// points a glyph. Past them, glyphs are drawn unhinted.
+const MAX_HINT_TWILIGHT: u16 = 1024;
+const MAX_HINT_STACK: u16 = 4096;
+/// skrifa's buffer for one hinted glyph (points, stack, twilight zone, CVT and storage).
+const MAX_HINT_GLYPH_BYTES: usize = 256 * 1024;
+/// A hinted glyph slower than this turns hinting off for its face. A face under the limits above
+/// can still take seconds for one glyph: this keeps it to one. Native only (no clock on wasm).
+#[cfg(not(target_arch = "wasm32"))]
+const HINT_STRIKE: std::time::Duration = std::time::Duration::from_millis(50);
 
 /// A cheap `Copy` handle to a face. Faces are never unloaded, so the handle lives for the rest of
 /// the process; unlike cloning an `Arc`, copying it touches no shared reference count (which made
@@ -181,9 +197,37 @@ impl FontFace {
         if let Some(f) = self.skrifa()
             && let Some(g) = f.outline_glyphs().get(GlyphId::new(gid))
         {
-            let hinter = self.outline_hinter.get_or_init(|| {
+            let hinter =
+                self.hinter().filter(|_| !self.hinting_off.load(Ordering::Relaxed) && g.draw_memory_size(Hinting::Embedded) <= MAX_HINT_GLYPH_BYTES);
+            #[cfg(not(target_arch = "wasm32"))]
+            let started = std::time::Instant::now();
+            let settings = hinter.map_or_else(|| DrawSettings::unhinted(Size::unscaled(), self.location()), |h| DrawSettings::hinted(h, false));
+            let drawn = g.draw(settings, &mut pen);
+            #[cfg(not(target_arch = "wasm32"))]
+            if hinter.is_some() && started.elapsed() > HINT_STRIKE && !self.hinting_off.swap(true, Ordering::Relaxed) {
+                log::warn!("Hinting glyph {gid} in {:?} took {:?}: drawing the face unhinted", self.family, started.elapsed());
+            }
+            if let Err(e) = drawn {
+                log::warn!("Cannot draw glyph {gid} in {:?}: {e}", self.family);
+                return BezPath::new();
+            }
+        }
+        pen.0
+    }
+    /// The face's TrueType interpreter, for the fonts that need one to assemble their contours and
+    /// whose zones are within the limits ([`MAX_HINT_TWILIGHT`]).
+    fn hinter(&self) -> Option<&HintingInstance> {
+        self.outline_hinter
+            .get_or_init(|| {
+                use skrifa::raw::TableProvider;
+                let f = self.skrifa()?;
                 let outlines = f.outline_glyphs();
                 if !outlines.require_interpreter() {
+                    return None;
+                }
+                let zones = f.maxp().ok().map(|m| (m.max_twilight_points().unwrap_or(0), m.max_stack_elements().unwrap_or(0)));
+                if !zones.is_some_and(|(twilight, stack)| twilight <= MAX_HINT_TWILIGHT && stack <= MAX_HINT_STACK) {
+                    log::warn!("{:?} asks for hinting zones of {zones:?}: drawing it unhinted", self.family);
                     return None;
                 }
                 // At UPEM pixels, hinted coordinates remain in font units. This
@@ -196,15 +240,8 @@ impl FontFace {
                 )
                 .map_err(|e| log::warn!("Cannot initialize outline interpreter for {:?}: {e}", self.family))
                 .ok()
-            });
-            let settings =
-                hinter.as_ref().map_or_else(|| DrawSettings::unhinted(Size::unscaled(), self.location()), |h| DrawSettings::hinted(h, false));
-            if let Err(e) = g.draw(settings, &mut pen) {
-                log::warn!("Cannot draw glyph {gid} in {:?}: {e}", self.family);
-                return BezPath::new();
-            }
-        }
-        pen.0
+            })
+            .as_ref()
     }
     /// Is `family` this face's typographic, legacy, full or PostScript name?
     pub fn named(&self, family: &str) -> bool {
@@ -935,6 +972,7 @@ fn make_face(bytes: FontBytes, index: u32, family: String, style: String, legacy
         index,
         bmp: std::sync::OnceLock::new(),
         outline_hinter: std::sync::OnceLock::new(),
+        hinting_off: Default::default(),
     })
 }
 
@@ -2173,6 +2211,39 @@ mod tests {
         }
         out.extend(font);
         out
+    }
+
+    /// JetBrains Mono renamed "MingLiU JBMono" (a name the interpreter is required for), with its
+    /// `maxp` twilight-zone size set to `twilight`.
+    fn hint_reliant_font(twilight: u16) -> Vec<u8> {
+        let mut data = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/fonts/JetBrainsMono-Regular.ttf")).unwrap();
+        let utf16 = |s: &str| s.encode_utf16().flat_map(u16::to_be_bytes).collect::<Vec<u8>>();
+        for (from, to) in [(utf16("JetBrains Mono"), utf16("MingLiU JBMono")), (b"JetBrains Mono".to_vec(), b"MingLiU JBMono".to_vec())] {
+            while let Some(at) = data.windows(from.len()).position(|w| w == from) {
+                data[at..at + to.len()].copy_from_slice(&to);
+            }
+        }
+        let tables = u16::from_be_bytes([data[4], data[5]]) as usize;
+        let entry = (0..tables).map(|i| 12 + 16 * i).find(|e| &data[*e..e + 4] == b"maxp").unwrap();
+        let maxp = u32::from_be_bytes(data[entry + 8..entry + 12].try_into().unwrap()) as usize;
+        data[maxp + 16..maxp + 18].copy_from_slice(&twilight.to_be_bytes());
+        data
+    }
+
+    #[test]
+    fn a_font_asking_for_huge_hinting_zones_is_drawn_unhinted() {
+        // #3692: skrifa's budget counts instructions, not the points each one moves.
+        let db = FontDb::with_font_dirs(vec![]);
+        db.add_font(hint_reliant_font(660));
+        let face = db.face("MingLiU JBMono", "Regular");
+        assert_eq!(face.family, "MingLiU JBMono");
+        assert!(face.hinter().is_some(), "a real font's zones are hinted");
+        assert!(!face.glyph_outline(face.glyph_for('a')).elements().is_empty());
+        let db = FontDb::with_font_dirs(vec![]);
+        db.add_font(hint_reliant_font(u16::MAX));
+        let face = db.face("MingLiU JBMono", "Regular");
+        assert!(face.hinter().is_none(), "a huge twilight zone is not hinted");
+        assert!(!face.glyph_outline(face.glyph_for('a')).elements().is_empty(), "drawn unhinted");
     }
 
     #[test]
