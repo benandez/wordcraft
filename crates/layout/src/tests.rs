@@ -6349,7 +6349,7 @@ fn distributed_alignment_moves_the_endpoint_without_a_hanging_mark() {
     assert_eq!(line.hang, 0, "no mark hangs: {:?}", pl.lines);
     let end = line.xs.last().copied().unwrap_or(0.0);
     assert!((end - line.right).abs() < 0.02, "the line reaches the margin: {end} against {}", line.right);
-    let last_width = line.xs.get(line.xs.len() - 1).copied().unwrap_or(0.0) - line.xs.get(line.xs.len() - 2).copied().unwrap_or(0.0);
+    let last_width = line.xs.last().copied().unwrap_or(0.0) - line.xs.get(line.xs.len() - 2).copied().unwrap_or(0.0);
     assert!(
         (last_width - adv.get(3).copied().unwrap_or(0.0)).abs() < 0.02,
         "the last cluster keeps its advance: {last_width} against {:?}",
