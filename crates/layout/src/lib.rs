@@ -4326,6 +4326,14 @@ fn row_can_start(row: &wordcraft_doc::Row, laid: &table::RowLayout, room: f32, p
     table::split_row(laid, room).is_some()
 }
 
+/// Header rows are re-placed on every page a table spills onto, so a table is O(header items ×
+/// pages) placed items — and an exact-height header row keeps all its overflowing text without
+/// growing, so a few KB of document could otherwise fill memory. Once this many items (a row
+/// counts at least one) have been repeated across a table, later pages carry no header rows;
+/// pagination still finishes. Far above any real table (three ordinary header rows over some
+/// 5 000 pages).
+const MAX_HEADER_ITEMS: usize = 500_000;
+
 fn place_table(ctx: &mut Ctx, pb: &mut PageBuilder, t: &wordcraft_doc::Table, block: usize, body_top: f32) {
     pb.prev = None;
     let width = pb.col_w();
@@ -4346,13 +4354,10 @@ fn place_table(ctx: &mut Ctx, pb: &mut PageBuilder, t: &wordcraft_doc::Table, bl
     // A table in the text flow starts below the floating objects in its way.
     below_floats(ctx, pb, pb.col_x() + tl.x, pb.col_x() + tl.x + tl.width);
     let header_rows: Vec<usize> = (0..t.rows.len()).take_while(|r| t.rows.get(*r).is_some_and(|row| row.props.header)).collect();
-    // Header rows are re-placed on every page a table spills onto, so a table with many header
-    // rows that each spill onto their own page is O(header rows × pages) placed items — a few KB
-    // of document can otherwise fill memory. Once this many header rows have been repeated across
-    // the whole table, later pages carry none; pagination still finishes. Far above any real
-    // table (e.g. 3 header rows over 30 000 pages).
-    const MAX_HEADER_REPEATS: usize = 200_000;
+    // Items repeated so far, and what one more repeat of the header rows costs (see
+    // `MAX_HEADER_ITEMS`).
     let mut header_repeats = 0usize;
+    let header_cost = header_rows.iter().filter_map(|i| tl.rows.get(*i)).map(|r| r.items.len().max(1)).fold(0, usize::saturating_add);
     // Resolve kept chains once; nested paragraphs cannot keep their enclosing row.
     let mut kept: Vec<(usize, f32)> = (0..tl.rows.len()).map(|i| (i, 0.0)).collect();
     for i in (0..tl.rows.len().saturating_sub(1)).rev() {
@@ -4452,15 +4457,10 @@ fn place_table(ctx: &mut Ctx, pb: &mut PageBuilder, t: &wordcraft_doc::Table, bl
             }
             pb.advance(block, body_top);
             // Repeat header rows, up to this table's cap.
-            if !header_rows.contains(&ri) && header_repeats < MAX_HEADER_REPEATS {
-                for hr in &header_rows {
-                    if header_repeats >= MAX_HEADER_REPEATS {
-                        break;
-                    }
-                    if let Some(h) = tl.rows.get(*hr) {
-                        place(pb, h);
-                        header_repeats += 1;
-                    }
+            if !header_rows.contains(&ri) && header_repeats.saturating_add(header_cost) <= MAX_HEADER_ITEMS {
+                header_repeats += header_cost;
+                for h in header_rows.iter().filter_map(|hr| tl.rows.get(*hr)) {
+                    place(pb, h);
                 }
             }
             fresh = true;

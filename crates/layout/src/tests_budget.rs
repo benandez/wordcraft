@@ -2,6 +2,7 @@
 //! is bounded by a cap, and real documents stay well under it.
 
 use super::*;
+use wordcraft_doc::props::HeightRule;
 use wordcraft_doc::table::{MAX_COLS, Table};
 use wordcraft_doc::{Block, PartKind, Pos, TextBody, para_block};
 
@@ -50,6 +51,38 @@ fn a_linked_chain_lays_its_story_out_at_a_bounded_number_of_widths() {
         l.pages.iter().flat_map(|p| &p.items).filter(|it| matches!(it, Placed::Lines { story: StoryRef::Part(s), .. } if *s == ids[0])).count();
     assert!(shown > 1, "the first boxes still show the story: {shown}");
     assert!(shown <= textbox::MAX_FLOW_WIDTHS, "{shown} boxes laid the story out");
+}
+
+#[test]
+fn repeated_header_items_are_capped_across_the_table() {
+    // An exact-height header row keeps thousands of overflowing paragraphs without growing, and
+    // repeats on each of hundreds of pages: every page would copy all of them.
+    let mut t = Table::new(201, 1, 468.0);
+    t.rows[0].props.header = true;
+    t.rows[0].props.height = Some(20.0);
+    t.rows[0].props.height_rule = HeightRule::Exact;
+    t.rows[0].cells[0].blocks = (0..3000).map(|_| para_block(Paragraph::with_text("x", Default::default()))).collect();
+    for row in t.rows.iter_mut().skip(1) {
+        row.props.height = Some(600.0);
+        row.props.height_rule = HeightRule::Exact;
+    }
+    let mut d = Document::from_text("");
+    d.insert_block(StoryRef::Body, &Path::top(1), Block::Table(t)).unwrap();
+    let l = lay(&d);
+    assert!(l.pages.len() >= 200, "{} pages", l.pages.len());
+    let items: usize = l.pages.iter().map(|p| p.items.len()).sum();
+    // The first page's header and each page's body row come on top of the repeats.
+    assert!(items <= MAX_HEADER_ITEMS + 3000 + 50 * l.pages.len(), "{items} items placed");
+    // An ordinary table's header still repeats on every page.
+    let mut t = Table::new(80, 2, 468.0);
+    t.rows[0].props.header = true;
+    let mut d = Document::from_text("");
+    d.insert_block(StoryRef::Body, &Path::top(1), Block::Table(t)).unwrap();
+    let l = lay(&d);
+    assert!(l.pages.len() >= 2);
+    for p in &l.pages {
+        assert!(p.items.iter().any(|i| matches!(i, Placed::Cell { row: 0, .. })), "the header repeats");
+    }
 }
 
 #[test]
