@@ -121,7 +121,7 @@ Measured by grepping `crates/docx/src/read` and `src/write` for the OOXML elemen
 | `w:fitText` | ❌ | ❌ | East Asian layout |
 | Glossary document (building blocks) | ✅ | ✅ | `w:docPart` entries (name, style, gallery, category, types, behaviours, description, guid, body) are read into `Document::glossary` and offered by Insert › Quick Parts and AutoText; `save` with `"in": "document"` stores one in the file. An untouched glossary is written back byte for byte with its own parts (styles, settings, fonts…); an edited one, or one whose parts weren't kept, is written from the model as `word/glossary1.xml` with copies of the document's styles and numbering. The glossary's own styles, settings and fonts, text boxes inside entries, and the notes and comments of a selection saved into the document don't survive an edit. Tests: `crates/docx/tests/it/glossary.rs` |
 | `w:altChunk`, sub-documents | ❌ | ❌ | |
-| Hostile input | ✅ | — | `malformed.rs`, capped allocations, never-crash standard |
+| Hostile input | ✅ | — | `malformed.rs`, capped allocations, never-crash standard. Failed zip entries count against the size limit, case variants of a part name are one part, embedded fonts and charts are written within budgets, and Flat OPC inlines kept XML only when it is one well-formed element (2026-10-22) |
 | Document paragraph defaults (`w:pPrDefault`) | ✅ | ✅ | Omission and explicit empty defaults remain distinct across repeated saves; nonempty defaults and later default-spacing edits are written |
 
 ## Saving many content controls
@@ -252,6 +252,7 @@ Imported text fields use the first nonempty cached result run's formatting on th
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-22 | trivial | Hostile input: DOCX package, comment, font, chart and Flat OPC hardening (#3692, #3723, #3704, #3742, #3648) |
 | 2026-10-23 | trivial | A relationship the markup names without the prefix is read as it wrote: an unqualified `id` on an element that carries a relationship names that relationship, and the writer keeps the attribute with the id the new package holds the part under; an ordinary `id` — a VML shape's, a drawing's — names no part (#3411 follow-up) |
 | 2026-10-21 | trivial | The reader takes the relationship ids the markup refers to from the relationship attributes of the main document it has already parsed, so a document with many relationships opens in the time its part takes, and an id that only appears as text is not a reference (#3411) |
 | 2026-10-21 | trivial | HTML export writes ruby (furigana, phonetic guides) as `<ruby>base<rt>reading</rt></ruby>`, in the base text's run formatting, and HTML import reads `<ruby>`/`<rb>`/`<rt>` back into one ruby object: `<rp>` fallback parentheses and the tags are not text, an unclosed element ends at the next block, and malformed ruby keeps its text. HTML states no alignment, size or raise, so the Phonetic Guide's defaults apply (#1681) |
