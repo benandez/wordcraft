@@ -984,8 +984,8 @@ impl Document {
         for story in stories {
             for path in self.para_paths(story) {
                 let Some(p) = self.para(story, &path) else { continue };
-                for off in p.object_offsets() {
-                    if p.object_at(off).is_some_and(|o| o.text_boxes().contains(&part)) {
+                for (off, o) in p.objects_with_offsets() {
+                    if o.text_boxes().contains(&part) {
                         return Some(Pos { story, path, off: off + para::OBJ.len_utf8() });
                     }
                 }
@@ -1505,22 +1505,22 @@ impl Document {
         let mut out: Vec<PermRange> = Vec::new();
         let stories = std::iter::once(StoryRef::Body).chain(self.parts.keys().map(|k| StoryRef::Part(*k)));
         for story in stories {
-            let mut open: Vec<usize> = Vec::new();
+            // Open ranges by id, latest last (an end closes the latest open range of its id).
+            let mut open: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
             for path in self.para_paths(story) {
                 let Some(p) = self.para(story, &path) else { continue };
-                for off in p.object_offsets() {
-                    match p.object_at(off) {
-                        Some(InlineObject::PermStart { id, group, editor }) => {
+                for (off, o) in p.objects_with_offsets() {
+                    match o {
+                        InlineObject::PermStart { id, group, editor } => {
                             let start = Pos { story, path: path.clone(), off: off + para::OBJ.len_utf8() };
-                            open.push(out.len());
+                            open.entry(*id).or_default().push(out.len());
                             out.push(PermRange { id: *id, group: group.clone(), editor: editor.clone(), start: start.clone(), end: start });
                         }
-                        Some(InlineObject::PermEnd { id }) => {
-                            if let Some(k) = open.iter().rposition(|i| out.get(*i).is_some_and(|r| r.id == *id)) {
-                                let i = open.remove(k);
-                                if let Some(r) = out.get_mut(i) {
-                                    r.end = Pos { story, path: path.clone(), off };
-                                }
+                        InlineObject::PermEnd { id } => {
+                            if let Some(i) = open.get_mut(id).and_then(Vec::pop)
+                                && let Some(r) = out.get_mut(i)
+                            {
+                                r.end = Pos { story, path: path.clone(), off };
                             }
                         }
                         _ => {}
@@ -1529,7 +1529,7 @@ impl Document {
             }
             // A range left open runs to the end of its story.
             let end = self.end_of(story);
-            for i in open {
+            for i in open.into_values().flatten() {
                 if let Some(r) = out.get_mut(i) {
                     r.end = end.clone();
                 }
@@ -1543,8 +1543,8 @@ impl Document {
         let mut out = Vec::new();
         for path in self.para_paths(StoryRef::Body) {
             if let Some(p) = self.para(StoryRef::Body, &path) {
-                for off in p.object_offsets() {
-                    if let Some(InlineObject::BookmarkStart { name }) = p.object_at(off) {
+                for (off, o) in p.objects_with_offsets() {
+                    if let InlineObject::BookmarkStart { name } = o {
                         out.push((name.clone(), Pos { story: StoryRef::Body, path: path.clone(), off }));
                     }
                 }

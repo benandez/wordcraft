@@ -485,13 +485,21 @@ impl Document {
             let (ia, ib) = (a.path.last(), b.path.last());
             // Kept markers of the paragraphs in between move to the join.
             let mut moved: Vec<(InlineObject, CharProps)> = Vec::new();
-            for (path, off) in &kept {
-                if *path != a.path
-                    && *path != b.path
-                    && let Some(p) = self.para(a.story, path)
-                    && let Some(o) = p.object_at(*off)
-                {
-                    moved.push((o.clone(), p.props_of_char(*off).clone()));
+            // `kept` is sorted: one walk of each paragraph's objects and runs (#3614).
+            for group in kept.chunk_by(|x, y| x.0 == y.0) {
+                let Some((path, _)) = group.first() else { continue };
+                if *path == a.path || *path == b.path {
+                    continue;
+                }
+                let Some(p) = self.para(a.story, path) else { continue };
+                let mut runs = p.run_ranges().peekable();
+                for (off, o) in p.objects_with_offsets() {
+                    if group.binary_search_by_key(&off, |(_, k)| *k).is_err() {
+                        continue;
+                    }
+                    while runs.next_if(|(r, _)| r.end <= off).is_some() {}
+                    let props = runs.peek().filter(|(r, _)| r.contains(&off)).map_or(&p.mark, |(_, c)| *c);
+                    moved.push((o.clone(), props.clone()));
                 }
             }
             {

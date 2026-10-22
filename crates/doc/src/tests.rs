@@ -495,3 +495,70 @@ fn custom_props_set_get_remove() {
     assert!(!d.remove_custom_prop("other"));
     assert_eq!(d.custom_props.len(), 1);
 }
+
+/// A paragraph that is nothing but `objs` (built directly: inserting one at a time is slow too).
+fn para_of_objects(objs: Vec<InlineObject>) -> Paragraph {
+    let mut p = Paragraph::new();
+    p.text = para::OBJ.to_string().repeat(objs.len());
+    p.runs = vec![Run { len: p.text.len(), props: CharProps::default() }];
+    p.objects = objs;
+    p
+}
+
+#[test]
+fn object_walks_are_linear_in_the_paragraph() {
+    // #3614: loops of object_offsets + object_at recounted the objects before each one, so a
+    // paragraph of 40,000 markers took seconds per walk.
+    let n = 40_000u32;
+    let w = para::OBJ.len_utf8();
+    let mut objs: Vec<InlineObject> = Vec::new();
+    for i in 0..n {
+        objs.push(InlineObject::BookmarkStart { name: format!("b{i}") });
+        objs.push(fs("ADDIN x"));
+        objs.push(InlineObject::PermStart { id: i, group: "everyone".into(), editor: String::new() });
+    }
+    // Ranges close in the order they opened (the worst case for a backwards search).
+    for i in 0..n {
+        objs.push(InlineObject::FieldEnd);
+        objs.push(InlineObject::PermEnd { id: i });
+    }
+    let mut d = Document::new();
+    d.body = vec![Arc::new(Block::Para(para_of_objects(objs)))];
+    let t = std::time::Instant::now();
+    assert_eq!(d.bookmarks().len(), n as usize);
+    assert_eq!(d.field_ranges(StoryRef::Body).len(), n as usize);
+    let perms = d.perm_ranges();
+    assert_eq!(perms.len(), n as usize);
+    assert!(perms.iter().all(|r| r.end.off > r.start.off), "every range closed by its own end");
+    assert_eq!(d.text_box_anchor(7), None);
+    // A caret before a long row of field ends moves past all of them.
+    let first_end = 3 * n as usize * w;
+    let p = d.past_field_ends(&Pos::body(0, first_end));
+    assert_eq!(p.off, first_end + w);
+    assert!(t.elapsed().as_secs_f32() < 2.0, "{:?}", t.elapsed());
+
+    let ends: Vec<InlineObject> = (0..n).map(|_| InlineObject::FieldEnd).collect();
+    d.body = vec![Arc::new(Block::Para(para_of_objects(ends)))];
+    let t = std::time::Instant::now();
+    assert_eq!(d.past_field_ends(&Pos::body(0, 0)).off, n as usize * w);
+    // Typing at the end of a row of block-level control starts.
+    let block = ContentControl { block: true, ..Default::default() };
+    let starts: Vec<InlineObject> = (0..n).map(|_| InlineObject::ControlStart { control: Box::new(block.clone()) }).collect();
+    d.body = vec![Arc::new(Block::Para(para_of_objects(starts)))];
+    let end = Pos::body(0, n as usize * w);
+    assert_eq!(d.typing_pos(&end), end);
+    assert!(t.elapsed().as_secs_f32() < 2.0, "{:?}", t.elapsed());
+}
+
+#[test]
+fn deleting_across_many_lone_control_markers_is_not_quadratic() {
+    let n = 1_500;
+    let starts: Vec<InlineObject> = (0..n).map(|_| InlineObject::ControlStart { control: Box::default() }).collect();
+    let mut d = Document::from_text("before\n\nafter");
+    d.body[1] = Arc::new(Block::Para(para_of_objects(starts)));
+    let t = std::time::Instant::now();
+    let at = d.delete_range(&Pos::body(0, 3), &Pos::body(2, 2)).unwrap();
+    assert_eq!(at, Pos::body(0, 3));
+    assert_eq!(d.plain_text(StoryRef::Body), "befter");
+    assert!(t.elapsed().as_secs_f32() < 2.0, "{:?}", t.elapsed());
+}
