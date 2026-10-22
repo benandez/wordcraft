@@ -88,8 +88,13 @@ pub struct FontFace {
     bmp: std::sync::OnceLock<Box<[u64]>>,
     // Some legacy CJK fonts assemble their contours with TrueType instructions.
     outline_hinter: std::sync::OnceLock<Option<HintingInstance>>,
-    /// Hinted glyphs that ran too long; at [`MAX_HINT_STRIKES`] the face is drawn unhinted.
-    hint_strikes: std::sync::atomic::AtomicU8,
+    /// Hinted draws so far, those that ran too long, and whether that turned hinting off
+    /// ([`FontFace::count_hinted`]).
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    hint_draws: std::sync::atomic::AtomicU32,
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    hint_slow: std::sync::atomic::AtomicU32,
+    hinting_off: std::sync::atomic::AtomicBool,
 }
 
 /// Limits on what a face's TrueType instructions may run over (#3692). skrifa's interpreter budget
@@ -101,13 +106,18 @@ const MAX_HINT_TWILIGHT: u16 = 1024;
 const MAX_HINT_STACK: u16 = 4096;
 /// skrifa's buffer for one hinted glyph (points, stack, twilight zone, CVT and storage).
 const MAX_HINT_GLYPH_BYTES: usize = 256 * 1024;
-/// A hinted glyph slower than this is a strike against its face; [`MAX_HINT_STRIKES`] of them turn
-/// hinting off. A face under the limits above can still take seconds for one glyph: this keeps it
-/// to a few, while one draw slowed by a busy machine doesn't drop hinting. Native only (no clock
-/// on wasm).
+/// A hinted glyph slower than this is a strike against its face. A face under the limits above can
+/// still take seconds for one glyph, so [`MIN_HINT_STRIKES`] strikes that are also at least one
+/// in [`HINT_SLOW_RATIO`] of its hinted draws turn hinting off: a face that is slow throughout
+/// stops after a few glyphs, while the odd draw slowed by a busy machine leaves a face hinted.
+/// ponytail: wall-clock, not interpreter work (skrifa has no work bound yet, #3827). Native only
+/// (no clock on wasm).
 #[cfg(not(target_arch = "wasm32"))]
 const HINT_STRIKE: std::time::Duration = std::time::Duration::from_millis(50);
-const MAX_HINT_STRIKES: u8 = 3;
+#[cfg(not(target_arch = "wasm32"))]
+const MIN_HINT_STRIKES: u32 = 3;
+#[cfg(not(target_arch = "wasm32"))]
+const HINT_SLOW_RATIO: u32 = 16;
 
 /// A cheap `Copy` handle to a face. Faces are never unloaded, so the handle lives for the rest of
 /// the process; unlike cloning an `Arc`, copying it touches no shared reference count (which made
@@ -193,10 +203,16 @@ impl FontFace {
     pub fn id(&self) -> u32 {
         self.id
     }
-    /// Counts a slow hinted draw; true when it is the one that turns hinting off.
+    /// Counts a hinted draw, `slow` when it ran past [`HINT_STRIKE`]; true when it is the one that
+    /// turns hinting off.
     #[cfg(not(target_arch = "wasm32"))]
-    fn strike_hinting(&self) -> bool {
-        self.hint_strikes.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| (n < MAX_HINT_STRIKES).then_some(n + 1)) == Ok(MAX_HINT_STRIKES - 1)
+    fn count_hinted(&self, slow: bool) -> bool {
+        let draws = self.hint_draws.fetch_add(1, Ordering::Relaxed).saturating_add(1);
+        if !slow {
+            return false;
+        }
+        let slow = self.hint_slow.fetch_add(1, Ordering::Relaxed).saturating_add(1);
+        slow >= MIN_HINT_STRIKES && slow.saturating_mul(HINT_SLOW_RATIO) >= draws && !self.hinting_off.swap(true, Ordering::Relaxed)
     }
     /// Glyph `gid`'s outline in font units, y-down (flipped), uncached: for faces the database
     /// doesn't keep (font list previews); others go through [`FontDb::outline`]'s cache.
@@ -205,15 +221,14 @@ impl FontFace {
         if let Some(f) = self.skrifa()
             && let Some(g) = f.outline_glyphs().get(GlyphId::new(gid))
         {
-            let hinter = self.hinter().filter(|_| {
-                self.hint_strikes.load(Ordering::Relaxed) < MAX_HINT_STRIKES && g.draw_memory_size(Hinting::Embedded) <= MAX_HINT_GLYPH_BYTES
-            });
+            let hinter =
+                self.hinter().filter(|_| !self.hinting_off.load(Ordering::Relaxed) && g.draw_memory_size(Hinting::Embedded) <= MAX_HINT_GLYPH_BYTES);
             #[cfg(not(target_arch = "wasm32"))]
             let started = std::time::Instant::now();
             let settings = hinter.map_or_else(|| DrawSettings::unhinted(Size::unscaled(), self.location()), |h| DrawSettings::hinted(h, false));
             let drawn = g.draw(settings, &mut pen);
             #[cfg(not(target_arch = "wasm32"))]
-            if hinter.is_some() && started.elapsed() > HINT_STRIKE && self.strike_hinting() {
+            if hinter.is_some() && self.count_hinted(started.elapsed() > HINT_STRIKE) {
                 log::warn!("Hinting glyph {gid} in {:?} took {:?}: drawing the face unhinted", self.family, started.elapsed());
             }
             if let Err(e) = drawn {
@@ -981,7 +996,9 @@ fn make_face(bytes: FontBytes, index: u32, family: String, style: String, legacy
         index,
         bmp: std::sync::OnceLock::new(),
         outline_hinter: std::sync::OnceLock::new(),
-        hint_strikes: Default::default(),
+        hint_draws: Default::default(),
+        hint_slow: Default::default(),
+        hinting_off: Default::default(),
     })
 }
 
@@ -1985,12 +2002,21 @@ mod tests_sysfonts;
 mod tests {
     #[test]
     #[cfg(not(target_arch = "wasm32"))]
-    fn one_slow_hinted_glyph_does_not_turn_hinting_off() {
-        let db = super::FontDb::with_font_dirs(vec![]);
-        let face = db.face("Anything", "Regular");
-        let strikes: Vec<bool> = (0..5).map(|_| face.strike_hinting()).collect();
-        assert_eq!(strikes, [false, false, true, false, false]);
-        assert_eq!(face.hint_strikes.load(std::sync::atomic::Ordering::Relaxed), super::MAX_HINT_STRIKES);
+    fn occasional_slow_hinted_glyphs_do_not_turn_hinting_off() {
+        let off = |pattern: &[bool]| {
+            let face =
+                super::make_face(super::FontBytes::Static(super::BUNDLED[0]), 0, "T".into(), "Regular".into(), "T".into(), Vec::new()).unwrap();
+            pattern.iter().position(|&slow| face.count_hinted(slow))
+        };
+        // A face slow throughout stops at the third strike.
+        assert_eq!(off(&[true; 5]), Some(2));
+        // Three draws slowed by a busy machine among many: hinting stays on.
+        let mut busy = vec![false; 100];
+        busy.extend([true; 3]);
+        assert_eq!(off(&busy), None);
+        // Slow glyphs spread among fast ones still stop it once they are one in 16.
+        let spread: Vec<bool> = (0..64).map(|i| i % 8 == 7).collect();
+        assert_eq!(off(&spread), Some(23));
     }
     #[test]
     #[ignore = "requires a locally licensed kaiu.ttf; set WORDCRAFT_TEST_KAI_FONT"]
