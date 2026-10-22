@@ -61,6 +61,27 @@ Word's "Field" in the file.)
 - Zotero's document transfer (Export/Import Document) isn't needed and isn't supported.
 - The web version can't reach Zotero (browsers can't open the socket).
 
+## Who can drive the document
+
+Zotero's protocol has no handshake that proves the program on port 23116 is Zotero, and that
+program can read the citations and edit the open document. WordCraft limits who that can be:
+
+- It only connects to this computer (a loopback address such as `127.0.0.1`); any other address
+  is refused before connecting.
+- On Linux it checks, in the kernel's socket table (`/proc/net/tcp`, `/proc/net/tcp6`), that the
+  program listening on the port runs as the same user as WordCraft, before sending anything. If
+  another account on a shared machine took the port while Zotero wasn't running, or the owner
+  can't be established (the table can't be read), WordCraft refuses with an error and the
+  document isn't touched.
+- Remaining risk: macOS, Windows and the BSDs have no such table to read without OS calls
+  WordCraft doesn't make (it uses no `unsafe` code), so there only the loopback rule applies:
+  on a computer shared with other accounts, a program another user leaves on port 23116 while
+  Zotero is closed would be taken for Zotero. A program running as you is trusted on every
+  system; it could change your documents anyway.
+- `wordcraft-cli zotero` prints Zotero's messages (and `--trace` lines) with control
+  characters, line breaks and backslashes shown as escapes (`\n`, `\u{1b}`, `\\`), so a peer
+  can't forge other output or drive the terminal.
+
 ## How it works
 
 `crates/zotero` implements Zotero's published word-processor wire protocol (port 23116):
