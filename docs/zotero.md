@@ -70,13 +70,15 @@ program can read the citations and edit the open document. WordCraft limits who 
   is refused before connecting.
 - On Linux it checks, in the kernel's socket table (`/proc/net/tcp`, `/proc/net/tcp6`), that the
   program listening on the port runs as the same user as WordCraft, before sending anything. If
-  another account on a shared machine took the port while Zotero wasn't running, or the owner
-  can't be established (the table can't be read), WordCraft refuses with an error and the
-  document isn't touched.
+  another account on a shared machine took the port while Zotero wasn't running, WordCraft
+  refuses with an error and the document isn't touched. When the table doesn't show the
+  listener (WSL2 mirrored networking with Zotero running on Windows, a local proxy, a sandbox)
+  or can't be read, its owner is unknown and only the loopback rule applies, as below.
 - Remaining risk: macOS, Windows and the BSDs have no such table to read without OS calls
-  WordCraft doesn't make (it uses no `unsafe` code), so there only the loopback rule applies:
-  on a computer shared with other accounts, a program another user leaves on port 23116 while
-  Zotero is closed would be taken for Zotero. A program running as you is trusted on every
+  WordCraft doesn't make (it uses no `unsafe` code), so there only the loopback rule applies
+  (and on Linux when the listener isn't in the table): on a computer shared with other
+  accounts, a program another user leaves on port 23116 while Zotero is closed would be taken
+  for Zotero. A program running as you is trusted on every
   system; it could change your documents anyway.
 - `wordcraft-cli zotero` prints Zotero's messages (and `--trace` lines) with control
   characters, line breaks and backslashes shown as escapes (`\n`, `\u{1b}`, `\\`), so a peer

@@ -3,8 +3,9 @@
 //! only connects to this computer (a loopback address), and on Linux checks that the program
 //! listening there runs as the same user, from the kernel's socket table (`/proc/net/tcp`):
 //! another account on a shared machine that took the port while Zotero wasn't running is
-//! refused. Other systems have no such table to read without OS calls this crate doesn't make;
-//! there the loopback rule is the guard (see `docs/zotero.md`).
+//! refused. A listener the table doesn't show (WSL2 mirrored networking with Zotero on Windows,
+//! a local proxy, a sandbox) leaves only the loopback rule, as on other systems, which have no
+//! such table to read without OS calls this crate doesn't make (see `docs/zotero.md`).
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream};
 
@@ -50,9 +51,9 @@ fn owner_check(_local: SocketAddr, _peer: SocketAddr) -> Result<(), ZoteroError>
     Ok(())
 }
 
-/// From a `/proc/net/tcp`-format socket table: whether the socket at `peer` connected to
-/// `local` (the listener's side) belongs to the same user as ours. A peer that can't be found
-/// is refused too: its owner can't be established.
+/// From a `/proc/net/tcp`-format socket table: refuse when the socket at `peer` connected to
+/// `local` (the listener's side) belongs to another user than ours. When either socket isn't
+/// listed (or the table couldn't be read) the owner is unknown and the loopback rule decides.
 #[cfg_attr(not(any(target_os = "linux", target_os = "android")), allow(dead_code))]
 pub(crate) fn same_owner(table: &str, local: SocketAddr, peer: SocketAddr) -> Result<(), ZoteroError> {
     let key = |a: SocketAddr| (a.ip().to_canonical(), a.port());
@@ -76,7 +77,10 @@ pub(crate) fn same_owner(table: &str, local: SocketAddr, peer: SocketAddr) -> Re
         (Some(_), Some(b)) => {
             Err(ZoteroError::Refused(format!("the program on port {} runs as another user (uid {b}), so it isn't your Zotero", peer.1)))
         }
-        _ => Err(ZoteroError::Refused(format!("WordCraft couldn't tell which user's program is on port {}", peer.1))),
+        _ => {
+            log::debug!("Zotero: port {} isn't in this system's socket table; trusting the loopback address alone", peer.1);
+            Ok(())
+        }
     }
 }
 
@@ -142,13 +146,20 @@ mod tests {
         assert_eq!(same_owner(&same, local, peer), Ok(()));
         let other = format!("{HEADER}{}{}", row(local, peer, 1000), row(peer, local, 1001));
         assert!(matches!(same_owner(&other, local, peer), Err(ZoteroError::Refused(e)) if e.contains("another user")));
-        // Not found (or the table couldn't be read): the owner can't be established.
-        let missing = format!("{HEADER}{}", row(local, peer, 1000));
-        assert!(matches!(same_owner(&missing, local, peer), Err(ZoteroError::Refused(_))));
-        assert!(matches!(same_owner("", local, peer), Err(ZoteroError::Refused(_))));
         // Junk lines are skipped.
         let junk = format!("{HEADER}garbage\n 1: zz:zz yy:yy 01 x x x x\n{}{}", row(local, peer, 7), row(peer, local, 7));
         assert_eq!(same_owner(&junk, local, peer), Ok(()));
+    }
+
+    /// WSL2 mirrored networking (Zotero on Windows), a local proxy or a sandbox: the listener
+    /// isn't in our table, so the loopback rule decides, as on other systems.
+    #[test]
+    fn an_unlisted_listener_falls_back_to_the_loopback_rule() {
+        let (local, peer) = addrs();
+        let missing = format!("{HEADER}{}", row(local, peer, 1000));
+        assert_eq!(same_owner(&missing, local, peer), Ok(()));
+        // The table couldn't be read.
+        assert_eq!(same_owner("", local, peer), Ok(()));
     }
 
     #[test]
