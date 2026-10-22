@@ -210,9 +210,15 @@ struct Cut {
 
 /// Most line lengths (and text directions) a chain's story is laid out at. Each lays the whole
 /// story out again and is kept while the chain is split, so a chain of boxes that each differ in
-/// width would multiply its story's layout work and memory; boxes needing another one show no
-/// text. Far above a real chain's few box sizes.
+/// width would multiply its story's layout work and memory; boxes needing another one take the
+/// nearest already laid out. Far above a real chain's few box sizes.
 pub(crate) const MAX_FLOW_WIDTHS: usize = 16;
+
+/// Line lengths are told apart to a twentieth of a point (a twip): resized boxes a hair apart
+/// share one layout.
+fn flow_key(len: f32, vert: TextVert) -> (i32, TextVert) {
+    ((len * 20.0).round() as i32, vert)
+}
 
 /// Split the text of `chain`'s first box over its boxes.
 fn flow(ctx: &mut Ctx, chain: &[u32], depth: usize) -> Vec<Vec<Placed>> {
@@ -227,7 +233,7 @@ fn flow(ctx: &mut Ctx, chain: &[u32], depth: usize) -> Vec<Vec<Placed>> {
     // time), sharing a layout with the boxes before it of the same length.
     let snap = (ctx.counters.clone(), ctx.eq_count);
     let mut after = None;
-    let mut layouts: Vec<((u32, TextVert), Vec<Placed>)> = Vec::new();
+    let mut layouts: Vec<((i32, TextVert), Vec<Placed>)> = Vec::new();
     let mut out = Vec::with_capacity(chain.len());
     // Where the next box's text starts: `Some(None)` at the beginning, `None` when all is shown.
     let mut start: Option<Option<Cut>> = Some(None);
@@ -239,13 +245,14 @@ fn flow(ctx: &mut Ctx, chain: &[u32], depth: usize) -> Vec<Vec<Placed>> {
         let body = ctx.doc.parts.get(id).map(|p| p.body).unwrap_or_default();
         let (w, h) = sizes.get(id).copied().unwrap_or((0.0, 0.0));
         let (len, across) = frame(&body, w, h);
-        let key = (len.to_bits(), body.vert);
+        let key = flow_key(len, body.vert);
         let items = match layouts.iter().find(|(k, _)| *k == key) {
             Some((_, items)) => items.clone(),
-            // Past the cap the text stops here: this box and the rest show none.
+            // Past the cap the box takes the nearest layout: the same direction first, then the
+            // widest line length that fits it, else the narrowest.
             None if layouts.len() >= MAX_FLOW_WIDTHS => {
-                out.push(Vec::new());
-                continue;
+                let near = layouts.iter().min_by_key(|((k, v), _)| (*v != key.1, *k > key.0, k.abs_diff(key.0)));
+                near.map(|(_, items)| items.clone()).unwrap_or_default()
             }
             None => {
                 (ctx.counters, ctx.eq_count) = (snap.0.clone(), snap.1);

@@ -540,7 +540,7 @@ pub struct LayoutCache {
     measures: HashMap<Key, (f32, f32)>,
     /// Outlines of pictures' opaque pixels (Tight and Through wrapping), by media key, the
     /// media's bytes (address and length) and crop.
-    outlines: HashMap<(String, usize, usize, [u32; 4]), Option<Arc<Vec<(f32, f32)>>>>,
+    outlines: Outlines,
     env: u64,
     used: HashSet<Key>,
     /// The STYLEREF style index of the last pass and what it was built from: the body blocks
@@ -796,6 +796,29 @@ fn with_pin<T>(ctx: &mut Ctx, id: u32, sect: &SectionProps, number: u32, f: impl
     (out, behind, front)
 }
 
+/// Picture outlines by media name, bytes (address and length) and crop ([`LayoutCache`]).
+type Outlines = HashMap<(String, usize, usize, [u32; 4]), Option<Arc<Vec<(f32, f32)>>>>;
+
+/// Picture `bytes`'s outline within `crop`, kept in `outlines` under `key`. One refused for this
+/// layout's decoding budget wraps as its rectangle and isn't kept: a later layout may decode it.
+fn picture_outline(
+    outlines: &mut Outlines,
+    alphas: &mut contour::Alphas,
+    key: (String, usize, usize, [u32; 4]),
+    bytes: &[u8],
+    crop: [f32; 4],
+) -> Option<Arc<Vec<(f32, f32)>>> {
+    if let Some(o) = outlines.get(&key) {
+        return o.clone();
+    }
+    let outline = alphas.outline(bytes, crop).ok()?.map(Arc::new);
+    if outlines.len() >= 256 {
+        outlines.clear();
+    }
+    outlines.insert(key, outline.clone());
+    outline
+}
+
 impl Ctx<'_> {
     /// The outline Tight and Through wrapping follow around `o` (see [`contour::wrap_outline`]);
     /// pictures' are worked out once per picture and crop.
@@ -804,15 +827,7 @@ impl Ctx<'_> {
         contour::wrap_outline(o, |media, crop| {
             let bytes = doc.media.get(media)?;
             let key = (media.to_string(), Arc::as_ptr(bytes) as usize, bytes.len(), crop.map(f32::to_bits));
-            if let Some(o) = cache.outlines.get(&key) {
-                return o.clone();
-            }
-            if cache.outlines.len() >= 256 {
-                cache.outlines.clear();
-            }
-            let outline = alphas.outline(bytes, crop).map(Arc::new);
-            cache.outlines.insert(key, outline.clone());
-            outline
+            picture_outline(&mut cache.outlines, alphas, key, bytes, crop)
         })
     }
 

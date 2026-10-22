@@ -38,7 +38,8 @@ fn text_box(d: &mut Document, para: usize, text: &str, w: f32, h: f32) -> u32 {
 #[test]
 fn a_linked_chain_lays_its_story_out_at_a_bounded_number_of_widths() {
     // Forty linked boxes, each a line deep and each a different width, over a long story: every
-    // width would lay the whole story out again. Past the cap, the chain's later boxes show nothing.
+    // width would lay the whole story out again. Past the cap, later boxes reuse the nearest
+    // width already laid out, so every box still shows its share of the story.
     let n = 40;
     let mut d = Document::from_text(&vec!["p"; n].join("\n"));
     let story = "Words that run on and on through every box of the chain. ".repeat(200);
@@ -47,10 +48,42 @@ fn a_linked_chain_lays_its_story_out_at_a_bounded_number_of_widths() {
         d.parts.get_mut(&w[0]).unwrap().body.next = Some(w[1]);
     }
     let l = lay(&d);
-    let shown =
-        l.pages.iter().flat_map(|p| &p.items).filter(|it| matches!(it, Placed::Lines { story: StoryRef::Part(s), .. } if *s == ids[0])).count();
-    assert!(shown > 1, "the first boxes still show the story: {shown}");
-    assert!(shown <= textbox::MAX_FLOW_WIDTHS, "{shown} boxes laid the story out");
+    let lines: Vec<&Placed> =
+        l.pages.iter().flat_map(|p| &p.items).filter(|it| matches!(it, Placed::Lines { story: StoryRef::Part(s), .. } if *s == ids[0])).collect();
+    assert_eq!(lines.len(), n, "every box shows the story");
+    // Each width the story was laid out at is its own paragraph layout.
+    let mut widths: Vec<usize> =
+        lines.iter().filter_map(|it| if let Placed::Lines { para, .. } = it { Some(Arc::as_ptr(para) as usize) } else { None }).collect();
+    widths.sort_unstable();
+    widths.dedup();
+    assert!(widths.len() <= textbox::MAX_FLOW_WIDTHS, "{} widths laid the story out", widths.len());
+}
+
+#[test]
+fn boxes_a_hair_apart_in_width_share_a_layout() {
+    // Resized boxes differ by fractions of a point; those within a twentieth of a point of each
+    // other share one layout of the story.
+    let n = 30;
+    let mut d = Document::from_text(&vec!["p"; n].join("\n"));
+    let story = "Words that run on and on through every box of the chain. ".repeat(100);
+    let ids: Vec<u32> = (0..n).map(|i| text_box(&mut d, i, if i == 0 { &story } else { "" }, 150.0 + 0.0005 * i as f32, 28.0)).collect();
+    for w in ids.windows(2) {
+        d.parts.get_mut(&w[0]).unwrap().body.next = Some(w[1]);
+    }
+    let l = lay(&d);
+    let mut widths: Vec<usize> = l
+        .pages
+        .iter()
+        .flat_map(|p| &p.items)
+        .filter_map(|it| match it {
+            Placed::Lines { story: StoryRef::Part(s), para, .. } if *s == ids[0] => Some(Arc::as_ptr(para) as usize),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(widths.len(), n, "every box shows the story");
+    widths.sort_unstable();
+    widths.dedup();
+    assert_eq!(widths.len(), 1, "one layout for every box");
 }
 
 #[test]
@@ -116,7 +149,7 @@ fn a_picture_cropped_many_ways_is_decoded_once() {
     let mut alphas = contour::Alphas::default();
     for i in 0..300 {
         let f = i as f32 / 1000.0;
-        assert!(alphas.outline(&png, [f, f, 0.0, 0.0]).is_some(), "crop {i} follows the disc");
+        assert!(alphas.outline(&png, [f, f, 0.0, 0.0]).is_ok_and(|o| o.is_some()), "crop {i} follows the disc");
     }
     assert_eq!(alphas.decoded, 64 * 64, "one decode for every crop");
     // A crop's outline is the one the picture alone gives.
@@ -129,15 +162,52 @@ fn decoding_pictures_stops_at_the_layouts_budget() {
     let (a, b) = (disc_png(64), disc_png(32));
     let mut alphas = contour::Alphas::default();
     alphas.decoded = contour::MAX_DECODED_PIXELS - 64 * 64 + 1;
-    // Too many pixels left to decode: the picture wraps as its rectangle.
-    assert!(alphas.outline(&a, [0.0; 4]).is_none());
+    // Too many pixels left to decode: the picture wraps as its rectangle, and says why.
+    assert_eq!(alphas.outline(&a, [0.0; 4]), Err(contour::OverBudget));
     // A smaller one still fits.
-    assert!(alphas.outline(&b, [0.0; 4]).is_some());
+    assert!(alphas.outline(&b, [0.0; 4]).is_ok_and(|o| o.is_some()));
     assert!(alphas.decoded <= contour::MAX_DECODED_PIXELS);
     // Pictures alternating past the budget aren't decoded again.
     for _ in 0..10 {
-        assert!(alphas.outline(&a, [0.0; 4]).is_none());
+        assert_eq!(alphas.outline(&a, [0.0; 4]), Err(contour::OverBudget));
         let _ = alphas.outline(&b, [0.0; 4]);
     }
     assert!(alphas.decoded <= contour::MAX_DECODED_PIXELS);
+}
+
+/// A `size` × `size` PNG with no transparency.
+fn opaque_png(size: u32) -> Vec<u8> {
+    let img = image::RgbImage::from_pixel(size, size, image::Rgb([0, 0, 0]));
+    let mut buf = Vec::new();
+    image::DynamicImage::from(img).write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png).unwrap();
+    buf
+}
+
+#[test]
+fn opaque_pictures_take_none_of_the_decoding_budget() {
+    // Pictures whose header says they have no transparency have no outline to find: decoding
+    // them would only spend the budget a transparent picture after them needs.
+    let (opaque, disc) = (opaque_png(64), disc_png(64));
+    let mut alphas = contour::Alphas::default();
+    alphas.decoded = contour::MAX_DECODED_PIXELS - 64 * 64;
+    for _ in 0..3 {
+        assert_eq!(alphas.outline(&opaque, [0.0; 4]), Ok(None));
+    }
+    assert!(alphas.outline(&disc, [0.0; 4]).is_ok_and(|o| o.is_some()), "the transparent picture still has its outline");
+    assert_eq!(alphas.decoded, contour::MAX_DECODED_PIXELS);
+}
+
+#[test]
+fn a_picture_refused_for_the_budget_is_not_cached_across_layouts() {
+    // One layout ran out of budget before this picture; the next has a budget of its own.
+    let disc = disc_png(64);
+    let mut outlines = HashMap::new();
+    let key = ("p".to_string(), 1, 2, [0; 4]);
+    let mut spent = contour::Alphas::default();
+    spent.decoded = contour::MAX_DECODED_PIXELS;
+    assert!(picture_outline(&mut outlines, &mut spent, key.clone(), &disc, [0.0; 4]).is_none());
+    assert!(outlines.is_empty(), "the refusal isn't kept");
+    let mut fresh = contour::Alphas::default();
+    assert!(picture_outline(&mut outlines, &mut fresh, key.clone(), &disc, [0.0; 4]).is_some());
+    assert!(outlines.get(&key).is_some_and(|o| o.is_some()), "the outline is kept");
 }
