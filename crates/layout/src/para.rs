@@ -3226,8 +3226,18 @@ fn proof_issues(
 /// U+0001 bytes (neither words nor spaces).
 pub fn proof_text(p: &wordcraft_doc::Paragraph) -> String {
     let mut out = String::with_capacity(p.text.len());
+    // The run holding each character ([`Paragraph::props_of_char`]), found by walking the runs
+    // along with the text rather than from the first run for every character.
+    let mut runs = p.runs.iter();
+    let mut run = runs.next();
+    let mut end = run.map_or(0, |r| r.len);
     for (i, c) in p.text.char_indices() {
-        let deleted = c == wordcraft_doc::para::OBJ || p.props_of_char(i).del.is_some();
+        while run.is_some() && i >= end {
+            run = runs.next();
+            end = end.saturating_add(run.map_or(0, |r| r.len));
+        }
+        let props = run.map_or(&p.mark, |r| &r.props);
+        let deleted = c == wordcraft_doc::para::OBJ || props.del.is_some();
         if deleted {
             for _ in 0..c.len_utf8() {
                 out.push('\u{1}');
