@@ -46,6 +46,12 @@ const COMMON_REPLACEMENTS: &[(&str, &str)] = &[
     ("deyil", "değil"),
 ];
 
+/// Longest word (in letters) given suggestions. Every candidate is a fresh copy of the word, so
+/// the cost grows with the square of its length (#3625); Turkish words run longer than most
+/// (`Çekoslovakyalılaştıramadıklarımızdanmışsınız` is 43 letters), so the cap is above the other
+/// languages' 40.
+const MAX_LETTERS: usize = 64;
+
 /// Produce spelling suggestions for a misspelled Turkish word.
 pub fn suggest(word: &str, max: usize) -> Vec<String> {
     let dict = super::dictionary();
@@ -54,7 +60,8 @@ pub fn suggest(word: &str, max: usize) -> Vec<String> {
 
 /// Suggest with a given dictionary.
 pub fn suggest_with(d: &TrDict, word: &str, max: usize) -> Vec<String> {
-    if word.is_empty() || max == 0 {
+    let n = word.chars().count();
+    if n == 0 || n > MAX_LETTERS || max == 0 || word.contains(char::is_whitespace) {
         return Vec::new();
     }
 
@@ -275,6 +282,19 @@ mod tests {
     fn detached_suffix_is_suggested() {
         let sugs = suggest("geldinmi", 3);
         assert!(sugs.contains(&"geldin mi".to_string()));
+    }
+
+    #[test]
+    fn overlong_words_get_no_suggestions_promptly() {
+        let d = TrDict::from_hunspell("SET UTF-8\nSFX 1 Y 1\nSFX 1 0 lar .\n", "2\nkitap/1\nsonra\n").unwrap();
+        assert!(suggest_with(&d, "sorna", 3).contains(&"sonra".to_string()));
+        assert!(suggest_with(&d, "kitaplr", 3).contains(&"kitaplar".to_string()));
+        let t = std::time::Instant::now();
+        let long = "a".repeat(100_000);
+        assert!(suggest_with(&d, &long, 8).is_empty());
+        assert!(!d.contains(&long) && !d.contains(&format!("kitap{long}")));
+        assert!(!super::super::is_correct_with(&d, &long));
+        assert!(t.elapsed().as_secs_f64() < 1.0, "{:?}", t.elapsed());
     }
 
     #[test]
