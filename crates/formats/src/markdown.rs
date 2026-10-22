@@ -1181,18 +1181,16 @@ fn emit(mut nodes: Vec<Node>) -> Vec<Inline> {
         }
         out.push(Inline::Text(t.to_string(), f));
     };
-    let base_of = |nodes: &[Node], k: usize| -> Fmt {
-        // Delimiter literals take the formatting (link, …) of neighbouring text.
-        for j in (0..k).rev() {
-            if let Some(Node::Text(_, f)) = nodes.get(j) {
-                return Fmt { bold: false, italic: false, strike: false, ..f.clone() };
-            }
-        }
-        Fmt::default()
-    };
-    for (k, n) in nodes.iter().enumerate() {
+    // Delimiter literals take the formatting (link, …) of the text before them: the last text
+    // node, tracked here rather than searched for backwards from every delimiter (quadratic on
+    // a paragraph of delimiters).
+    let mut last_text: Option<&Fmt> = None;
+    for n in &nodes {
         match n {
-            Node::Text(t, f) => push(&mut out, t, f, em, strong, strike),
+            Node::Text(t, f) => {
+                push(&mut out, t, f, em, strong, strike);
+                last_text = Some(f);
+            }
             Node::Inl(Inline::Text(t, f)) => push(&mut out, t, f, em, strong, strike),
             Node::Inl(other) => out.push(other.clone()),
             Node::Delim { ch, left, opens, closes, .. } => {
@@ -1203,9 +1201,11 @@ fn emit(mut nodes: Vec<Node>) -> Vec<Inline> {
                         Emph::Strike => strike = strike.saturating_sub(1),
                     }
                 }
-                let lit: String = std::iter::repeat_n(*ch, *left).collect();
-                let f = base_of(&nodes, k);
-                push(&mut out, &lit, &f, em, strong, strike);
+                if *left > 0 {
+                    let lit: String = std::iter::repeat_n(*ch, *left).collect();
+                    let f = last_text.map_or_else(Fmt::default, |f| Fmt { bold: false, italic: false, strike: false, ..f.clone() });
+                    push(&mut out, &lit, &f, em, strong, strike);
+                }
                 for e in opens {
                     match e {
                         Emph::Em => em += 1,
@@ -2051,5 +2051,20 @@ mod tests {
         let FBlock::Para(p3) = &f.blocks[3] else { panic!() };
         assert_eq!(p3.text(), "one item");
         assert!(p3.list.unwrap().ordered);
+    }
+
+    #[test]
+    fn a_paragraph_of_delimiters_parses_in_linear_time() {
+        // #3714: each delimiter's literal looked back for the text before it, to the start of
+        // the paragraph when there was none (quadratic).
+        let src = "*_".repeat(200_000);
+        let t = std::time::Instant::now();
+        let out = inl(&src);
+        assert!(t.elapsed() < std::time::Duration::from_secs(2), "{:?}", t.elapsed());
+        let text: String = out.iter().filter_map(|i| if let Inline::Text(t, _) = i { Some(t.as_str()) } else { None }).collect();
+        assert!(text.chars().all(|c| matches!(c, '*' | '_')), "only delimiters come out");
+        // Literal delimiters still take the link of the text before them.
+        let s = inl("[a](http://x.org) [b*](http://y.org)");
+        assert!(s.iter().any(|i| matches!(i, Inline::Text(t, f) if t == "b*" && f.link.as_deref() == Some("http://y.org"))), "{s:?}");
     }
 }
