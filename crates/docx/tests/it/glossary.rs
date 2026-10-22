@@ -234,6 +234,34 @@ fn edited_glossary_is_written_from_the_model() {
     assert_eq!(twice.get(&target), files.get(&target));
 }
 
+#[test]
+fn an_unchanged_glossary_follows_the_privacy_settings() {
+    // An untouched glossary was written back byte for byte, so the names and dates of its
+    // tracked changes survived a save that removes personal information (#3692).
+    let tracked = r#"<w:docPart><w:docPartPr><w:name w:val="Clause"/><w:category><w:name w:val="General"/><w:gallery w:val="docParts"/></w:category></w:docPartPr><w:docPartBody><w:p><w:ins w:id="1" w:author="Quill Ramsey" w:date="2026-03-04T05:06:07Z"><w:r><w:t>Added clause</w:t></w:r></w:ins></w:p></w:docPartBody></w:docPart>"#;
+    let bytes = package(
+        &[("rId7", GLOSSARY_REL, "glossary/document.xml")],
+        &[
+            ("[Content_Types].xml", content_types(&[("/word/glossary/document.xml", GLOSSARY_CT)])),
+            ("word/glossary/document.xml", glossary_xml(tracked)),
+        ],
+    );
+    let doc = wordcraft_docx::read(&bytes).unwrap();
+    let as_read = save(&doc);
+    let kept = text(&as_read, &glossary_target(&as_read).expect("a glossary"));
+    assert!(kept.contains("Quill Ramsey"), "the fixture's glossary is kept verbatim: {kept}");
+    for (personal, dates) in [(true, false), (false, true), (true, true)] {
+        let mut private = doc.clone();
+        private.settings.remove_personal_info = personal;
+        private.settings.remove_date_time = dates;
+        let files = save(&private);
+        let g = text(&files, &glossary_target(&files).expect("a glossary"));
+        assert!(g.contains("Added clause"), "{g}");
+        assert_eq!(g.contains("Quill Ramsey"), !personal, "{g}");
+        assert_eq!(g.contains("2026-03-04T05:06:07Z"), !dates, "{g}");
+    }
+}
+
 /// The relationships part of a part in `word/`.
 fn glossary_rels(part: &str) -> String {
     let (dir, file) = part.rsplit_once('/').unwrap();

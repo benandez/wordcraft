@@ -272,7 +272,10 @@ pub(crate) fn write_parts(doc: &Document, flavor: Flavor) -> Result<Vec<(String,
 
     // The glossary: kept verbatim while its entries are as read and its parts were kept, else
     // written from the model (before the notes: references its entries hold are collected too).
-    if glossary::edited(doc) || (!doc.glossary.is_empty() && !wr.embeds.kept_glossary()) {
+    // Also written from the model when the privacy settings ask for changes: kept bytes would
+    // carry the names and dates of its tracked changes (#3692).
+    let private = doc.settings.remove_personal_info || doc.settings.remove_date_time;
+    if private || glossary::edited(doc) || (!doc.glossary.is_empty() && !wr.embeds.kept_glossary()) {
         wr.embeds.drop_glossary = true;
         wr.glossary(&mut entries, &mut overrides, &mut rels);
     }
