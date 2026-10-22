@@ -247,7 +247,7 @@ fn dib_becomes_png_and_compressed_metafiles_inflate() {
     dib.extend_from_slice(&[0, 0, 255, 0, 255, 0, 0, 0]);
     let r = rec(0, 0x7A8, 0xF01F, &[[0u8; 16].as_slice(), &[0xFF], &dib].concat());
     let (dib_rec, _) = officeart::record(&r).unwrap();
-    let blip = officeart::blip(&dib_rec, 1 << 20).expect("DIB decodes");
+    let blip = officeart::blip(&dib_rec, 1 << 20, &mut { usize::MAX }).expect("DIB decodes");
     assert_eq!(blip.ext, "png");
     let img = image::load_from_memory(&blip.bytes).unwrap().to_rgb8();
     assert_eq!((img.width(), img.height(), img.get_pixel(0, 0).0), (2, 1, [255, 0, 0]));
@@ -262,7 +262,7 @@ fn dib_becomes_png_and_compressed_metafiles_inflate() {
     hdr.extend_from_slice(&[0x00, 0xFE]); // compression = deflate, filter
     let r = rec(0, 0x216, 0xF01B, &[[0u8; 16].as_slice(), &hdr, &packed].concat());
     let (wmf_rec, _) = officeart::record(&r).unwrap();
-    let blip = officeart::blip(&wmf_rec, 1 << 20).expect("WMF inflates");
+    let blip = officeart::blip(&wmf_rec, 1 << 20, &mut { usize::MAX }).expect("WMF inflates");
     assert_eq!((blip.ext, blip.bytes), ("wmf", wmf));
 }
 
@@ -281,10 +281,10 @@ fn deeply_nested_groups_and_lying_lengths_are_bounded() {
     hdr.extend_from_slice(&[0, 0]);
     let r = rec(0, 0x3D4, 0xF01A, &[[0u8; 16].as_slice(), &hdr, &[0x78, 0x9C, 1, 2, 3]].concat());
     let (emf, _) = officeart::record(&r).unwrap();
-    assert!(officeart::blip(&emf, 1 << 20).is_none());
+    assert!(officeart::blip(&emf, 1 << 20, &mut { usize::MAX }).is_none());
     let mut fbse = vec![0u8; 36];
     fbse[28..32].copy_from_slice(&u32::MAX.to_le_bytes());
-    assert!(officeart::fbse_blip(&fbse, &[0u8; 64], 1 << 20).is_none());
+    assert!(officeart::fbse_blip(&fbse, &[0u8; 64], 1 << 20, &mut { usize::MAX }).is_none());
 }
 
 proptest! {
@@ -322,12 +322,12 @@ fn dib_conversion_caps_header_and_encoded_bytes() {
     let record = rec(0, 0x7A8, officeart::rt::BLIP_DIB, &[[0u8; 16].as_slice(), &[0xFF], &dib].concat());
     let (record, _) = officeart::record(&record).unwrap();
     let bmp_size = 14 + dib.len();
-    assert!(officeart::blip(&record, bmp_size - 1).is_none(), "the BMP header also needs room");
-    let fallback = officeart::blip(&record, bmp_size).expect("the BMP fallback fits exactly");
+    assert!(officeart::blip(&record, bmp_size - 1, &mut { usize::MAX }).is_none(), "the BMP header also needs room");
+    let fallback = officeart::blip(&record, bmp_size, &mut { usize::MAX }).expect("the BMP fallback fits exactly");
     assert_eq!((fallback.ext, fallback.placeholder, fallback.bytes.len()), ("bmp", true, bmp_size));
     let img = image::load_from_memory(&fallback.bytes).unwrap().to_rgb8();
     assert_eq!((img.width(), img.height(), img.get_pixel(0, 0).0), (1, 1, [90, 60, 30]));
-    let normal = officeart::blip(&record, 512).expect("normal conversion fits");
+    let normal = officeart::blip(&record, 512, &mut { usize::MAX }).expect("normal conversion fits");
     assert_eq!((normal.ext, normal.placeholder), ("png", false));
     assert!(normal.bytes.len() > bmp_size && normal.bytes.len() <= 512);
     assert_eq!(image::load_from_memory(&normal.bytes).unwrap().width(), 1);
@@ -375,4 +375,90 @@ fn a_group_named_by_many_anchors_is_built_once() {
     let groups: Vec<usize> =
         p0.objects.iter().filter_map(|o| if let InlineObject::Group { children, .. } = o { Some(children.len()) } else { None }).collect();
     assert_eq!(groups, [1000]);
+}
+
+/// A deflated WMF BLIP record declaring `size` uncompressed bytes.
+fn packed_wmf(size: u32, packed: &[u8]) -> Vec<u8> {
+    let mut hdr = size.to_le_bytes().to_vec();
+    hdr.extend_from_slice(&[0u8; 24]); // rcBounds, ptSize
+    hdr.extend_from_slice(&(packed.len() as u32).to_le_bytes());
+    hdr.extend_from_slice(&[0x00, 0xFE]); // compression = deflate, filter
+    rec(0, 0x216, officeart::rt::BLIP_WMF, &[[0u8; 16].as_slice(), &hdr, packed].concat())
+}
+
+/// An `OfficeArtFBSE` body whose BLIP (of `size` bytes) sits at `fo_delay` in the delay stream.
+fn delayed_fbse(size: usize, fo_delay: usize) -> Vec<u8> {
+    let mut fbse = vec![0u8; 36];
+    fbse[20..24].copy_from_slice(&(size as u32).to_le_bytes());
+    fbse[28..32].copy_from_slice(&(fo_delay as u32).to_le_bytes());
+    fbse
+}
+
+/// #3711: store entries aliasing one delay-stream metafile each inflated (and copied) it again.
+/// Now the record is decoded once and every entry shares its media key.
+#[test]
+fn store_entries_aliasing_one_delayed_metafile_decode_it_once() {
+    let wmf = vec![0u8; 1 << 20];
+    let delay = packed_wmf(wmf.len() as u32, &miniz_oxide::deflate::compress_to_vec_zlib(&wmf, 6));
+    let fbse = delayed_fbse(delay.len(), 0);
+    let store: Vec<&[u8]> = vec![&fbse; 5_000];
+    let mut pics = crate::media::Pictures::default();
+    pics.work = 8 << 20;
+    let keys: Vec<_> = (1..=store.len() as u32).map(|pib| pics.bse(pib, &store, &delay)).collect();
+    assert!(keys.iter().all(|k| k.is_some() && *k == keys[0]), "every entry shares one picture");
+    assert_eq!(pics.work, (8 << 20) - wmf.len(), "inflated once");
+}
+
+/// #3711: distinct metafiles that fail to inflate are charged their declared size anyway, so
+/// a document of them stops decoding once the work budget is spent.
+#[test]
+fn failing_metafile_inflations_spend_the_decode_budget() {
+    let records: Vec<Vec<u8>> = (0..10u8).map(|i| packed_wmf(1 << 20, &[0x78, 0x9C, i, 1, 2, 3])).collect();
+    let delay = records.concat();
+    let mut at = 0;
+    let fbses: Vec<Vec<u8>> = records
+        .iter()
+        .map(|r| {
+            at += r.len();
+            delayed_fbse(r.len(), at - r.len())
+        })
+        .collect();
+    let store: Vec<&[u8]> = fbses.iter().map(Vec::as_slice).collect();
+    let mut pics = crate::media::Pictures::default();
+    pics.work = 3 << 20;
+    for pib in 1..=store.len() as u32 {
+        assert!(pics.bse(pib, &store, &delay).is_none());
+    }
+    assert_eq!(pics.work, 0, "three attempts spent the budget; the rest weren't tried");
+}
+
+/// #3712: a DIB's declared pixels are charged before decoding (an RLE bitmap is tiny on disk but
+/// decodes to w × h × 4 bytes); past the budget it stays a BMP placeholder, undecoded.
+#[test]
+fn dib_decoding_is_charged_its_declared_pixels() {
+    let blip_of = |dib: &[u8]| rec(0, 0x7A8, officeart::rt::BLIP_DIB, &[[0u8; 16].as_slice(), &[0xFF], dib].concat());
+    let one = blip_of(&one_pixel_dib());
+    let (one, _) = officeart::record(&one).unwrap();
+    let mut work = 3;
+    assert_eq!(officeart::blip(&one, 512, &mut work).map(|b| (b.ext, b.placeholder)), Some(("bmp", true)));
+    assert_eq!(work, 3, "nothing decoded, nothing charged");
+    let mut work = 4;
+    assert_eq!(officeart::blip(&one, 512, &mut work).map(|b| (b.ext, b.placeholder)), Some(("png", false)));
+    assert_eq!(work, 0);
+
+    // 8-bit RLE declaring 16384 × 16384 (1 GiB decoded) in a few bytes.
+    let mut big = [40u32, 16_384, 16_384].iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>();
+    big.extend_from_slice(&1u16.to_le_bytes());
+    big.extend_from_slice(&8u16.to_le_bytes());
+    big.extend_from_slice(&1u32.to_le_bytes()); // BI_RLE8
+    big.extend_from_slice(&[0u8; 12]);
+    big.extend_from_slice(&1u32.to_le_bytes()); // one palette colour
+    big.extend_from_slice(&[0u8; 4]); // clrImportant
+    big.extend_from_slice(&[0u8; 4]); // the palette colour
+    big.extend_from_slice(&[0, 0, 0, 1]); // end of line, end of bitmap
+    let big = blip_of(&big);
+    let (big, _) = officeart::record(&big).unwrap();
+    let mut work = 512 << 20;
+    assert_eq!(officeart::blip(&big, 1 << 20, &mut work).map(|b| (b.ext, b.placeholder)), Some(("bmp", true)));
+    assert_eq!(work, 512 << 20);
 }
