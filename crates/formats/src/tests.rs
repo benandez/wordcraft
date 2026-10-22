@@ -867,6 +867,21 @@ fn exported_links_keep_only_safe_targets() {
     }
 }
 
+/// A link target with any whitespace (a no-break or ideographic space too) is written in `<…>`,
+/// so the reader, which ends a bare destination at the first whitespace, reads it back whole.
+#[test]
+fn markdown_link_targets_with_unicode_spaces_read_back() {
+    for l in ["https://e.com/a\u{a0}b", "https://e.com/a\u{3000}b", "https://e.com/a b"] {
+        let mut d = Document::new();
+        let mut p = Paragraph::with_text("", CharProps::default());
+        p.insert_text(0, "go", &CharProps { link: Some(l.to_string()), ..Default::default() }).unwrap();
+        d.body = vec![para_block(p)];
+        let md = String::from_utf8(export("md", &d).unwrap().unwrap()).unwrap();
+        let sp = spans(&crate::markdown::parse(&md));
+        assert_eq!(sp.iter().find(|(t, _)| t == "go").and_then(|(_, f)| f.link.as_deref()), Some(l), "md: {md}");
+    }
+}
+
 #[test]
 fn hidden_drawings_are_left_out_of_exports() {
     let mut d = wordcraft_doc::Document::from_text("x");

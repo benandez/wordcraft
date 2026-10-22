@@ -1444,7 +1444,7 @@ fn link_target(l: &str) -> String {
         }
         out.push(c);
     }
-    if l.contains([' ', '(', ')', '<', '>']) { format!("<{out}>") } else { out }
+    if l.contains(|c: char| c.is_whitespace() || matches!(c, '(' | ')' | '<' | '>')) { format!("<{out}>") } else { out }
 }
 
 /// Whether `rest` (the text after a `&`) starts like an entity reference (`amp;`, `#106;`,
