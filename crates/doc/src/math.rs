@@ -1095,4 +1095,21 @@ mod tests {
         let deep = "√".repeat(3000);
         let _ = parse_linear(&deep);
     }
+
+    #[test]
+    fn a_long_run_of_letters_parses_in_linear_time() {
+        // Each letter that doesn't start a function name used to rescan (and copy) the rest of
+        // the run, so a 20,000-letter equation did 200 million steps.
+        let t = std::time::Instant::now();
+        for _ in 0..5 {
+            let e = parse_linear(&"x".repeat(30_000));
+            assert!(matches!(e.as_slice(), [MNode::Run(r)] if r.text.len() == 20_000), "{:?}", e.len());
+        }
+        assert!(t.elapsed().as_secs_f32() < 1.0, "{:?}", t.elapsed());
+        // Function names are still found at the start of a run, and only as whole runs.
+        assert!(matches!(parse_linear("sin x").as_slice(), [MNode::Func { .. }]));
+        assert!(matches!(parse_linear("arcsin x").as_slice(), [MNode::Func { .. }]));
+        assert!(matches!(parse_linear("sinx").as_slice(), [MNode::Run(_)]));
+        assert!(matches!(parse_linear("arcsinhx").as_slice(), [MNode::Run(_)]));
+    }
 }
