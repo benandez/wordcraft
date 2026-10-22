@@ -207,17 +207,26 @@ pub fn decode_pixmap(bytes: &[u8]) -> Option<Pixmap> {
 
 /// [`decode_pixmap`] with an explicit RGBA byte budget (a small one in tests).
 fn decode_pixmap_within(bytes: &[u8], budget: u64) -> Option<Pixmap> {
-    // The header gives the size; refuse before the decoder (and the RGBA copy) allocate anything.
-    let (hw, hh) = image_size(bytes)?;
-    if !wordcraft_geom::decode_fits(hw, hh, budget) {
-        return None;
-    }
-    let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format().ok()?;
+    use image::ImageDecoder;
     let mut limits = image::Limits::default();
     limits.max_image_width = Some(MAX_DECODE_SIDE);
     limits.max_image_height = Some(MAX_DECODE_SIDE);
-    reader.limits(limits);
-    let img = reader.decode().ok()?.into_rgba8();
+    let reader = || {
+        let mut r = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format().ok()?;
+        r.limits(limits.clone());
+        Some(r)
+    };
+    // The header gives the size and the decoder's pixel format (16-bit RGBA takes 8 bytes a pixel
+    // before its RGBA8 copy); refuse before the decoder (and the RGBA copy) allocate anything.
+    let (hw, hh, native) = {
+        let d = reader()?.into_decoder().ok()?;
+        let (w, h) = d.dimensions();
+        (w, h, u64::from(d.color_type().bytes_per_pixel()))
+    };
+    if !wordcraft_geom::decode_peak_fits(hw, hh, native, budget) {
+        return None;
+    }
+    let img = reader()?.decode().ok()?.into_rgba8();
     let (w, h) = img.dimensions();
     premul_pixmap(w, h, img.as_raw())
 }
@@ -1604,6 +1613,12 @@ mod tests {
         // Decode, the RGBA conversion and the premultiplied copy are charged: two buffers at peak.
         assert!(decode_pixmap_within(&buf, 1024).is_some());
         assert!(decode_pixmap_within(&buf, 1023).is_none());
+        // 16-bit RGBA decodes to 8 bytes a pixel, alive with its RGBA8 copy: 12 bytes a pixel.
+        let mut wide = Vec::new();
+        let img16 = image::ImageBuffer::<image::Rgba<u16>, _>::from_fn(16, 8, |x, y| image::Rgba([x as u16 * 999, y as u16, 9, 65535]));
+        image::DynamicImage::ImageRgba16(img16).write_to(&mut std::io::Cursor::new(&mut wide), image::ImageFormat::Png).unwrap();
+        assert!(decode_pixmap_within(&wide, 1024).is_none(), "two RGBA8 buffers' worth is not enough for RGBA16");
+        assert!(decode_pixmap_within(&wide, 1536).is_some());
         // A header (valid CRC) claiming 60000x60000 with no pixel data reads fine, then the budget refuses it.
         let hdr = ihdr_only_png(60_000, 60_000);
         assert_eq!(image_size(&hdr), Some((60_000, 60_000)));
