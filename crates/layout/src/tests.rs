@@ -6332,6 +6332,31 @@ fn distributed_alignment_gives_hanging_punctuation_no_slot() {
     assert!((mark - content_right).abs() < 0.02, "the mark stays attached to the single character: {mark} against {content_right}");
 }
 
+/// Distributed alignment without a hanging mark spreads the clusters over the line and the line's
+/// endpoint goes with them: the last cluster reaches the margin and keeps its own advance instead
+/// of ending short of the endpoint or running past it.
+#[test]
+fn distributed_alignment_moves_the_endpoint_without_a_hanging_mark() {
+    let text = "漢字漢字";
+    let adv = advances(text);
+    // Room for the four ideographs and two more characters of slack: twice what the last cluster
+    // would keep if the endpoint stayed behind the distributed starts.
+    let width: f32 = adv.iter().sum::<f32>() + adv.first().copied().unwrap_or(0.0) * 2.0;
+    let mut d = document_of_width(text, width);
+    d.para_mut(StoryRef::Body, &Path::top(0)).unwrap().props.align = Some(Align::Distribute);
+    let pl = first_paragraph(&lay(&d));
+    let line = pl.lines.first().expect("a first line");
+    assert_eq!(line.hang, 0, "no mark hangs: {:?}", pl.lines);
+    let end = line.xs.last().copied().unwrap_or(0.0);
+    assert!((end - line.right).abs() < 0.02, "the line reaches the margin: {end} against {}", line.right);
+    let last_width = line.xs.get(line.xs.len() - 1).copied().unwrap_or(0.0) - line.xs.get(line.xs.len() - 2).copied().unwrap_or(0.0);
+    assert!(
+        (last_width - adv.get(3).copied().unwrap_or(0.0)).abs() < 0.02,
+        "the last cluster keeps its advance: {last_width} against {:?}",
+        adv.get(3)
+    );
+}
+
 /// #332: a rotated floating shape keeps text clear of its rotated bounds (it reaches further at
 /// the side), its frame stays put (rotation is about the centre) and it is drawn turned; hit
 /// testing follows the turned shape, not its frame.

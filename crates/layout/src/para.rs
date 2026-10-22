@@ -2608,10 +2608,12 @@ fn break_lines(pl: &mut ParaLayout, text: &str, env: &ParaEnv, mark_style: u32, 
                             let k = (q + c0 - align_from) as f32;
                             *v += per * k.min(slots as f32);
                         }
-                        if hang > 0 {
-                            for v in xs.iter_mut().skip(content - c0) {
-                                *v += slack;
-                            }
+                        // The hanging marks start where the content ended, and the line's endpoint
+                        // after them: all of them move by the whole `slack`, so the endpoint stays
+                        // one cluster's advance past the last cluster's start. Without a mark only
+                        // the endpoint moves.
+                        for v in xs.iter_mut().skip(content - c0) {
+                            *v += slack;
                         }
                     }
                 }
