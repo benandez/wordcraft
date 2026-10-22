@@ -2,12 +2,54 @@
 //! is bounded by a cap, and real documents stay well under it.
 
 use super::*;
-use wordcraft_doc::Block;
 use wordcraft_doc::table::{MAX_COLS, Table};
+use wordcraft_doc::{Block, PartKind, Pos, TextBody, para_block};
 
 fn lay(doc: &Document) -> DocLayout {
     let mut c = LayoutCache::new();
     layout(doc, &mut c, &LayoutOptions::default())
+}
+
+/// A `w` × `h` text box showing `text`, inline at the end of body paragraph `para`; its story id.
+fn text_box(d: &mut Document, para: usize, text: &str, w: f32, h: f32) -> u32 {
+    let id = d.add_part(PartKind::TextBox, vec![para_block(Paragraph::with_text(text, Default::default()))]);
+    if let Some(p) = d.parts.get_mut(&id) {
+        p.body = TextBody::default();
+    }
+    let shape = InlineObject::Shape {
+        kind: wordcraft_doc::para::ShapeKind::TextBox,
+        w,
+        h,
+        fill: None,
+        stroke: None,
+        stroke_width: 1.0,
+        float: Default::default(),
+        story: Some(id),
+        effects: Default::default(),
+        freeform: None,
+        extra: Default::default(),
+    };
+    let off = d.para(StoryRef::Body, &Path::top(para)).map_or(0, |p| p.len());
+    d.insert_object(&Pos::body(para, off), shape, &Default::default()).unwrap();
+    id
+}
+
+#[test]
+fn a_linked_chain_lays_its_story_out_at_a_bounded_number_of_widths() {
+    // Forty linked boxes, each a line deep and each a different width, over a long story: every
+    // width would lay the whole story out again. Past the cap, the chain's later boxes show nothing.
+    let n = 40;
+    let mut d = Document::from_text(&vec!["p"; n].join("\n"));
+    let story = "Words that run on and on through every box of the chain. ".repeat(200);
+    let ids: Vec<u32> = (0..n).map(|i| text_box(&mut d, i, if i == 0 { &story } else { "" }, 100.0 + 3.0 * i as f32, 28.0)).collect();
+    for w in ids.windows(2) {
+        d.parts.get_mut(&w[0]).unwrap().body.next = Some(w[1]);
+    }
+    let l = lay(&d);
+    let shown =
+        l.pages.iter().flat_map(|p| &p.items).filter(|it| matches!(it, Placed::Lines { story: StoryRef::Part(s), .. } if *s == ids[0])).count();
+    assert!(shown > 1, "the first boxes still show the story: {shown}");
+    assert!(shown <= textbox::MAX_FLOW_WIDTHS, "{shown} boxes laid the story out");
 }
 
 #[test]

@@ -208,6 +208,12 @@ struct Cut {
     byte: usize,
 }
 
+/// Most line lengths (and text directions) a chain's story is laid out at. Each lays the whole
+/// story out again and is kept while the chain is split, so a chain of boxes that each differ in
+/// width would multiply its story's layout work and memory; boxes needing another one show no
+/// text. Far above a real chain's few box sizes.
+pub(crate) const MAX_FLOW_WIDTHS: usize = 16;
+
 /// Split the text of `chain`'s first box over its boxes.
 fn flow(ctx: &mut Ctx, chain: &[u32], depth: usize) -> Vec<Vec<Placed>> {
     let Some(&head) = chain.first() else { return Vec::new() };
@@ -236,6 +242,11 @@ fn flow(ctx: &mut Ctx, chain: &[u32], depth: usize) -> Vec<Vec<Placed>> {
         let key = (len.to_bits(), body.vert);
         let items = match layouts.iter().find(|(k, _)| *k == key) {
             Some((_, items)) => items.clone(),
+            // Past the cap the text stops here: this box and the rest show none.
+            None if layouts.len() >= MAX_FLOW_WIDTHS => {
+                out.push(Vec::new());
+                continue;
+            }
             None => {
                 (ctx.counters, ctx.eq_count) = (snap.0.clone(), snap.1);
                 let items = lay(ctx, head, &blocks, len, body.vert, depth);
