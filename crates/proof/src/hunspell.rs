@@ -140,16 +140,31 @@ pub fn find_in(dir: &Path, names: &[&str]) -> Option<(PathBuf, PathBuf)> {
     })
 }
 
+/// Read a dictionary file: a regular file of at most [`MAX_FILE`] bytes. The read itself is
+/// bounded, so a file that grows after its size is checked (or a filesystem that reports a wrong
+/// size) can't make it read more (#3661).
+pub(crate) fn read_capped(p: &Path) -> Result<Vec<u8>, String> {
+    use std::io::Read;
+    let err = |e: std::io::Error| format!("{}: {e}", p.display());
+    let f = std::fs::File::open(p).map_err(err)?;
+    let meta = f.metadata().map_err(err)?;
+    if !meta.is_file() {
+        return Err(format!("{}: not a regular file", p.display()));
+    }
+    if meta.len() > MAX_FILE {
+        return Err(format!("{}: too large ({} bytes)", p.display(), meta.len()));
+    }
+    let mut buf = Vec::new();
+    f.take(MAX_FILE + 1).read_to_end(&mut buf).map_err(err)?;
+    if buf.len() as u64 > MAX_FILE {
+        return Err(format!("{}: too large", p.display()));
+    }
+    Ok(buf)
+}
+
 /// Read a Hunspell pair from disk (size-capped), decoded per the `.aff`'s `SET` line.
 pub fn load(aff: &Path, dic: &Path) -> Result<AffixDict, String> {
-    let read = |p: &Path| -> Result<Vec<u8>, String> {
-        let len = std::fs::metadata(p).map_err(|e| format!("{}: {e}", p.display()))?.len();
-        if len > MAX_FILE {
-            return Err(format!("{}: too large ({len} bytes)", p.display()));
-        }
-        std::fs::read(p).map_err(|e| format!("{}: {e}", p.display()))
-    };
-    let (aff_text, dic_text) = decode(&read(aff)?, &read(dic)?)?;
+    let (aff_text, dic_text) = decode(&read_capped(aff)?, &read_capped(dic)?)?;
     let source = format!("Hunspell dictionary {}", dic.display());
     AffixDict::from_hunspell(&aff_text, &dic_text, &[source.as_str()])
 }
@@ -281,6 +296,31 @@ mod tests {
         let d = load(&aff, &dic).unwrap();
         assert!(d.check("kot") && d.check("koty") && !d.check("kotx"));
         assert!(load(&dir.join("missing.aff"), &dic).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reads_are_bounded_and_regular_files_only() {
+        let dir = std::env::temp_dir().join(format!("wordcraft-hunspell-cap-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let aff = dir.join("xx.aff");
+        std::fs::write(&aff, "SET UTF-8\n").unwrap();
+        // One byte over the cap (sparse: nothing is written) is refused without reading it.
+        let big = dir.join("big.dic");
+        std::fs::File::create(&big).unwrap().set_len(MAX_FILE + 1).unwrap();
+        let t = std::time::Instant::now();
+        assert!(load(&aff, &big).unwrap_err().contains("too large"));
+        // A directory, and on Unix an endless device, are not dictionary files.
+        assert!(load(&aff, &dir).unwrap_err().contains("not a regular file"));
+        #[cfg(unix)]
+        assert!(load(&aff, Path::new("/dev/zero")).unwrap_err().contains("not a regular file"));
+        assert!(t.elapsed().as_secs_f64() < 1.0, "{:?}", t.elapsed());
+        // Turkish reads through the same reader.
+        let (tr_aff, tr_dic) = (dir.join("tr_TR.aff"), dir.join("tr_TR.dic"));
+        std::fs::write(&tr_aff, "SET UTF-8\nSFX 1 Y 1\nSFX 1 0 lar .\n").unwrap();
+        std::fs::write(&tr_dic, "1\nkitap/1\n").unwrap();
+        assert!(crate::tr::load(&tr_aff, &tr_dic).unwrap().contains("kitaplar"));
+        assert!(crate::tr::load(&tr_aff, &big).unwrap_err().contains("too large"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
