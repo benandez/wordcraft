@@ -821,6 +821,44 @@ fn wave_path(x0: f64, y0: f64, x1: f64, y1: f64, amp: f64) -> BezPath {
     p
 }
 
+/// Most pieces one dashed stroke may be cut into; past it the stroke is drawn solid. kurbo's dash
+/// iterator makes no progress along a segment when a dash is too small next to it (it never ends),
+/// and every piece is more stroke to build.
+const MAX_DASH_PIECES: f64 = 100_000.0;
+
+/// `dashes` to stroke a path at most `len` long with, or none (solid) when they can't be drawn: a
+/// negative or non-finite length, a pattern that adds up to nothing, or more than
+/// [`MAX_DASH_PIECES`] pieces along the path.
+fn safe_dashes(dashes: impl IntoIterator<Item = f64>, len: f64) -> Vec<f64> {
+    let d: Vec<f64> = dashes.into_iter().take(MAX_DASH_PIECES as usize + 1).collect();
+    let period: f64 = d.iter().sum();
+    let ok = d.iter().all(|v| v.is_finite() && *v >= 0.0) && period > 0.0 && period.is_finite() && len.is_finite();
+    // Each repeat of the pattern is up to `d.len()` pieces; a partial repeat at each end counts too.
+    if ok && (len / period + 2.0) * d.len() as f64 <= MAX_DASH_PIECES { d } else { Vec::new() }
+}
+
+/// An upper bound on `path`'s length: its control polygon's (a curve is no longer than it).
+fn path_len_bound(path: &BezPath) -> f64 {
+    let (mut len, mut at, mut start) = (0.0, kurbo::Point::ZERO, kurbo::Point::ZERO);
+    for el in path.elements() {
+        let pts: &[kurbo::Point] = match el {
+            kurbo::PathEl::MoveTo(p) => {
+                (at, start) = (*p, *p);
+                continue;
+            }
+            kurbo::PathEl::LineTo(p) => std::slice::from_ref(p),
+            kurbo::PathEl::QuadTo(a, b) => &[*a, *b],
+            kurbo::PathEl::CurveTo(a, b, c) => &[*a, *b, *c],
+            kurbo::PathEl::ClosePath => std::slice::from_ref(&start),
+        };
+        for p in pts {
+            len += at.distance(*p);
+            at = *p;
+        }
+    }
+    len
+}
+
 fn draw(ctx: &mut RenderContext, doc: &Document, it: &Draw, view: Affine, visible: &kurbo::Rect, opts: &RenderOptions) {
     match it {
         Draw::Figure { draws, .. } => {
@@ -845,10 +883,10 @@ fn draw(ctx: &mut RenderContext, doc: &Document, it: &Draw, view: Affine, visibl
             // every end, blobbing over the neighbouring border at a table's corners (#2892). Wavy
             // underlines keep round ends, as the PDF draws them.
             let mut st = kurbo::Stroke::new(w).with_caps(kurbo::Cap::Butt);
-            if let Some(d) = stroke.dashes() {
-                st = st.with_dashes(0.0, d.iter().map(|k| f64::from(*k) * w));
-            }
             let (x0, y0, x1, y1) = (*x0 as f64, *y0 as f64, *x1 as f64, *y1 as f64);
+            if let Some(d) = stroke.dashes() {
+                st = st.with_dashes(0.0, safe_dashes(d.iter().map(|k| f64::from(*k) * w), (x1 - x0).hypot(y1 - y0)));
+            }
             let line = |ctx: &mut RenderContext, ox: f64, oy: f64| {
                 let mut p = BezPath::new();
                 p.move_to((x0 + ox, y0 + oy));
@@ -1024,7 +1062,7 @@ fn draw(ctx: &mut RenderContext, doc: &Document, it: &Draw, view: Affine, visibl
                 // Width 0 (or none) is a hairline.
                 let w = if stroke_width.is_finite() && *stroke_width > 0.0 { stroke_width.clamp(0.25, 200.0) } else { 0.75 };
                 ctx.set_paint(color(opts.ink(*s), 1.0));
-                ctx.set_stroke(kurbo::Stroke::new(w as f64).with_dashes(0.0, dash.iter().map(|v| f64::from(*v))));
+                ctx.set_stroke(kurbo::Stroke::new(w as f64).with_dashes(0.0, safe_dashes(dash.iter().map(|v| f64::from(*v)), path_len_bound(&path))));
                 ctx.stroke_path(&path);
             }
         }
@@ -1114,7 +1152,7 @@ fn draw(ctx: &mut RenderContext, doc: &Document, it: &Draw, view: Affine, visibl
                 ctx.set_paint(color(opts.ink(*s), 1.0));
                 ctx.set_stroke(
                     kurbo::Stroke::new(if stroke_width.is_nan() { 0.25 } else { stroke_width.clamp(0.25, 200.0) } as f64)
-                        .with_dashes(0.0, dash.iter().map(|v| f64::from(*v))),
+                        .with_dashes(0.0, safe_dashes(dash.iter().map(|v| f64::from(*v)), path_len_bound(&path))),
                 );
                 ctx.stroke_path(&path);
             }
@@ -2355,6 +2393,32 @@ mod tests {
         // A 0.75 pt stroke has a 3 pt dash followed by a 2.25 pt gap.
         assert!(image.pixel(812, 800)[1] < 80, "inside the first dash");
         assert_eq!(image.pixel(832, 800), [255, 255, 255, 255], "inside the first gap");
+    }
+
+    /// Dash lengths too small to cut the path make kurbo's dash iterator spin without moving along
+    /// it (and every piece is more stroke to build): such a pattern is drawn solid, as are negative
+    /// and non-finite ones. A normal dash pattern still dashes.
+    #[test]
+    fn hostile_dash_patterns_draw_solid_and_finish() {
+        use wordcraft_doc::graphic::PathSeg;
+        let line = |dash: Vec<f32>| Draw::Path {
+            segs: vec![PathSeg::Move(10.0, 20.0), PathSeg::Line(90.0, 20.0)],
+            fill: None,
+            stroke: Some(Rgb(0, 0, 0)),
+            stroke_width: 2.0,
+            dash,
+        };
+        let start = std::time::Instant::now();
+        for dash in [vec![1e-30, 1e-30], vec![1e-30], vec![-1.0, 2.0], vec![f32::NAN, 1.0], vec![f32::INFINITY, 1.0], vec![0.0, 0.0]] {
+            let img = render_items(&Document::new(), &[line(dash.clone())], 0.0, 0.0, 100.0, 40.0, 1.0, &RenderOptions::default());
+            assert!(img.pixel(50, 20)[3] > 200, "{dash:?} draws solid");
+        }
+        assert!(start.elapsed() < std::time::Duration::from_secs(2), "{:?}", start.elapsed());
+        let dashed = render_items(&Document::new(), &[line(vec![10.0, 10.0])], 0.0, 0.0, 100.0, 40.0, 1.0, &RenderOptions::default());
+        assert!(dashed.pixel(15, 20)[3] > 200 && dashed.pixel(25, 20)[3] == 0, "a normal pattern dashes");
+        assert!(safe_dashes([3.0, 1.0], 1000.0).len() == 2);
+        assert!(safe_dashes([1e-3, 1e-3], 1000.0).is_empty(), "a million pieces");
+        assert!(safe_dashes(std::iter::repeat_n(1.0, 200_000), 1.0).is_empty(), "too many entries");
     }
 
     #[test]
