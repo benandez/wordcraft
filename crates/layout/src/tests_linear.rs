@@ -92,3 +92,21 @@ fn line_carets_match_x_of() {
     }
 }
 
+/// Finding 3: autofitting a table counted its grid's columns again for every spanning cell.
+#[test]
+fn autofit_tables_with_a_spanning_cell_in_every_row_lay_out_in_linear_time() {
+    let doc = |n: usize| {
+        let mut t = Table::new(n, 3, 468.0);
+        for row in &mut t.rows {
+            row.cells.truncate(2);
+            if let Some(c) = row.cells.first_mut() {
+                c.props.span = 2;
+            }
+        }
+        let mut d = Document::from_text("x");
+        d.insert_block(StoryRef::Body, &Path::top(0), Block::Table(t)).unwrap();
+        d
+    };
+    assert_linear("spanning cells", layout_time_ratio(doc, 400, &LayoutOptions::default()));
+}
+

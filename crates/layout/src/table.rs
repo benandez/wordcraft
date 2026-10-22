@@ -1144,8 +1144,10 @@ fn column_content(ctx: &mut Ctx, t: &Table, style: Option<&TableStyleProps>, dep
         }
         spanning.extend(row_gaps(row, g).map(|(g, span, w)| (g, span, (w, w))));
     }
+    // The grid's width once: counting it walks every row, and there can be a spanning cell in each.
+    let ncols = t.cols();
     for (g, span, need) in spanning {
-        let Some(cs) = cols.get_mut(g..(g + span).min(t.cols())) else { continue };
+        let Some(cs) = cols.get_mut(g..g.saturating_add(span).min(ncols)) else { continue };
         let n = cs.len().max(1) as f32;
         let (have_lo, have_hi) = cs.iter().fold((0.0, 0.0), |(l, h), c| (l + c.0, h + c.1));
         for c in cs {
