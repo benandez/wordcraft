@@ -48,6 +48,8 @@ pub(crate) struct EmbedWriter<'d> {
     pub parts: Vec<(String, Vec<u8>, String, PartRels)>,
     /// Leave out the main document's kept glossary (it's written from the model instead).
     pub drop_glossary: bool,
+    /// Kept parts written with these bytes instead of their own (see [`Self::scrub_glossary`]).
+    scrubbed: HashMap<String, Vec<u8>>,
 }
 
 impl<'d> EmbedWriter<'d> {
@@ -93,6 +95,7 @@ impl<'d> EmbedWriter<'d> {
             markup_bytes: MAX_MARKUP_BYTES,
             parts: Vec::new(),
             drop_glossary: false,
+            scrubbed: HashMap::new(),
         }
     }
 
@@ -230,6 +233,39 @@ impl<'d> EmbedWriter<'d> {
         })
     }
 
+    /// Have the main document's kept glossary, and the parts it reaches, written without the
+    /// personal information (`names`) and dates the privacy settings remove (#3692). False when a
+    /// part's markup can't be rewritten: the glossary is then written from the model.
+    pub fn scrub_glossary(&mut self, names: bool, dates: bool) -> bool {
+        let Some(roots) = self.passthrough.get(crate::package::UNMODELLED_ROOTS) else { return true };
+        let mut todo: Vec<String> = String::from_utf8_lossy(roots)
+            .lines()
+            .take(MAX_EMBEDDED_RELS * 2)
+            .filter_map(|line| match line.split('\t').collect::<Vec<_>>().as_slice() {
+                [source, kind, target] if *source == "D" && rel_is(kind, rt::GLOSSARY) => Some(target.to_string()),
+                _ => None,
+            })
+            .collect();
+        let mut seen: HashSet<String> = HashSet::new();
+        while let Some(p) = todo.pop() {
+            if seen.len() >= MAX_EMBEDDED_PARTS || !seen.insert(p.clone()) {
+                continue;
+            }
+            let (Some(info), Some(bytes)) = (self.manifest.parts.get(&p), self.passthrough.get(&p)) else { continue };
+            todo.extend(info.rels.iter().filter(|r| !r.external).map(|r| r.target.clone()));
+            if !(info.content_type.ends_with("xml") || p.to_ascii_lowercase().ends_with(".xml")) {
+                continue;
+            }
+            match scrub_private(bytes, names, dates) {
+                Some(b) => {
+                    self.scrubbed.insert(p, b);
+                }
+                None => return false,
+            }
+        }
+        true
+    }
+
     /// What copying the parts reached from `roots` costs against the copy budget.
     fn tree_cost(&self, roots: &[&str]) -> u64 {
         let mut seen: HashSet<&str> = HashSet::new();
@@ -283,8 +319,9 @@ impl<'d> EmbedWriter<'d> {
                 rels.add_with_id(&r.id, &r.kind, &relative(&new, &target), false);
             }
             let ct = if info.content_type.is_empty() { "application/octet-stream".to_string() } else { info.content_type };
+            let bytes = self.scrubbed.get(&orig).cloned().unwrap_or_else(|| bytes.to_vec());
             written.push(self.parts.len());
-            self.parts.push((new, bytes.to_vec(), ct, rels));
+            self.parts.push((new, bytes, ct, rels));
         }
         Some(name)
     }
@@ -638,6 +675,80 @@ fn patch_rel_ids(bytes: &[u8], ids: &HashMap<String, String>) -> Vec<u8> {
     }
     out.extend_from_slice(rest);
     out
+}
+
+/// `bytes` (kept XML) without the personal information and dates the privacy settings remove, as
+/// the writer leaves them out of the parts it writes: annotation authors become "Author" and
+/// comment initials "A" (`names`); annotation dates and UTC dates go (`dates`); and with `names`,
+/// a people part's authors become "Author" and their presence information goes. Attributes are
+/// matched by namespace, so any prefix is caught. `None` when the markup can't be rewritten
+/// (malformed, or not UTF-8).
+fn scrub_private(bytes: &[u8], names: bool, dates: bool) -> Option<Vec<u8>> {
+    use std::borrow::Cow;
+
+    use quick_xml::events::Event;
+    use quick_xml::events::attributes::Attribute;
+    use quick_xml::name::{QName, ResolveResult};
+    use quick_xml::reader::NsReader;
+    use quick_xml::writer::Writer;
+
+    const WML: &[u8] = b"http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    const WML_STRICT: &[u8] = b"http://purl.oclc.org/ooxml/wordprocessingml/main";
+    const W15: &[u8] = b"http://schemas.microsoft.com/office/word/2012/wordml";
+    // UTF-16 (or other wide encodings) would pass through unread.
+    if bytes.contains(&0) || bytes.starts_with(&[0xFF, 0xFE]) || bytes.starts_with(&[0xFE, 0xFF]) {
+        return None;
+    }
+    let ns_is = |r: &ResolveResult, ns: &[u8]| matches!(r, ResolveResult::Bound(n) if n.as_ref() == ns);
+    let wml = |r: &ResolveResult| ns_is(r, WML) || ns_is(r, WML_STRICT);
+    let mut r = NsReader::from_reader(bytes);
+    r.config_mut().check_end_names = false;
+    let mut out = Writer::new(Vec::with_capacity(bytes.len()));
+    let mut buf = Vec::new();
+    let mut skip = Vec::new();
+    loop {
+        buf.clear();
+        let (res, ev) = r.read_resolved_event_into(&mut buf).ok()?;
+        let (in_wml, in_w15) = (wml(&res), ns_is(&res, W15));
+        let ev = match ev {
+            Event::Eof => break,
+            Event::Start(ref e) | Event::Empty(ref e) if names && in_w15 && e.local_name().as_ref() == b"presenceInfo" => {
+                if matches!(ev, Event::Start(_)) {
+                    let end = e.name().as_ref().to_vec();
+                    r.read_to_end_into(QName(&end), &mut skip).ok()?;
+                    skip.clear();
+                }
+                continue;
+            }
+            Event::Start(ref e) | Event::Empty(ref e) => {
+                let mut el = e.to_owned();
+                el.clear_attributes();
+                for a in e.attributes().with_checks(false) {
+                    let a = a.ok()?;
+                    let (ares, local) = r.resolver_mut().resolve_attribute(a.key);
+                    // An unprefixed attribute of a WordprocessingML element is read as its own.
+                    let wml_attr = wml(&ares) || (matches!(ares, ResolveResult::Unbound) && in_wml);
+                    let value: Option<&[u8]> = match local.as_ref() {
+                        b"author" if names && (wml_attr || ns_is(&ares, W15)) => Some(super::ANONYMOUS_AUTHOR.as_bytes()),
+                        b"initials" if names && wml_attr => Some(super::ANONYMOUS_INITIALS.as_bytes()),
+                        b"date" if dates && wml_attr => None,
+                        b"dateUtc" if dates => None,
+                        _ => {
+                            el.push_attribute(a);
+                            continue;
+                        }
+                    };
+                    if let Some(v) = value {
+                        el.push_attribute(Attribute { key: a.key, value: Cow::Borrowed(v) });
+                    }
+                }
+                if matches!(ev, Event::Start(_)) { Event::Start(el) } else { Event::Empty(el) }
+            }
+            ev => ev,
+        };
+        out.write_event(ev).ok()?;
+    }
+    Some(out.into_inner())
 }
 
 /// A VML `style` with the object's size, rotation and flips, and its offset when it floats
