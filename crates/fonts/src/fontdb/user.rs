@@ -149,8 +149,24 @@ pub fn decode_font_file(bytes: &[u8]) -> Result<Vec<u8>, UserFontError> {
     }
     let decoded = match sniff(bytes).ok_or(UserFontError::NotAFont)? {
         FontFormat::TrueType | FontFormat::OpenType | FontFormat::Collection => return Ok(bytes.to_vec()),
-        FontFormat::Woff => unwrap_web_font(|| wuff::decompress_woff1(bytes))?,
-        FontFormat::Woff2 => unwrap_web_font(|| wuff::decompress_woff2(bytes))?,
+        FontFormat::Woff => {
+            check_woff1_size(bytes)?;
+            unwrap_web_font(|| wuff::decompress_woff1(bytes))?
+        }
+        FontFormat::Woff2 => {
+            let mut too_many_points = false;
+            let unwrapped = unwrap_web_font(|| {
+                wuff::decompress_woff2_with_custom_brotli(bytes, &mut |data, size| {
+                    let stream = unbrotli(data, size)?;
+                    too_many_points = !woff2_points_fit(bytes, &stream);
+                    if too_many_points { Err(TOO_MANY_POINTS.into()) } else { Ok(stream) }
+                })
+            });
+            if too_many_points {
+                return Err(UserFontError::BadWebFont(TOO_MANY_POINTS.into()));
+            }
+            unwrapped?
+        }
     };
     if decoded.len() > MAX_DECODED_BYTES {
         return Err(UserFontError::TooLarge { bytes: decoded.len() });
@@ -159,6 +175,126 @@ pub fn decode_font_file(bytes: &[u8]) -> Result<Vec<u8>, UserFontError> {
         Some(FontFormat::TrueType | FontFormat::OpenType | FontFormat::Collection) => Ok(decoded),
         _ => Err(UserFontError::BadWebFont("it doesn't hold a TrueType or OpenType font".into())),
     }
+}
+
+/// WOFF 1.0: the font its table directory describes must fit [`MAX_DECODED_BYTES`]. The decoder
+/// sizes each table's buffer from the directory's `origLength` before inflating it (#3703).
+/// A short header or directory is left to the decoder to report.
+fn check_woff1_size(bytes: &[u8]) -> Result<(), UserFontError> {
+    let u32_at = |at: usize| bytes.get(at..at.saturating_add(4)).and_then(|b| b.try_into().ok()).map(u32::from_be_bytes);
+    let tables = bytes.get(12..14).and_then(|n| n.try_into().ok()).map_or(0, |n| usize::from(u16::from_be_bytes(n)));
+    let mut total = 12 + 16 * tables;
+    for i in 0..tables {
+        let entry = 44 + 20 * i;
+        let (Some(compressed), Some(orig)) = (u32_at(entry + 8), u32_at(entry + 12)) else { break };
+        total = total.saturating_add((compressed.max(orig) as usize).saturating_add(3) & !3);
+    }
+    if total > MAX_DECODED_BYTES {
+        return Err(UserFontError::TooLarge { bytes: total });
+    }
+    Ok(())
+}
+
+/// Why a WOFF2 file whose glyph has more points than a glyph may is refused.
+const TOO_MANY_POINTS: &str = "a glyph has more than 65536 points";
+
+/// WOFF2's brotli stream, which must decompress to exactly `size` bytes (the decoder has checked
+/// `size` against its own cap and the compression ratio).
+fn unbrotli(data: &[u8], size: usize) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    use std::io::Read;
+    let mut out = Vec::with_capacity(size);
+    brotli_decompressor::Decompressor::new(data, 4096).take(size as u64 + 1).read_to_end(&mut out)?;
+    if out.len() != size {
+        return Err("the compressed data doesn't have the size the directory gives".into());
+    }
+    Ok(out)
+}
+
+/// Does every glyph in the WOFF2 file's transformed `glyf` tables have at most 65536 points, as
+/// the decoder requires? It allocates a glyph's points from its counts before checking them, so a
+/// small file could claim gigabytes (#3703). `stream` is the decompressed table data; anything
+/// that doesn't parse is refused too (the decoder would refuse it).
+fn woff2_points_fit(file: &[u8], stream: &[u8]) -> bool {
+    woff2_transformed_glyf(file, stream).is_some_and(|tables| tables.iter().all(|t| glyf_points_fit(t).unwrap_or(false)))
+}
+
+/// The transformed `glyf` tables in `stream`, found from the WOFF2 table directory in `file`
+/// (tables follow each other in directory order).
+fn woff2_transformed_glyf<'a>(file: &[u8], stream: &'a [u8]) -> Option<Vec<&'a [u8]>> {
+    let tables = u16::from_be_bytes(file.get(12..14)?.try_into().ok()?);
+    let (mut at, mut offset, mut glyf) = (48usize, 0usize, Vec::new());
+    for _ in 0..tables {
+        let flags = *file.get(at)?;
+        at += 1;
+        let tag: Option<&[u8]> = if flags & 63 == 63 {
+            at += 4;
+            Some(file.get(at - 4..at)?)
+        } else {
+            None
+        };
+        let is = |index: u8, name: &[u8]| flags & 63 == index || tag == Some(name);
+        let (is_glyf, is_loca) = (is(10, b"glyf"), is(11, b"loca"));
+        let orig = base128(file, &mut at)?;
+        // glyf and loca are transformed at version 0, other tables at any other version.
+        let transformed = if is_glyf || is_loca { flags >> 6 == 0 } else { flags >> 6 != 0 };
+        let len = if transformed { base128(file, &mut at)? } else { orig };
+        let end = offset.checked_add(len)?;
+        if is_glyf && transformed {
+            glyf.push(stream.get(offset..end)?);
+        }
+        offset = end;
+    }
+    Some(glyf)
+}
+
+/// WOFF2's UIntBase128.
+fn base128(b: &[u8], at: &mut usize) -> Option<usize> {
+    let mut v: u32 = 0;
+    for i in 0..5 {
+        let byte = *b.get(*at)?;
+        *at += 1;
+        if (i == 0 && byte == 0x80) || v >> 25 != 0 {
+            return None;
+        }
+        v = v << 7 | u32::from(byte & 0x7f);
+        if byte & 0x80 == 0 {
+            return usize::try_from(v).ok();
+        }
+    }
+    None
+}
+
+/// Does every glyph of the transformed `glyf` table `t` have at most 65536 points?
+fn glyf_points_fit(t: &[u8]) -> Option<bool> {
+    let u32_at = |at: usize| t.get(at..at + 4).and_then(|b| b.try_into().ok()).map(u32::from_be_bytes).map(|v| v as usize);
+    let glyphs = usize::from(u16::from_be_bytes(t.get(4..6)?.try_into().ok()?));
+    let contours_end = 36usize.checked_add(u32_at(8)?)?;
+    let contours = t.get(36..contours_end)?;
+    let points = t.get(contours_end..contours_end.checked_add(u32_at(12)?)?)?;
+    let mut at = 0;
+    for g in 0..glyphs {
+        let n = i16::from_be_bytes(contours.get(2 * g..2 * g + 2)?.try_into().ok()?);
+        let mut total = 0usize;
+        for _ in 0..n.max(0) {
+            // 255UInt16
+            let code = *points.get(at)?;
+            at += 1;
+            let mut byte = || {
+                at += 1;
+                points.get(at - 1).copied().map(usize::from)
+            };
+            total += match code {
+                253 => byte()? << 8 | byte()?,
+                254 => byte()? + 253 * 2,
+                255 => byte()? + 253,
+                v => usize::from(v),
+            };
+            if total > 1 << 16 {
+                return Some(false);
+            }
+        }
+    }
+    Some(true)
 }
 
 /// Run a WOFF/WOFF2 decoder. The decoder checks its input, but it is third-party code reading
@@ -564,23 +700,87 @@ pub(crate) mod tests {
             base128(data.len() as u32, &mut dir);
             stream.extend_from_slice(data);
         }
-        let compressed = brotli_stored(&stream);
+        let sfnt: usize = 12 + 16 * t.len() + t.iter().map(|(_, d)| d.len().next_multiple_of(4)).sum::<usize>();
+        woff2_file(&font[..4], t.len(), &dir, &stream, sfnt)
+    }
+
+    /// A WOFF2 file: header, the table directory `dir` of `n` tables, `stream` in stored brotli blocks.
+    fn woff2_file(flavor: &[u8], n: usize, dir: &[u8], stream: &[u8], sfnt: usize) -> Vec<u8> {
+        let compressed = brotli_stored(stream);
         let mut out = Vec::new();
         out.extend_from_slice(b"wOF2");
-        out.extend_from_slice(&font[..4]);
+        out.extend_from_slice(flavor);
         let total = (48 + dir.len() + compressed.len()).next_multiple_of(4);
         out.extend_from_slice(&(total as u32).to_be_bytes());
-        out.extend_from_slice(&(t.len() as u16).to_be_bytes());
+        out.extend_from_slice(&(n as u16).to_be_bytes());
         out.extend_from_slice(&0u16.to_be_bytes());
-        let sfnt: usize = 12 + 16 * t.len() + t.iter().map(|(_, d)| d.len().next_multiple_of(4)).sum::<usize>();
         out.extend_from_slice(&(sfnt as u32).to_be_bytes());
         out.extend_from_slice(&(compressed.len() as u32).to_be_bytes());
         out.extend_from_slice(&[0, 1, 0, 0]);
         out.extend_from_slice(&[0; 20]);
-        out.extend(dir);
+        out.extend_from_slice(dir);
         out.extend(compressed);
         out.resize(total, 0);
         out
+    }
+
+    /// A WOFF2 file holding a transformed `glyf` (and `loca`) whose one glyph has two contours of
+    /// `points` points each (and no coordinates: the decoder finds it damaged in the end).
+    fn woff2_glyph_with(points: u16) -> Vec<u8> {
+        let total = 2 * points as usize;
+        let mut glyf = vec![0, 0, 0, 0, 0, 1, 0, 0]; // reserved, optionFlags, numGlyphs 1, indexFormat
+        // nContour, nPoints, flag, glyph, composite, bbox and instruction stream sizes.
+        for size in [2, 6, total, 0, 0, 4, 0] {
+            glyf.extend_from_slice(&(size as u32).to_be_bytes());
+        }
+        glyf.extend_from_slice(&2i16.to_be_bytes());
+        let [hi, lo] = points.to_be_bytes();
+        glyf.extend_from_slice(&[253, hi, lo, 253, hi, lo]); // 255UInt16 in its word form
+        glyf.resize(glyf.len() + total, 1); // on-curve flags
+        glyf.extend_from_slice(&[0; 4]); // no explicit bounding boxes
+        let mut dir = vec![10]; // glyf, transform version 0
+        base128(4096, &mut dir);
+        base128(glyf.len() as u32, &mut dir);
+        dir.push(11); // loca, transformed away
+        base128(8, &mut dir);
+        base128(0, &mut dir);
+        woff2_file(&[0, 1, 0, 0], 2, &dir, &glyf, 12 + 32 + 4096 + 8)
+    }
+
+    /// A WOFF 1.0 file whose one table is a zlib stream of nothing that claims to inflate to `orig`
+    /// bytes.
+    fn woff1_claiming(orig: u32) -> Vec<u8> {
+        let mut out = b"wOFF\0\x01\0\0".to_vec();
+        out.extend_from_slice(&72u32.to_be_bytes()); // length
+        out.extend_from_slice(&1u16.to_be_bytes()); // numTables
+        out.extend_from_slice(&0u16.to_be_bytes());
+        out.extend_from_slice(&orig.saturating_add(28).to_be_bytes()); // totalSfntSize
+        out.extend_from_slice(&[0, 1, 0, 0]);
+        out.extend_from_slice(&[0; 20]);
+        out.extend_from_slice(b"glyf");
+        for v in [64, 8, orig, 0] {
+            out.extend_from_slice(&u32::to_be_bytes(v)); // offset, compLength, origLength, checksum
+        }
+        out.extend_from_slice(&[0x78, 0x9c, 0x03, 0x00, 0x00, 0x00, 0x00, 0x01]);
+        out
+    }
+
+    #[test]
+    fn a_woff_claiming_a_huge_table_is_refused_before_inflating() {
+        // #3703: the decoder sizes a table's buffer from the directory before inflating it.
+        for orig in [200 << 20, u32::MAX] {
+            assert!(matches!(decode_font_file(&woff1_claiming(orig)), Err(UserFontError::TooLarge { .. })), "{orig}");
+        }
+        // A small claim reaches the decoder, which finds the data doesn't inflate to it.
+        assert!(matches!(decode_font_file(&woff1_claiming(64)), Err(UserFontError::BadWebFont(_))));
+    }
+
+    #[test]
+    fn a_woff2_glyph_with_too_many_points_is_refused_before_unpacking() {
+        // #3703: the decoder allocates a glyph's points from these counts before checking them.
+        assert_eq!(decode_font_file(&woff2_glyph_with(40_000)), Err(UserFontError::BadWebFont(TOO_MANY_POINTS.into())));
+        // Within the limit the scan passes the file on, to the decoder.
+        assert!(matches!(decode_font_file(&woff2_glyph_with(3)), Err(UserFontError::BadWebFont(e)) if e != TOO_MANY_POINTS));
     }
 
     #[test]
