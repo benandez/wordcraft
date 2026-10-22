@@ -2327,3 +2327,62 @@ fn borders_are_dashed_with_words_patterns() {
     assert!(raw.contains("[6 2]0 d") || raw.contains("[6 2] 0 d"), "the dashed border");
     assert!(raw.contains("[3 1 1 1]0 d") || raw.contains("[3 1 1 1] 0 d"), "the dash-dot border");
 }
+
+/// A glyph's text runs to the first later glyph with a cluster past its own (the end of the text
+/// without one), found in one pass: a long run of glyphs sharing a cluster used to rescan the rest
+/// of the run for every glyph.
+#[test]
+fn cluster_ends_match_the_next_larger_cluster_in_linear_time() {
+    let brute = |cl: &[usize], len: usize| -> Vec<usize> {
+        (0..cl.len()).map(|i| cl.iter().skip(i + 1).copied().find(|n| *n > cl[i]).unwrap_or(len)).collect::<Vec<_>>()
+    };
+    for cl in [vec![], vec![0], vec![0, 0, 3, 3, 5], vec![5, 3, 3, 0], vec![2, 0, 4, 1, 1, 6, 3], vec![0, 7, 2, 2, 9, 1]] {
+        assert_eq!(cluster_ends(&cl, 10), brute(&cl, 10), "{cl:?}");
+    }
+    // One base letter and 200 000 combining marks in its cluster, then one more letter.
+    let mut cl = vec![0; 200_001];
+    cl.push(400_002);
+    let start = std::time::Instant::now();
+    let ends = cluster_ends(&cl, 400_004);
+    assert!(start.elapsed() < std::time::Duration::from_secs(1), "{:?}", start.elapsed());
+    assert!(ends[..200_001].iter().all(|e| *e == 400_002));
+    assert_eq!(ends.last(), Some(&400_004));
+}
+
+/// A line in a cell cut off at its edge is drawn with that cell's clip, found by path in an index
+/// built once per page: every line used to carry a clone of every clipped cell on the page, so a
+/// page of exact-height rows cost lines × cells.
+#[test]
+fn a_line_finds_its_clipped_cell_by_path() {
+    let cell = |story, table: Vec<u32>, row, cell, clip| Placed::Cell {
+        rect: Rect::default(),
+        covered: false,
+        table: DocPath(table),
+        row,
+        cell,
+        story,
+        clip,
+    };
+    let mut page = Page { items: vec![cell(StoryRef::Body, vec![0], 0, 1, false), cell(StoryRef::Body, vec![2], 1, 0, true)], ..Default::default() };
+    // A nested clipped cell inside the first one; the outer one comes first in the page.
+    page.items.push(cell(StoryRef::Body, vec![2, 1, 0, 3], 0, 0, true));
+    page.footer.push(cell(StoryRef::Part(7), vec![0], 0, 0, true));
+    let clips = clipped_cells(&page);
+    let found = |story, path: &[u32]| {
+        clip_cell(&clips, story, path).and_then(|c| if let Placed::Cell { table, .. } = c { Some(table.0.clone()) } else { None })
+    };
+    assert_eq!(found(StoryRef::Body, &[2, 1, 0, 0]), Some(vec![2]));
+    assert_eq!(found(StoryRef::Body, &[2, 1, 0, 3, 0, 0, 1]), Some(vec![2]), "the first cell in page order wins, as in layout");
+    assert_eq!(found(StoryRef::Body, &[0, 0, 1, 0]), None, "that cell isn't clipped");
+    assert_eq!(found(StoryRef::Body, &[2, 0, 0, 0]), None, "another row");
+    assert_eq!(found(StoryRef::Part(7), &[0, 0, 0, 2]), Some(vec![0]));
+    assert_eq!(found(StoryRef::Body, &[0, 0, 0, 2]), None, "another story");
+
+    // 20 000 clipped cells and as many lines: a lookup each, not a pass over the cells each.
+    let big = Page { items: (0..20_000).map(|r| cell(StoryRef::Body, vec![0], r, 0, true)).collect(), ..Default::default() };
+    let start = std::time::Instant::now();
+    let clips = clipped_cells(&big);
+    let hits = (0..20_000u32).filter(|r| clip_cell(&clips, StoryRef::Body, &[0, *r, 0, 0]).is_some()).count();
+    assert_eq!(hits, 20_000);
+    assert!(start.elapsed() < std::time::Duration::from_secs(1), "{:?}", start.elapsed());
+}

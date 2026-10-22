@@ -931,8 +931,9 @@ impl Exporter<'_> {
             placeholders: false,
             ..Default::default()
         };
+        let clips = clipped_cells(page);
         for it in page.header.iter().chain(page.footer.iter()) {
-            let draws = self.draws(page, it, &dopts);
+            let draws = self.draws(page, it, &clips, &dopts);
             self.tagged(s, Role::Artifact(ArtifactType::Other), None, |me, s| {
                 for d in &draws {
                     me.draw(s, d);
@@ -940,7 +941,7 @@ impl Exporter<'_> {
             });
         }
         for it in &page.items {
-            let draws = self.draws(page, it, &dopts);
+            let draws = self.draws(page, it, &clips, &dopts);
             match it {
                 Placed::Lines { story, path, para, .. } => {
                     let idx = self.entry(*story, path, para);
@@ -1003,13 +1004,14 @@ impl Exporter<'_> {
     }
 
     /// Display items for one placed item.
-    fn draws(&self, page: &Page, it: &Placed, dopts: &DisplayOptions) -> Vec<Draw> {
+    fn draws(&self, page: &Page, it: &Placed, clips: &CellClips, dopts: &DisplayOptions) -> Vec<Draw> {
         let mut items = vec![it.clone()];
         // Lines in a cell cut off at its edge are drawn inside its clip: `page_display` finds the
-        // cell among the items (cells themselves draw nothing).
-        if matches!(it, Placed::Lines { .. }) {
-            let clipped = page.header.iter().chain(&page.footer).chain(&page.items).filter(|c| matches!(c, Placed::Cell { clip: true, .. }));
-            items.extend(clipped.cloned());
+        // cell among the items (cells themselves draw nothing). Only that line's cell goes along.
+        if let Placed::Lines { story, path, .. } = it
+            && let Some(cell) = clip_cell(clips, *story, &path.0)
+        {
+            items.push(cell.clone());
         }
         let one = Page { w: page.w, h: page.h, section: page.section, number: page.number, items, body: page.body, ..Default::default() };
         page_display(self.doc, &one, dopts)
@@ -1711,11 +1713,12 @@ impl Exporter<'_> {
         match font {
             Some(font) => {
                 let upem = face.upem.max(1.0) as f32;
+                let ends = cluster_ends(&shaped.iter().map(|g| g.cluster).collect::<Vec<_>>(), t.text.len());
                 let kg: Vec<KrillaGlyph> = shaped
                     .iter()
                     .enumerate()
                     .map(|(i, g)| {
-                        let end = shaped.iter().skip(i + 1).map(|n| n.cluster).find(|cl| *cl > g.cluster).unwrap_or(t.text.len());
+                        let end = ends.get(i).copied().unwrap_or(t.text.len());
                         let start = g.cluster.min(end);
                         let x = lay.glyphs.get(i).map_or(0.0, |p| p.0);
                         let adv = match lay.glyphs.get(i + 1) {
@@ -1766,11 +1769,12 @@ impl Exporter<'_> {
         if font.is_none() && !self.outlined.contains(&face.id()) {
             return;
         }
+        let ends = cluster_ends(&shaped.iter().map(|g| g.cluster).collect::<Vec<_>>(), text.len());
         let glyphs: Vec<KrillaGlyph> = shaped
             .iter()
             .enumerate()
             .map(|(i, g)| {
-                let end = shaped.iter().skip(i + 1).map(|n| n.cluster).find(|cl| *cl > g.cluster).unwrap_or(text.len());
+                let end = ends.get(i).copied().unwrap_or(text.len());
                 let start = g.cluster.min(end);
                 KrillaGlyph::new(
                     GlyphId::new(g.gid),
@@ -1897,6 +1901,48 @@ fn path_from(b: &kurbo::BezPath) -> Option<Path> {
     let mut pb = PathBuilder::new();
     append_path(&mut pb, b);
     pb.finish()
+}
+
+/// A page's cells whose content is cut off at their edge, by story and content path (table,
+/// row, cell), with their place in header, footer, items order (the first wins, as in layout).
+type CellClips<'a> = HashMap<StoryRef, HashMap<Vec<u32>, (usize, &'a Placed)>>;
+
+fn clipped_cells(page: &Page) -> CellClips<'_> {
+    let mut clips: CellClips = HashMap::new();
+    for (order, it) in page.header.iter().chain(&page.footer).chain(&page.items).enumerate() {
+        if let Placed::Cell { table, row, cell, story, clip: true, .. } = it
+            && let (Ok(row), Ok(cell)) = (u32::try_from(*row), u32::try_from(*cell))
+        {
+            let mut prefix = table.0.clone();
+            prefix.extend([row, cell]);
+            clips.entry(*story).or_default().entry(prefix).or_insert((order, it));
+        }
+    }
+    clips
+}
+
+/// The clipped cell a line at `path` of `story` is in: the first one whose path starts it. A
+/// lookup per prefix of the (short) path instead of passing every clipped cell with every line.
+fn clip_cell<'a>(clips: &CellClips<'a>, story: StoryRef, path: &[u32]) -> Option<&'a Placed> {
+    let cells = clips.get(&story)?;
+    (0..=path.len()).filter_map(|k| cells.get(path.get(..k)?)).min_by_key(|(order, _)| *order).map(|(_, it)| *it)
+}
+
+/// Where each glyph's text ends: the cluster (byte offset) of the first later glyph whose cluster
+/// is past the glyph's own, else `len`. One backward pass keeping the later clusters that can
+/// still be an answer, so a long run of glyphs sharing a cluster (combining marks) stays linear.
+fn cluster_ends(clusters: &[usize], len: usize) -> Vec<usize> {
+    let mut ends = vec![len; clusters.len()];
+    // Later clusters, nearest last, each greater than every one nearer.
+    let mut later: Vec<usize> = Vec::new();
+    for (end, &c) in ends.iter_mut().zip(clusters).rev() {
+        while later.last().is_some_and(|&n| n <= c) {
+            later.pop();
+        }
+        *end = later.last().copied().unwrap_or(len);
+        later.push(c);
+    }
+    ends
 }
 
 /// Decode a picture for embedding (validated with the `image` crate first, so a broken file
