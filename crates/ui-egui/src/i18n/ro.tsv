@@ -2762,3 +2762,7 @@ template	Letter	Scrisoare
 	cm	cm
 	mm	mm
 	pi	pi
+	Item Color	Culoare element
+	Shape color	Culoare formă
+	Style Color	Culoare stil
+	Set the colors in the Text Pane to use custom colors.	Setați culorile în panoul text pentru a folosi culori personalizate.

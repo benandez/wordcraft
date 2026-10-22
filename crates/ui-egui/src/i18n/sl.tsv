@@ -2763,3 +2763,7 @@ preview	Title	Naslov
 	{names} and {n} more	{names} and {n} more
 	{name} options	{name} options
 	{width} × {height} pixels	{width} × {height} pixels
+	Item Color	Barva elementa
+	Shape color	Barva oblike
+	Style Color	Barva sloga
+	Set the colors in the Text Pane to use custom colors.	Nastavite barve v podoknu z besedilom, da uporabite barve po meri.
