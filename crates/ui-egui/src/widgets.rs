@@ -188,9 +188,15 @@ pub fn enabled(app: &WordApp, id: &str) -> bool {
 }
 
 pub(crate) fn bg(ui: &Ui, r: Rect, resp: &Response, checked: bool, t: &Tokens) {
+    bg_if(ui, r, resp, checked, t, true);
+}
+
+/// [`bg`] for a button that may be disabled: that one answers neither hover nor press.
+pub(crate) fn bg_if(ui: &Ui, r: Rect, resp: &Response, checked: bool, t: &Tokens, on: bool) {
+    let over = resp.hovered() && on;
     // The hover fades in and out; with animations off egui's animation time is zero.
-    let h = ui.ctx().animate_bool_responsive(resp.id.with("hover"), resp.hovered());
-    let fill = if resp.is_pointer_button_down_on() {
+    let h = ui.ctx().animate_bool_responsive(resp.id.with("hover"), over);
+    let fill = if resp.is_pointer_button_down_on() && on {
         t.pressed
     } else if checked {
         t.checked
@@ -253,7 +259,7 @@ fn big_button(ui: &mut Ui, app: &mut WordApp, icon: &str, label: &str, id: &str,
     let (r, resp) = ui.allocate_exact_size(vec2(w, CONTENT_H), Sense::click());
     keytip_badge(ui, r, id, &label.replace('\n', " "));
     let on = enabled(app, id);
-    bg(ui, r, &resp, checked, &t);
+    bg_if(ui, r, &resp, checked, &t, on);
     let ic = Rect::from_center_size(pos2(r.center().x, r.min.y + BIG_ICON_Y), vec2(32.0, 32.0));
     let (c, a) = if on { (t.icon, t.accent) } else { (t.text_disabled, t.text_disabled) };
     icons::paint(ui.painter(), ic, icon, c, a);
@@ -281,7 +287,7 @@ pub fn small(ui: &mut Ui, app: &mut WordApp, icon: &str, label: Option<&str>, ti
     let (r, resp) = ui.allocate_exact_size(vec2(24.0 + text_w, 22.0), Sense::click());
     keytip_badge(ui, r, id, tip);
     let on = enabled(app, id);
-    bg(ui, r, &resp, checked, &t);
+    bg_if(ui, r, &resp, checked, &t, on);
     let ic = Rect::from_center_size(pos2(r.min.x + 12.0, r.center().y), vec2(17.0, 17.0));
     let (c, a) = if on { (t.icon, t.accent) } else { (t.text_disabled, t.text_disabled) };
     icons::paint(ui.painter(), ic, icon, c, a);
@@ -315,8 +321,8 @@ pub fn split(
     keytip_badge(ui, r, id, tip);
     let (ar, aresp) = ui.allocate_exact_size(vec2(11.0, 22.0), Sense::click());
     let on = enabled(app, id);
-    bg(ui, r, &resp, checked, &t);
-    bg(ui, ar, &aresp, false, &t);
+    bg_if(ui, r, &resp, checked, &t, on);
+    bg_if(ui, ar, &aresp, false, &t, on);
     let ic = Rect::from_center_size(r.center(), vec2(17.0, 17.0));
     let (c, a) = if on { (t.icon, t.accent) } else { (t.text_disabled, t.text_disabled) };
     icons::paint(ui.painter(), ic, icon, c, a);
@@ -377,7 +383,7 @@ pub fn menu_button(
         let w = (galley_w + 22.0).max(44.0);
         let (r, resp) = ui.allocate_exact_size(vec2(w, CONTENT_H), Sense::click());
         keytip_badge(ui, r, "menu", tip);
-        bg(ui, r, &resp, false, &t);
+        bg_if(ui, r, &resp, false, &t, on);
         icons::paint(ui.painter(), Rect::from_center_size(pos2(r.center().x, r.min.y + BIG_ICON_Y), vec2(32.0, 32.0)), icon, c, a);
         let lines: Vec<&str> = label.unwrap_or("").split('\n').collect();
         let mut y = r.min.y + BIG_LABEL_Y;
@@ -390,7 +396,7 @@ pub fn menu_button(
         let text_w = label.map(|l| ui.ctx().fonts_mut(|f| f.layout_no_wrap(l.to_string(), regular(11.5), t.text).size().x) + 6.0).unwrap_or(0.0);
         let (r, resp) = ui.allocate_exact_size(vec2(24.0 + text_w + 10.0, 22.0), Sense::click());
         keytip_badge(ui, r, "menu", tip);
-        bg(ui, r, &resp, false, &t);
+        bg_if(ui, r, &resp, false, &t, on);
         icons::paint(ui.painter(), Rect::from_center_size(pos2(r.min.x + 12.0, r.center().y), vec2(17.0, 17.0)), icon, c, a);
         if let Some(l) = label {
             ui.painter().text(pos2(r.min.x + 24.0, r.center().y), Align2::LEFT_CENTER, l, regular(11.5), text);
