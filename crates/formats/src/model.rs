@@ -239,15 +239,13 @@ impl Para {
     /// Remove the characters in `start` from the start of the paragraph's text and those in
     /// `end` from its end.
     pub fn trim_with(&mut self, start: &[char], end: &[char]) {
-        while let Some(Inline::Text(t, _)) = self.inlines.first_mut() {
-            let n = t.trim_start_matches(start).len();
-            let cut = t.len() - n;
+        // The leading spans that trim to nothing go in one `drain`: removing them one at a time
+        // shifted the rest each time, quadratic in a run of separately formatted line breaks.
+        let k = self.inlines.iter().take_while(|i| matches!(i, Inline::Text(t, _) if t.trim_start_matches(start).is_empty())).count();
+        self.inlines.drain(..k);
+        if let Some(Inline::Text(t, _)) = self.inlines.first_mut() {
+            let cut = t.len() - t.trim_start_matches(start).len();
             t.replace_range(..cut, "");
-            if t.is_empty() {
-                self.inlines.remove(0);
-            } else {
-                break;
-            }
         }
         while let Some(Inline::Text(t, _)) = self.inlines.last_mut() {
             let n = t.trim_end_matches(end).len();
@@ -1565,5 +1563,29 @@ mod tests {
         t.insert_covered();
         assert_eq!(t.rows[1].len(), 2);
         assert!(t.rows[1][0].covered);
+    }
+
+    #[test]
+    fn trim_drops_a_long_run_of_blank_spans_in_linear_time() {
+        // Separately formatted line breaks don't merge; each used to be removed with
+        // `Vec::remove(0)`, shifting all the rest (quadratic).
+        let mut p = Para::default();
+        let (b, i) = (Fmt { bold: true, ..Default::default() }, Fmt { italic: true, ..Default::default() });
+        for _ in 0..200_000 {
+            p.push_text("\n", &b);
+            p.push_text(" ", &i);
+        }
+        p.push_text("  x ", &Fmt::default());
+        let t = std::time::Instant::now();
+        p.trim();
+        assert!(t.elapsed() < std::time::Duration::from_secs(1), "{:?}", t.elapsed());
+        assert_eq!(p.inlines, vec![Inline::Text("x".into(), Fmt::default())]);
+        // The first span left keeps its formatting and loses only its leading blanks.
+        let mut p = Para::default();
+        p.push_text(" \t", &b);
+        p.push_text(" a ", &i);
+        p.push_text("b ", &b);
+        p.trim();
+        assert_eq!(p.inlines, vec![Inline::Text("a ".into(), i), Inline::Text("b".into(), b)]);
     }
 }

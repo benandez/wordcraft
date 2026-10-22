@@ -2425,4 +2425,16 @@ mod tests {
         assert!(html.contains("vertical-align:middle"));
         assert!(html.contains("vertical-align:bottom"));
     }
+
+    #[test]
+    fn many_formatted_leading_breaks_trim_quickly() {
+        // #3705: a paragraph opening with alternating bold and italic `<br>` was trimmed one
+        // span at a time with `Vec::remove(0)`.
+        let html = format!("<p>{}x</p>", "<b><br></b><i><br></i>".repeat(100_000));
+        let t = std::time::Instant::now();
+        let f = parse(&html);
+        assert!(t.elapsed() < std::time::Duration::from_secs(2), "{:?}", t.elapsed());
+        let texts: Vec<String> = f.blocks.iter().filter_map(|b| if let FBlock::Para(p) = b { Some(p.text()) } else { None }).collect();
+        assert_eq!(texts, ["x"]);
+    }
 }
