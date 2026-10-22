@@ -825,7 +825,8 @@ fn font_faces(f: &skrifa::FontRef<'_>, index: u32) -> Vec<Found> {
     let east_asian = east_asian_font(f);
     let axes = f.axes();
     let mut named: Vec<Found> = Vec::new();
-    for ni in f.named_instances().iter() {
+    // At most one more than a file may add, so a caller can tell there are more (#3716).
+    for ni in f.named_instances().iter().take(MAX_FILE_FACES + 1) {
         let Some(style) = name(f, &[ni.subfamily_name_id()]) else { continue };
         if named.iter().any(|n| n.style.eq_ignore_ascii_case(&style)) {
             continue;
@@ -854,15 +855,25 @@ fn font_faces(f: &skrifa::FontRef<'_>, index: u32) -> Vec<Found> {
     }]
 }
 
-/// Parse every face in `data` (a font file or collection); a variable font yields one face per
-/// named instance.
-fn enumerate_faces(data: &[u8]) -> Vec<Found> {
+/// Most faces one font file adds (collection members, variable fonts' named instances).
+const MAX_FILE_FACES: usize = 256;
+
+/// Parse the faces in `data` (a font file or collection), at most `limit` of them; a variable
+/// font yields one face per named instance. A face with the family and style of an earlier one
+/// is left out (a collection can list one font many times, #3716).
+fn enumerate_faces(data: &[u8], limit: usize) -> Vec<Found> {
     let count = match FileRef::new(data) {
         Ok(FileRef::Font(_)) => 1,
-        Ok(FileRef::Collection(c)) => c.len(),
+        Ok(FileRef::Collection(c)) => c.len().min(u32::try_from(limit).unwrap_or(u32::MAX)),
         Err(_) => 0,
     };
-    (0..count).filter_map(|i| skrifa::FontRef::from_index(data, i).ok().map(|f| font_faces(&f, i))).flatten().collect()
+    let mut seen = std::collections::HashSet::new();
+    (0..count)
+        .filter_map(|i| skrifa::FontRef::from_index(data, i).ok().map(|f| font_faces(&f, i)))
+        .flatten()
+        .filter(|f| seen.insert((f.family.to_ascii_lowercase(), f.style.to_ascii_lowercase())))
+        .take(limit)
+        .collect()
 }
 
 /// The compiled-in Source Sans 3 Regular, for a database that somehow has no faces at all.
@@ -986,7 +997,7 @@ impl FontDb {
         let others = crate::CRAFT_FONTS.iter().filter(|f| !f.scripts.contains(&"Jpan"));
         let craft = crate::japanese_document_fonts().into_iter().chain(others).map(|f| f.bytes);
         for data in BUNDLED.iter().copied().chain(craft) {
-            for f in enumerate_faces(data) {
+            for f in enumerate_faces(data, MAX_FILE_FACES) {
                 if let Some(mut face) = make_face(FontBytes::Static(data), f.index, f.family, f.style, f.legacy, f.coords) {
                     face.local_names = f.local;
                     faces.push(Arc::new(face));
@@ -1173,7 +1184,7 @@ impl FontDb {
         for (bytes, name) in files {
             let data = Arc::new(bytes);
             let name: Option<String> = name.map(|n| n.trim().chars().take(MAX_FAMILY_NAME).collect()).filter(|n: &String| !n.is_empty());
-            for f in enumerate_faces(&data) {
+            for f in enumerate_faces(&data, MAX_FILE_FACES) {
                 if let Some(mut face) = make_face(FontBytes::Owned(data.clone()), f.index, f.family, f.style, f.legacy, f.coords) {
                     face.local_names = f.local;
                     if let Some(n) = name.as_deref().filter(|n| !face.named(n) && !face.local_names.iter().any(|l| l.name.eq_ignore_ascii_case(n))) {
@@ -1185,9 +1196,12 @@ impl FontDb {
             }
         }
         let mut faces = self.faces.write().unwrap_or_else(|e| e.into_inner());
+        // Indexed: a document's fonts may add hundreds of faces to thousands (#3716).
+        let key = |f: &FontFace| (f.family.to_ascii_lowercase(), f.style.to_ascii_lowercase());
+        let mut present: std::collections::HashSet<_> = faces.iter().map(|g| key(g)).collect();
         let mut added = 0;
         for f in new {
-            if !faces.iter().any(|g| g.family.eq_ignore_ascii_case(&f.family) && g.style.eq_ignore_ascii_case(&f.style)) {
+            if present.insert(key(&f)) {
                 faces.push(f);
                 added += 1;
             }
@@ -1387,7 +1401,9 @@ impl FontDb {
             (best.path.clone(), best.family.clone(), best.style.clone())
         };
         let data = Arc::new(read_fallback_file(&path)?);
-        let found = enumerate_faces(&data).into_iter().find(|f| f.family.eq_ignore_ascii_case(&fam) && f.style.eq_ignore_ascii_case(&style))?;
+        let found = enumerate_faces(&data, MAX_FILE_FACES)
+            .into_iter()
+            .find(|f| f.family.eq_ignore_ascii_case(&fam) && f.style.eq_ignore_ascii_case(&style))?;
         let mut face = make_face(FontBytes::Owned(data), found.index, found.family, found.style, found.legacy, found.coords)?;
         face.local_names = found.local;
         Some(Arc::new(face))
@@ -2104,5 +2120,78 @@ mod tests {
         }
         assert!(!db.has_family("NotAFont-Bold"));
         assert_eq!(db.face("Source Serif 4", "Regular").style, "Regular");
+    }
+
+    /// A variable font holding just `name` and `fvar` tables: family "Var Test", one `wght` axis
+    /// and `instances` named instances, each with its own style name.
+    fn variable_font(instances: u16) -> Vec<u8> {
+        let mut names: Vec<(u16, String)> = vec![(1, "Var Test".into()), (2, "Regular".into())];
+        names.extend((0..instances).map(|i| (256 + i, format!("Style {i}"))));
+        let mut name = vec![0, 0];
+        name.extend_from_slice(&(names.len() as u16).to_be_bytes());
+        name.extend_from_slice(&(6 + 12 * names.len() as u16).to_be_bytes());
+        let mut strings = Vec::new();
+        for (id, text) in &names {
+            let utf16: Vec<u8> = text.encode_utf16().flat_map(u16::to_be_bytes).collect();
+            for v in [3, 1, 0x409, *id, utf16.len() as u16, strings.len() as u16] {
+                name.extend_from_slice(&v.to_be_bytes());
+            }
+            strings.extend(utf16);
+        }
+        name.extend(strings);
+        let mut fvar = Vec::new();
+        for v in [1u16, 0, 16, 2, 1, 20, instances, 8] {
+            fvar.extend_from_slice(&v.to_be_bytes());
+        }
+        fvar.extend_from_slice(b"wght");
+        for v in [100u32 << 16, 400 << 16, 900 << 16] {
+            fvar.extend_from_slice(&v.to_be_bytes());
+        }
+        fvar.extend_from_slice(&[0, 0, 0, 2]); // flags, axisNameId
+        for i in 0..instances {
+            fvar.extend_from_slice(&(256 + i).to_be_bytes());
+            fvar.extend_from_slice(&[0, 0]);
+            fvar.extend_from_slice(&(400u32 << 16).to_be_bytes());
+        }
+        mini_font(&[(*b"fvar", fvar), (*b"name", name)])
+    }
+
+    /// A collection listing `font` `members` times.
+    fn collection_of(font: &[u8], members: u32) -> Vec<u8> {
+        let start = 12 + 4 * members;
+        let mut out = b"ttcf\0\x01\0\0".to_vec();
+        out.extend_from_slice(&members.to_be_bytes());
+        for _ in 0..members {
+            out.extend_from_slice(&start.to_be_bytes());
+        }
+        let mut font = font.to_vec();
+        let tables = u16::from_be_bytes([font[4], font[5]]) as usize;
+        for i in 0..tables {
+            let at = 12 + 16 * i + 8;
+            let offset = u32::from_be_bytes(font[at..at + 4].try_into().unwrap()) + start;
+            font[at..at + 4].copy_from_slice(&offset.to_be_bytes());
+        }
+        out.extend(font);
+        out
+    }
+
+    #[test]
+    fn named_instances_and_collection_members_are_capped() {
+        // #3716: a file's faces are capped before they are built, however the file multiplies them.
+        let font = variable_font(300);
+        let faces = font_faces(&skrifa::FontRef::new(&font).unwrap(), 0);
+        assert_eq!(faces.len(), MAX_FILE_FACES + 1, "one more than the cap, so a caller can tell");
+        assert_eq!(faces[0].style, "Style 0");
+        assert_eq!(enumerate_faces(&font, MAX_FILE_FACES).len(), MAX_FILE_FACES);
+        // A million members, all the same font: read once, and no more than the cap.
+        let started = std::time::Instant::now();
+        let ttc = collection_of(BUNDLED[0], 1_000_000);
+        let found = enumerate_faces(&ttc, MAX_FILE_FACES);
+        assert_eq!(found.iter().map(|f| (f.family.as_str(), f.style.as_str())).collect::<Vec<_>>(), [(FALLBACK_FAMILY, "Regular")]);
+        let db = FontDb::with_font_dirs(vec![]);
+        assert_eq!(db.add_font(collection_of(&font, 1_000_000)), MAX_FILE_FACES);
+        // A font the user adds is refused instead.
+        assert!(matches!(db.install_font("v.ttf", &variable_font(300)), Err(user::UserFontError::Unusable(e)) if e.contains("more than 256")));
+        assert!(started.elapsed() < std::time::Duration::from_secs(2), "{:?}", started.elapsed());
     }
 }

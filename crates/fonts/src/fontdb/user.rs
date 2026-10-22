@@ -403,7 +403,7 @@ impl FontDb {
         if FileRef::new(&sfnt).is_err() {
             return Err(UserFontError::Unusable("not a valid OpenType file".into()));
         }
-        let found = enumerate_faces(&sfnt);
+        let found = enumerate_faces(&sfnt, MAX_FACES_PER_FILE + 1);
         if found.is_empty() {
             return Err(UserFontError::Unusable("no face with a family name".into()));
         }
