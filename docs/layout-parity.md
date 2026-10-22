@@ -196,6 +196,7 @@ No overall parity estimate changes from these probes.
 | Scrolling a 1,096-page document that is one 5,300-row table (#811) | ~2.4 ms idle, ~4.5 ms median scroll frame (was ~600 ms); opening still lays out for ~4–8 s | not measured | measured 2026-10-12, release, headless (`tests_perf::big_table_scroll_bench`) |
 | A word with no break opportunity in it, laid out beside a floating object (#3412) | 1 MiB: 29.4 s → 0.35 s; 4 MiB: 472 s → 1.4 s | not measured | measured 2026-10-21, on 9b4b948c before the fix and with it (`layout::tests::a_long_unbreakable_word_lays_out_in_linear_time`, `layout::tests::a_megabyte_long_word_lays_out_quickly`) |
 | The same word, with a font that pulls half its glyphs back so that its advances alternate in sign (#3412) | 8× the word costs 52× the time before the fix, 15× with it | not measured | measured 2026-10-22, release, on `00bc6a4b` before the fix and with it (`layout::tests::a_word_with_alternating_advances_lays_out_in_linear_time`) |
+| Pages, sections and paragraphs with thousands of clipped cells, tracked authors, comment authors, sections, header paragraphs, spanning cells, hidden bidi offsets or math characters (#3692, #3706) | linear: each lookup is indexed or walked once (was a rescan per item) | not measured | `layout::tests_linear`, `math::tests::a_long_text_run_lays_out_in_linear_time` |
 
 A word with no break opportunity in it takes a line per few characters, and measuring the word
 beside a floating object walked the whole paragraph for every one of those lines, so the layout
@@ -239,6 +240,7 @@ Installed static fonts also resolve by their OpenType PostScript name (name ID 6
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-22 | trivial | Layout lookups linear in clipped cells, authors, sections, header paragraphs and bidi offsets (#3692, #3706) |
 | 2026-10-22 | trivial | Group connector rerouting preserves displayed free and unresolved endpoints under nonuniform scaling while resolved ends keep their connection-site path; degenerate dimensions and unrepresentable fallback display spans are guarded; synthetic model/engine coverage only, readiness estimates unchanged |
 | 2026-10-21 | trivial | A word with no break opportunity in it, laid out beside a floating object, no longer lays out quadratically: every word is measured once, before the line is broken (#3412) |
 | 2026-10-23 | trivial | An empty paragraph whose mark is hidden is laid out as nothing, like a deleted one: no room, no list number (still counted, as in Word) and no shading, in the body and in table cells, headers and text boxes (#3982) |
