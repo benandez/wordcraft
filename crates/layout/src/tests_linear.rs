@@ -184,3 +184,64 @@ fn drawing_many_clipped_cells_takes_linear_time() {
     assert_linear("clipped cells", ratio);
 }
 
+/// `n` words, each inserted by its own author, at a size that fits them all on the first page.
+fn tracked_words(n: usize) -> Document {
+    let mut d = Document::from_text("x");
+    let p = Paragraph {
+        text: "word ".repeat(n),
+        runs: (0..n).map(|i| Run { len: 5, props: CharProps { ins: u32::try_from(i).ok(), size: Some(1.0), ..Default::default() } }).collect(),
+        ..Paragraph::with_text("", CharProps::default())
+    };
+    d.body = vec![wordcraft_doc::para_block(p)];
+    d.revisions = (0..n).map(|i| wordcraft_doc::Revision::new(wordcraft_doc::RevisionKind::Insert, format!("Author {i}"), "")).collect();
+    d
+}
+
+/// Finding 30 (#3706): every tracked run ranked its author among all the document's revisions.
+#[test]
+fn drawing_tracked_changes_by_many_authors_takes_linear_time() {
+    let (ds, db) = (tracked_words(1000), tracked_words(SCALE * 1000));
+    let (ls, lb) = (lay(&ds, &LayoutOptions::default()), lay(&db, &LayoutOptions::default()));
+    let opts = display::DisplayOptions { markup: true, ..Default::default() };
+    assert_eq!(lb.pages.len(), 1);
+    let ratio = ratio_of(4, &(&ds, &ls), &(&db, &lb), |(d, l)| drop(std::hint::black_box(display::page_display(d, &l.pages[0], &opts))));
+    assert_linear("tracked runs", ratio);
+}
+
+/// Each author keeps the colour of their first revision's place among the authors.
+#[test]
+fn tracked_changes_colour_by_author_in_order_of_appearance() {
+    let mut d = tracked_words(3);
+    // Words 0 and 2 by Ana, word 1 by Ben: Ana first, Ben second.
+    for (r, a) in d.revisions.iter_mut().zip(["Ana", "Ben", "Ana"]) {
+        r.author = a.into();
+    }
+    let l = lay(&d, &LayoutOptions::default());
+    let opts = display::DisplayOptions { markup: true, ..Default::default() };
+    let colours: Vec<_> = display::page_display(&d, &l.pages[0], &opts)
+        .into_iter()
+        .filter_map(|i| if let display::Draw::Glyphs { color, .. } = i { Some(color) } else { None })
+        .collect();
+    let (ana, ben) = (display::revision_color(0), display::revision_color(1));
+    assert_ne!(ana, ben);
+    assert_eq!(colours, [ana, ben, ana]);
+}
+
+/// Finding 30 (#3706): every comment balloon ranked its author among all the comments.
+#[test]
+fn balloons_for_many_authors_lay_out_in_linear_time() {
+    let doc = |n: usize| {
+        let mut d = Document::from_text(&"word ".repeat(n));
+        for i in (0..n).rev() {
+            let part = d.add_part(wordcraft_doc::PartKind::Comment, vec![wordcraft_doc::para_block(Paragraph::with_text("c", CharProps::default()))]);
+            let id = u32::try_from(i).unwrap();
+            d.comments.insert(id, wordcraft_doc::Comment { author: format!("Author {i}"), part, ..Default::default() });
+            let p = CharProps::default();
+            d.insert_object(&Pos::body(0, 5 * i + 4), InlineObject::CommentEnd { id }, &p).unwrap();
+            d.insert_object(&Pos::body(0, 5 * i), InlineObject::CommentStart { id }, &p).unwrap();
+        }
+        d
+    };
+    let opts = LayoutOptions { comment_balloons: true, ..Default::default() };
+    assert_linear("comment balloons", layout_time_ratio(doc, 120, &opts));
+}

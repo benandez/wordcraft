@@ -531,8 +531,9 @@ fn stroke_of(u: Underline) -> Stroke {
 pub fn page_display(doc: &Document, page: &Page, opts: &DisplayOptions) -> Vec<Draw> {
     let mut out = Vec::new();
     let (ha, ba) = dimming(opts);
-    stories_display(doc, &[&page.header, &page.footer], opts, ha, &mut out);
-    stories_display(doc, &[&page.items], opts, ba, &mut out);
+    let authors = Authors::new(doc);
+    stories_display(doc, &[&page.header, &page.footer], opts, &authors, ha, &mut out);
+    stories_display(doc, &[&page.items], opts, &authors, ba, &mut out);
     body_change_bars(doc, page, opts, ba, &mut out);
     out
 }
@@ -543,8 +544,9 @@ pub fn page_display(doc: &Document, page: &Page, opts: &DisplayOptions) -> Vec<D
 pub fn page_layers(doc: &Document, page: &Page, opts: &DisplayOptions) -> [(f32, Vec<Draw>); 2] {
     let (ha, ba) = dimming(opts);
     let (mut hf, mut body) = (Vec::new(), Vec::new());
-    stories_display(doc, &[&page.header, &page.footer], opts, 1.0, &mut hf);
-    stories_display(doc, &[&page.items], opts, 1.0, &mut body);
+    let authors = Authors::new(doc);
+    stories_display(doc, &[&page.header, &page.footer], opts, &authors, 1.0, &mut hf);
+    stories_display(doc, &[&page.items], opts, &authors, 1.0, &mut body);
     body_change_bars(doc, page, opts, 1.0, &mut body);
     [(ha, hf), (ba, body)]
 }
@@ -562,7 +564,7 @@ fn body_change_bars(doc: &Document, page: &Page, opts: &DisplayOptions, alpha: f
 }
 
 /// Draw items for the placed items of `stories`, faded by `a`.
-fn stories_display(doc: &Document, stories: &[&Vec<Placed>], opts: &DisplayOptions, a: f32, out: &mut Vec<Draw>) {
+fn stories_display(doc: &Document, stories: &[&Vec<Placed>], opts: &DisplayOptions, authors: &Authors, a: f32, out: &mut Vec<Draw>) {
     let hidden = opts.hide_object.as_ref().map(|p| Hidden::new(doc, p));
     for items in stories {
         let warps = warped_boxes(doc, items);
@@ -577,7 +579,7 @@ fn stories_display(doc: &Document, stories: &[&Vec<Placed>], opts: &DisplayOptio
                 && let Some(rect) = cell_clip(&clips, *story, &path.0)
             {
                 let mut inner = Vec::new();
-                item(doc, it, opts, a, &mut inner);
+                item(doc, it, opts, authors, a, &mut inner);
                 out.push(Draw::Clip { rect, items: inner });
                 continue;
             }
@@ -591,10 +593,10 @@ fn stories_display(doc: &Document, stories: &[&Vec<Placed>], opts: &DisplayOptio
                     if let Some((_, rect, warp)) = warps.iter().find(|(w, ..)| w == id) {
                         let lines: Vec<&Placed> =
                             items.iter().filter(|i| matches!(i, Placed::Lines { story: StoryRef::Part(s), .. } if s == id)).collect();
-                        warped_text(doc, &lines, *rect, warp, opts, a, out);
+                        warped_text(doc, &lines, *rect, warp, opts, authors, a, out);
                     }
                 }
-                _ => item(doc, it, opts, a, out),
+                _ => item(doc, it, opts, authors, a, out),
             }
         }
     }
@@ -607,11 +609,12 @@ pub fn object_display(doc: &Document, page: &Page, o: &InlineObject, rect: Rect,
     let mut out = Vec::new();
     object_draws(o, rect, Spin::default(), 1.0, opts, &mut out);
     let Some(id) = text_box else { return out };
+    let authors = Authors::new(doc);
     for items in [&page.items, &page.header, &page.footer] {
         let lines: Vec<&Placed> = items.iter().filter(|i| matches!(i, Placed::Lines { story: StoryRef::Part(s), .. } if *s == id)).collect();
         match warped_boxes(doc, items).into_iter().find(|(w, ..)| *w == id) {
-            Some((_, rect, warp)) if !lines.is_empty() => warped_text(doc, &lines, rect, &warp, opts, 1.0, &mut out),
-            _ => lines.into_iter().for_each(|it| item(doc, it, opts, 1.0, &mut out)),
+            Some((_, rect, warp)) if !lines.is_empty() => warped_text(doc, &lines, rect, &warp, opts, &authors, 1.0, &mut out),
+            _ => lines.into_iter().for_each(|it| item(doc, it, opts, &authors, 1.0, &mut out)),
         }
     }
     out
@@ -669,12 +672,13 @@ fn warped_text(
     rect: Rect,
     warp: &wordcraft_doc::wordart::TextWarp,
     opts: &DisplayOptions,
+    authors: &Authors,
     alpha: f32,
     out: &mut Vec<Draw>,
 ) {
     let mut raw = Vec::new();
     for it in lines {
-        item(doc, it, opts, alpha, &mut raw);
+        item(doc, it, opts, authors, alpha, &mut raw);
     }
     // The letters: runs with effects as they are, plain runs from their glyphs.
     let mut arts: Vec<(BezPath, Box<wordcraft_doc::wordart::TextEffects>, Rgb, f32)> = Vec::new();
@@ -796,13 +800,13 @@ fn char_box(b: &Border, x0: f32, x1: f32, top: f32, bottom: f32, alpha: f32, out
     out.push(rule(r, top, r, bottom, b, alpha));
 }
 
-fn item(doc: &Document, it: &Placed, opts: &DisplayOptions, alpha: f32, out: &mut Vec<Draw>) {
-    item_in(doc, it, opts, alpha, Spin::default(), out)
+fn item(doc: &Document, it: &Placed, opts: &DisplayOptions, authors: &Authors, alpha: f32, out: &mut Vec<Draw>) {
+    item_in(doc, it, opts, authors, alpha, Spin::default(), out)
 }
 
 /// [`item`] drawn inside the turn `outer` (a turned Drawing Canvas's members): a shape's
 /// effects follow all the turns it is drawn inside.
-fn item_in(doc: &Document, it: &Placed, opts: &DisplayOptions, alpha: f32, outer: Spin, out: &mut Vec<Draw>) {
+fn item_in(doc: &Document, it: &Placed, opts: &DisplayOptions, authors: &Authors, alpha: f32, outer: Spin, out: &mut Vec<Draw>) {
     match it {
         Placed::Fill { rect, color } => out.push(Draw::Fill { rect: *rect, color: *color, alpha, text_bg: false }),
         Placed::Rule { x0, y0, x1, y1, border } => out.push(rule(*x0, *y0, *x1, *y1, border, alpha)),
@@ -822,14 +826,14 @@ fn item_in(doc: &Document, it: &Placed, opts: &DisplayOptions, alpha: f32, outer
         Placed::Clip { rect, spin, items } => {
             let mut inner = Vec::new();
             for it in items {
-                item_in(doc, it, opts, alpha, spin.within(outer), &mut inner);
+                item_in(doc, it, opts, authors, alpha, spin.within(outer), &mut inner);
             }
             spun(*spin, *rect, vec![Draw::Clip { rect: *rect, items: inner }], out)
         }
         Placed::Cell { .. } | Placed::Object { .. } => {}
         Placed::Lines { story, path, para, l0, l1, x, y, turn } if turn.is_turned() => {
             let mut items = Vec::new();
-            lines(doc, *story, path, para, *l0, *l1, 0.0, 0.0, opts, alpha, *turn == TextDirection::Down, &mut items);
+            lines(doc, *story, path, para, *l0, *l1, 0.0, 0.0, opts, authors, alpha, *turn == TextDirection::Down, &mut items);
             // Link areas are axis-aligned page rectangles: turned text gets none.
             for d in &mut items {
                 if let Draw::Glyphs { link, .. } = d {
@@ -841,7 +845,7 @@ fn item_in(doc: &Document, it: &Placed, opts: &DisplayOptions, alpha: f32, outer
             }
             out.push(Draw::Turned { x: *x, y: *y, turn: *turn, items });
         }
-        Placed::Lines { story, path, para, l0, l1, x, y, .. } => lines(doc, *story, path, para, *l0, *l1, *x, *y, opts, alpha, false, out),
+        Placed::Lines { story, path, para, l0, l1, x, y, .. } => lines(doc, *story, path, para, *l0, *l1, *x, *y, opts, authors, alpha, false, out),
     }
 }
 
@@ -855,6 +859,7 @@ fn lines(
     x: f32,
     y: f32,
     opts: &DisplayOptions,
+    authors: &Authors,
     alpha: f32,
     down: bool,
     out: &mut Vec<Draw>,
@@ -1082,7 +1087,7 @@ fn lines(
             let shown = opts.markup && m.insertions_deletions;
             let del = rc.del.filter(|_| shown);
             let ins = rc.ins.filter(|_| shown && del.is_none());
-            let author = |r: u32| revision_color(doc.revisions.get(r as usize).map(|v| author_index(doc, &v.author)).unwrap_or(0));
+            let author = |r: u32| authors.color(r);
             // Moved text: the Moves marks and colours (by default green, double strikethrough
             // where it was, double underline where it went).
             let moved_to = doc.move_name(ins).is_some();
@@ -1414,18 +1419,12 @@ fn lines(
                 let mx = if line.rtl { ex - 1.0 - size * 0.6 } else { ex + 1.0 };
                 // A tracked (inserted or deleted) paragraph mark is drawn in its author's colour.
                 let m = &opts.revisions;
-                let by_author = |r: u32| revision_color(doc.revisions.get(r as usize).map(|v| author_index(doc, &v.author)).unwrap_or(0));
+                let by_author = |r: u32| authors.color(r);
                 let color = para.filter(|_| opts.markup && m.insertions_deletions).and_then(|p| match (p.mark.ins, p.mark.del) {
                     (_, Some(r)) if doc.move_name(Some(r)).is_some() => Some(m.move_from_color.unwrap_or_else(|| by_author(r))),
                     (Some(r), None) if doc.move_name(Some(r)).is_some() => Some(m.move_to_color.unwrap_or_else(|| by_author(r))),
-                    (_, Some(r)) => Some(
-                        m.delete_color
-                            .unwrap_or_else(|| revision_color(doc.revisions.get(r as usize).map(|v| author_index(doc, &v.author)).unwrap_or(0))),
-                    ),
-                    (Some(r), None) => Some(
-                        m.insert_color
-                            .unwrap_or_else(|| revision_color(doc.revisions.get(r as usize).map(|v| author_index(doc, &v.author)).unwrap_or(0))),
-                    ),
+                    (_, Some(r)) => Some(m.delete_color.unwrap_or_else(|| by_author(r))),
+                    (Some(r), None) => Some(m.insert_color.unwrap_or_else(|| by_author(r))),
                     _ => None,
                 });
                 // The last paragraph of a section ends in a section break instead of a plain ¶.
@@ -1815,14 +1814,34 @@ fn text_glyphs(doc: &Document, r: Rect, it: &GraphicItem, alpha: f32, k: f32) ->
     })
 }
 
-fn author_index(doc: &Document, author: &str) -> u32 {
-    let mut seen: Vec<&str> = Vec::new();
-    for r in &doc.revisions {
-        if !seen.contains(&r.author.as_str()) {
-            seen.push(&r.author);
-        }
+/// Each author's place among `authors` in order of first appearance (which colour marks their
+/// changes and comments), found in one pass.
+pub(crate) fn author_order<'a>(authors: impl Iterator<Item = &'a str>) -> HashMap<&'a str, u32> {
+    let mut seen = HashMap::new();
+    for a in authors {
+        let n = u32::try_from(seen.len()).unwrap_or(u32::MAX);
+        seen.entry(a).or_insert(n);
     }
-    seen.iter().position(|a| *a == author).unwrap_or(0) as u32
+    seen
+}
+
+/// The colours of the document's revision authors ([`author_order`]), worked out once for a
+/// drawing, when its first tracked change is drawn, not once for every change.
+struct Authors<'a> {
+    doc: &'a Document,
+    order: std::cell::OnceCell<HashMap<&'a str, u32>>,
+}
+
+impl<'a> Authors<'a> {
+    fn new(doc: &'a Document) -> Self {
+        Authors { doc, order: std::cell::OnceCell::new() }
+    }
+
+    /// The colour of revision `r`'s author.
+    fn color(&self, r: u32) -> Rgb {
+        let order = self.order.get_or_init(|| author_order(self.doc.revisions.iter().map(|v| v.author.as_str())));
+        revision_color(self.doc.revisions.get(r as usize).and_then(|v| order.get(v.author.as_str()).copied()).unwrap_or(0))
+    }
 }
 
 /// How far a legacy check box's square sits inside the room it takes on its line, on every side.
