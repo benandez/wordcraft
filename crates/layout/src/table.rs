@@ -530,7 +530,7 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
             let row_borders = row.props.exceptions.as_ref().and_then(|e| e.borders).unwrap_or_default();
             // A row that skips grid columns (`w:gridBefore`/`w:gridAfter`) has its edge at its own
             // first and last cell.
-            let (first_g, last_g) = (g == row.first_grid(), g + span >= ncols.saturating_sub(row.props.grid_after as usize));
+            let (first_g, last_g) = (g == row.first_grid(), g + span >= ncols.saturating_sub(row.grid_after()));
             let rb = look.map(|l| region_borders(&l.borders, (ri, nrows), (first_g, last_g))).unwrap_or_default();
             let mut borders = Borders {
                 top: edge(cb.top.or(if ri == 0 { row_borders.top } else { row_borders.between }).or(rb.top), ri == 0, tb.top, tb.between),
@@ -1161,7 +1161,7 @@ fn column_content(ctx: &mut Ctx, t: &Table, style: Option<&TableStyleProps>, dep
 /// columns, width in points). Column widths make room for them like for an empty cell.
 fn row_gaps(row: &Row, end: usize) -> impl Iterator<Item = (usize, usize, f32)> {
     let p = &row.props;
-    [(0, row.first_grid(), p.w_before), (end, p.grid_after as usize, p.w_after)]
+    [(0, row.first_grid(), p.w_before), (end, row.grid_after(), p.w_after)]
         .into_iter()
         .filter(|&(_, n, _)| n > 0)
         .filter_map(|(g, n, w)| w.filter(|w| w.is_finite() && *w > 0.0).map(|w| (g, n, w.min(1584.0))))
