@@ -2392,3 +2392,38 @@ fn paragraph_borders_read_from_both_forms() {
     assert_eq!((top.style, top.width, top.space), (wordcraft_doc::props::BorderStyle::Single, 1.0, 2.0));
     assert_eq!(top.color, Some(wordcraft_doc::Rgb(0xFF, 0, 0)));
 }
+
+/// #3642: a small compound file whose DIFAT names one FAT sector thousands of times made `cfb`
+/// build a FAT of hundreds of megabytes before checking it. The precheck refuses it first.
+#[test]
+fn a_difat_repeating_one_fat_sector_is_refused_before_cfb_builds_the_fat() {
+    const S: usize = 512;
+    const FREE: u32 = 0xFFFF_FFFF;
+    let chain = 2048u32; // DIFAT sectors 1..=chain, sector 0 is the "FAT"
+    let mut f = vec![0u8; S * (chain as usize + 2)];
+    f[..8].copy_from_slice(&[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]);
+    f[0x18..0x1A].copy_from_slice(&0x3Eu16.to_le_bytes());
+    f[0x1A..0x1C].copy_from_slice(&3u16.to_le_bytes());
+    f[0x1C..0x1E].copy_from_slice(&0xFFFEu16.to_le_bytes());
+    f[0x1E..0x20].copy_from_slice(&9u16.to_le_bytes());
+    f[0x20..0x22].copy_from_slice(&6u16.to_le_bytes());
+    f[0x2C..0x30].copy_from_slice(&FREE.to_le_bytes()); // no zero trimming
+    f[0x38..0x3C].copy_from_slice(&4096u32.to_le_bytes());
+    f[0x44..0x48].copy_from_slice(&1u32.to_le_bytes());
+    f[0x48..0x4C].copy_from_slice(&chain.to_le_bytes());
+    for i in 0..109 {
+        f[0x4C + i * 4..0x50 + i * 4].copy_from_slice(&0u32.to_le_bytes());
+    }
+    for d in 1..=chain {
+        let at = (d as usize + 1) * S;
+        let next = if d == chain { 0xFFFF_FFFE } else { d + 1 };
+        f[at + S - 4..at + S].copy_from_slice(&next.to_le_bytes());
+    }
+    let t = std::time::Instant::now();
+    assert!(super::cfb_precheck(&f).is_err_and(|e| e.contains("FAT sectors in a file of")));
+    assert!(matches!(read(&f), Err(super::DocbinError::Container(e)) if e.contains("FAT sectors in a file of")));
+    assert!(!super::is_encrypted(&f));
+    assert!(t.elapsed().as_secs() < 2, "refused in {:?}", t.elapsed());
+    // A file cfb wrote itself passes.
+    assert!(super::cfb_precheck(&cfb_file(&[("WordDocument", &[0u8; 4096])])).is_ok());
+}
