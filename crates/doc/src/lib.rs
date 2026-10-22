@@ -762,6 +762,50 @@ pub struct Document {
     /// The document's own building blocks (its glossary document), in file order.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub glossary: Vec<BuildingBlock>,
+    /// Lookup cache for [`Document::add_media`]; not part of the document (never saved, ignored
+    /// by `==`).
+    #[serde(skip)]
+    pub media_index: MediaIndex,
+}
+
+/// [`Document::media`] by content, so adding media is linear in the bytes added rather than a
+/// scan of every earlier image (CWE-407). Rebuilt whenever `media` changed size behind its back;
+/// a hit is always checked against `media`, so a stale entry can at worst miss a duplicate.
+#[derive(Clone, Default)]
+pub struct MediaIndex {
+    by_bytes: std::collections::HashMap<Arc<Vec<u8>>, String>,
+    /// `media.len()` when the index last matched it.
+    len: usize,
+    /// The number after the last generated `image{n}` key, so taken names are probed once.
+    next: usize,
+}
+
+impl MediaIndex {
+    fn rebuild(&mut self, media: &BTreeMap<String, Arc<Vec<u8>>>) {
+        self.by_bytes.clear();
+        // The first key (in key order) of equal bytes wins, as a scan would find it.
+        for (k, v) in media.iter().rev() {
+            self.by_bytes.insert(v.clone(), k.clone());
+        }
+        self.len = media.len();
+        self.next = 0;
+    }
+
+    fn find(&self, media: &BTreeMap<String, Arc<Vec<u8>>>, bytes: &Vec<u8>) -> Option<String> {
+        self.by_bytes.get(bytes).filter(|k| media.get(*k).is_some_and(|v| **v == *bytes)).cloned()
+    }
+}
+
+impl PartialEq for MediaIndex {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+impl std::fmt::Debug for MediaIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("MediaIndex")
+    }
 }
 
 impl Default for Document {
@@ -790,6 +834,7 @@ impl Document {
             media: BTreeMap::new(),
             passthrough: BTreeMap::new(),
             glossary: Vec::new(),
+            media_index: MediaIndex::default(),
         }
     }
 
@@ -1400,17 +1445,32 @@ impl Document {
 
     /// Add a media item; returns its key (deduplicated by content).
     pub fn add_media(&mut self, bytes: Vec<u8>, ext: &str) -> String {
-        if let Some((k, _)) = self.media.iter().find(|(_, v)| v.as_slice() == bytes.as_slice()) {
-            return k.clone();
+        let ix = &mut self.media_index;
+        if ix.len != self.media.len() {
+            ix.rebuild(&self.media);
         }
-        let n = self.media.len() + 1;
-        let mut key = format!("image{n}.{ext}");
-        let mut i = n;
+        if let Some(k) = ix.find(&self.media, &bytes) {
+            return k;
+        }
+        if ix.by_bytes.contains_key(&bytes) {
+            // Stale (`media` was edited directly without changing its size): look again.
+            ix.rebuild(&self.media);
+            if let Some(k) = ix.find(&self.media, &bytes) {
+                return k;
+            }
+        }
+        let n = self.media.len().saturating_add(1);
+        let mut i = n.max(ix.next);
+        let mut key = format!("image{i}.{ext}");
         while self.media.contains_key(&key) {
-            i += 1;
+            i = i.saturating_add(1);
             key = format!("image{i}.{ext}");
         }
-        self.media.insert(key.clone(), Arc::new(bytes));
+        let bytes = Arc::new(bytes);
+        self.media.insert(key.clone(), bytes.clone());
+        ix.by_bytes.entry(bytes).or_insert_with(|| key.clone());
+        ix.len = self.media.len();
+        ix.next = i.saturating_add(1);
         key
     }
 

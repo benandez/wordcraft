@@ -91,6 +91,44 @@ fn parts_and_media() {
 }
 
 #[test]
+fn many_distinct_media_add_in_linear_time() {
+    // An import with tens of thousands of small distinct images (same length, differing only at
+    // the end) used to compare each against every earlier one.
+    let mut d = Document::new();
+    let t = std::time::Instant::now();
+    let n = 40_000u32;
+    for i in 0..n {
+        let mut bytes = vec![7u8; 256];
+        bytes.extend(i.to_le_bytes());
+        d.add_media(bytes, "png");
+    }
+    assert_eq!(d.media.len(), n as usize);
+    // Duplicates still find their first copy, including media inserted directly.
+    let mut first = vec![7u8; 256];
+    first.extend(0u32.to_le_bytes());
+    assert_eq!(d.add_media(first, "png"), "image1.png");
+    d.media.insert("direct.png".into(), Arc::new(vec![9, 9]));
+    assert_eq!(d.add_media(vec![9, 9], "png"), "direct.png");
+    assert!(t.elapsed().as_secs_f32() < 2.0, "{:?}", t.elapsed());
+    // The lookup cache isn't part of the document.
+    let mut e = d.clone();
+    e.media_index = MediaIndex::default();
+    assert_eq!(d, e);
+}
+
+#[test]
+fn media_keys_skip_taken_names_once() {
+    let mut d = Document::new();
+    // A file whose media already use the names add_media would pick next.
+    for i in 2..2002u32 {
+        d.media.insert(format!("image{i}.png"), Arc::new(i.to_le_bytes().to_vec()));
+    }
+    assert_eq!(d.add_media(vec![0], "png"), "image2002.png");
+    assert_eq!(d.add_media(vec![1], "png"), "image2003.png");
+    assert_eq!(d.add_media(vec![2], "png"), "image2004.png");
+}
+
+#[test]
 fn free_ids_skip_taken_ones_instead_of_overflowing() {
     assert_eq!(free_id(None, std::iter::empty(), 1), Some(1));
     assert_eq!(free_id(Some(7), [3, 7].into_iter(), 1), Some(8));
