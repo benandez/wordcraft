@@ -3,10 +3,13 @@
 
 use std::time::{Duration, Instant};
 
+use serde_json::{Value, json};
 use wordcraft_doc::para::{NoteKind, OBJ};
 use wordcraft_doc::{CharProps, Document, InlineObject, Paragraph, PartKind, Run, StoryRef, para_block};
+use wordcraft_engine::Session;
 
-use crate::fields;
+use crate::wire::Call;
+use crate::{Bridge, Headless, fields};
 
 const CITE: &str = r#"ADDIN ZOTERO_ITEM CSL_CITATION {"citationID":"k1","citationItems":[{"id":7}]}"#;
 
@@ -69,4 +72,49 @@ fn rich_text_with_many_runs_is_linear() {
     let Some(wordcraft_doc::Block::Para(p)) = frag.blocks.first() else { panic!("no paragraph") };
     assert_eq!((p.text.as_str(), p.runs.len()), ("abc", 2));
     assert_eq!(p.props_of_char(1).italic, Some(true));
+}
+
+/// Call `method` on a bridge over `s`.
+fn call(b: &mut Bridge, s: &mut Session, method: &str, args: Value) -> Result<Value, String> {
+    let Value::Array(args) = args else { return Err("args must be an array".into()) };
+    b.handle(s, &mut Headless::default(), &Call::new(method, args))
+}
+
+// Finding 32: Document_convert checks each distinct id once against one list of the fields.
+#[test]
+fn convert_with_one_id_repeated_is_one_check() {
+    let mut doc = Document::from_text("");
+    doc.body = (0..300).map(|_| para_block(objects_para(citations(1)))).collect();
+    let mut s = Session::new(doc);
+    let mut b = Bridge::new();
+    call(&mut b, &mut s, "Application_getActiveDocument", json!([3])).unwrap();
+    let got = call(&mut b, &mut s, "Document_getFields", json!([1, "Field"])).unwrap();
+    let first = got[0][0].clone();
+    let ids = vec![first.clone(); 100_000];
+    let before = format!("{:?}", s.doc.body);
+    let t = Instant::now();
+    call(&mut b, &mut s, "Document_convert", json!([1, ids, 0, 0])).unwrap();
+    assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
+    assert_eq!(format!("{:?}", s.doc.body), before, "already in the text: nothing to do");
+    // An unknown id is refused before anything moves.
+    let r = call(&mut b, &mut s, "Document_convert", json!([1, [first.clone(), 999_999_999u64], 0, [1, 1]]));
+    assert!(r.is_err());
+    assert!(s.doc.parts.is_empty(), "nothing converted");
+}
+
+#[test]
+fn convert_with_a_repeated_id_takes_its_last_note_type() {
+    let mut doc = Document::from_text("");
+    doc.body = (0..3).map(|_| para_block(objects_para(citations(1)))).collect();
+    let mut s = Session::new(doc);
+    let mut b = Bridge::new();
+    call(&mut b, &mut s, "Application_getActiveDocument", json!([3])).unwrap();
+    let got = call(&mut b, &mut s, "Document_getFields", json!([1, "Field"])).unwrap();
+    let (a, c) = (got[0][0].clone(), got[0][2].clone());
+    call(&mut b, &mut s, "Document_convert", json!([1, [a.clone(), c, a], 0, [2, 1, 1]])).unwrap();
+    let kinds: Vec<PartKind> = s.doc.parts.values().map(|p| p.kind).collect();
+    assert_eq!(kinds, vec![PartKind::Footnote, PartKind::Footnote]);
+    // Ids stay valid: the fields are where Zotero now expects them.
+    let got = call(&mut b, &mut s, "Document_getFields", json!([1, "Field"])).unwrap();
+    assert_eq!(got[2], json!([1, 0, 2]));
 }
