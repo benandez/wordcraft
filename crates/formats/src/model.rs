@@ -19,6 +19,26 @@ pub const MONO_FONT: &str = "Courier New";
 pub const CODE_STYLE: &str = "Code";
 /// Nesting limit for tables in tables (hostile input).
 pub const MAX_DEPTH: usize = 8;
+/// Longest font name the importers keep, in bytes (as the .docx reader); a longer one (no real
+/// font has one) is dropped (#3713).
+pub const MAX_FONT_NAME: usize = 256;
+/// Longest hyperlink target the importers keep, in bytes; a longer link is dropped and its text
+/// kept (#3713).
+pub const MAX_LINK: usize = 8 << 10;
+/// Link and font bytes the document's runs may carry between them. A flow's spans share one
+/// copy of a name ([`Fmt`]), but every run of a document owns its own: past this budget, runs
+/// lose their link and font rather than multiply a small file into gigabytes (#3713).
+const MAX_RUN_STRINGS: usize = 64 << 20;
+
+/// `name` as a span's font, unless it is longer than [`MAX_FONT_NAME`].
+pub fn kept_font(name: &str) -> Option<Arc<str>> {
+    (name.len() <= MAX_FONT_NAME).then(|| name.into())
+}
+
+/// `target` as a span's link, unless it is longer than [`MAX_LINK`].
+pub fn kept_link(target: &str) -> Option<Arc<str>> {
+    (target.len() <= MAX_LINK).then(|| target.into())
+}
 
 /// Character formatting the text formats can express.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -30,11 +50,13 @@ pub struct Fmt {
     pub code: bool,
     pub sup: bool,
     pub sub: bool,
-    pub link: Option<String>,
+    /// Shared: every span of a link holds the same target.
+    pub link: Option<Arc<str>>,
     pub color: Option<Rgb>,
     /// Points.
     pub size: Option<f32>,
-    pub font: Option<String>,
+    /// Shared, as `link`.
+    pub font: Option<Arc<str>>,
     /// Background (highlight / shading).
     pub background: Option<Rgb>,
     /// Tracked insertion of this text (formats that keep revisions: RTF).
@@ -429,10 +451,10 @@ pub fn char_props(f: &Fmt) -> CharProps {
         } else {
             None
         },
-        link: f.link.clone().filter(|l| !l.is_empty()),
+        link: f.link.as_deref().filter(|l| !l.is_empty()).map(str::to_string),
         color: f.color.map(TextColor::Rgb),
         size: f.size.filter(|s| s.is_finite() && *s >= 1.0 && *s <= 1638.0),
-        font: if f.code { Some(MONO_FONT.to_string()) } else { f.font.clone().filter(|s| !s.is_empty()) },
+        font: if f.code { Some(MONO_FONT.to_string()) } else { f.font.as_deref().filter(|s| !s.is_empty()).map(str::to_string) },
         shading: f.background,
         ..Default::default()
     }
@@ -516,6 +538,8 @@ struct Builder<'a> {
     doc: &'a mut Document,
     /// Revisions already in `doc` by (kind, author, date), so each change is added once.
     revs: std::collections::HashMap<(u8, RevMark), u32>,
+    /// Link and font bytes given to runs so far ([`MAX_RUN_STRINGS`]).
+    run_strings: usize,
 }
 
 fn rev_key(kind: RevisionKind) -> u8 {
@@ -535,7 +559,7 @@ impl<'a> Builder<'a> {
                 revs.entry((rev_key(r.kind), mark)).or_insert(i as u32);
             }
         }
-        Builder { doc, revs }
+        Builder { doc, revs, run_strings: 0 }
     }
 
     /// The document revision for a tracked change, added the first time it is seen.
@@ -548,6 +572,17 @@ impl<'a> Builder<'a> {
         self.doc.revisions.push(Revision::new(kind, m.author.clone(), m.date.clone()));
         self.revs.insert(key, i);
         i
+    }
+
+    /// `cp` as a run may keep it: without its link and font once the runs' copies of them are
+    /// over budget.
+    fn budget(&mut self, mut cp: CharProps) -> CharProps {
+        let n = cp.link.as_ref().map_or(0, String::len).saturating_add(cp.font.as_ref().map_or(0, String::len));
+        match self.run_strings.checked_add(n).filter(|&t| t <= MAX_RUN_STRINGS) {
+            Some(t) => self.run_strings = t,
+            None => (cp.link, cp.font) = (None, None),
+        }
+        cp
     }
 
     fn para(&mut self, p: &Para, list_num: Option<u32>) -> Paragraph {
@@ -575,11 +610,12 @@ impl<'a> Builder<'a> {
             match i {
                 Inline::Text(t, f) => {
                     let t = clean_text(t);
-                    let mut cp = char_props(f);
+                    let mut cp = self.budget(char_props(f));
                     cp.ins = f.ins.as_ref().map(|m| self.revision(RevisionKind::Insert, m));
                     cp.del = f.del.as_ref().map(|m| self.revision(RevisionKind::Delete, m));
                     if let Some(c) = &f.fmt_change {
-                        cp.fmt_change = PropChange::boxed(self.revision(RevisionKind::Format, &c.mark), char_props(&c.old));
+                        let old = self.budget(char_props(&c.old));
+                        cp.fmt_change = PropChange::boxed(self.revision(RevisionKind::Format, &c.mark), old);
                     }
                     if p.kind == Kind::Code {
                         // Code's font comes from its style, before a change as after it.
@@ -614,7 +650,7 @@ impl<'a> Builder<'a> {
                 }
                 Inline::Ruby { base, ruby, fmt } => {
                     let (base, ruby) = (clean_text(base), clean_text(ruby));
-                    let cp = char_props(fmt);
+                    let cp = self.budget(char_props(fmt));
                     // A source without a base or without a reading (malformed markup) is just its
                     // text: a guide that annotates nothing is no guide.
                     if base.is_empty() || ruby.is_empty() {
@@ -881,13 +917,13 @@ fn fmt_of(doc: &Document, cp: &CharProps, in_code: bool) -> Fmt {
         code,
         sup: e.vert_align == Some(VertAlign::Superscript),
         sub: e.vert_align == Some(VertAlign::Subscript),
-        link: e.link.clone(),
+        link: e.link.as_deref().map(Arc::from),
         color: match e.color {
             Some(TextColor::Rgb(c)) => Some(c),
             _ => None,
         },
         size: e.size,
-        font: if code || in_code { None } else { e.shown_font().map(str::to_string) },
+        font: if code || in_code { None } else { e.shown_font().map(Arc::from) },
         background: e.highlight.and_then(|h| h.rgb()).or(e.shading),
         ins: None,
         del: None,

@@ -10,6 +10,7 @@
 //! Export writes the same constructs; pictures become `![alt](media-name)` placeholders.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use wordcraft_doc::{Align, Document};
 
@@ -33,7 +34,8 @@ pub fn import_on(text: &str, page: &wordcraft_doc::SectionProps) -> Document {
 }
 
 /// Link reference definitions: the normalised label to its destination.
-pub type Refs = HashMap<String, String>;
+/// A destination is shared by every reference to it, not copied into each (#3713).
+pub type Refs = HashMap<String, Arc<str>>;
 
 /// A label as CommonMark compares them: case-folded, and any run of white space one space
 /// (§4.7, "matches"). `[FOO bar]` and `[foo   BAR]` are the same label.
@@ -141,7 +143,7 @@ fn take_definitions(lines: &mut Vec<String>) -> Refs {
         if starts_block && let Some((label, dest)) = link_definition(line) {
             // The first definition of a label wins, as CommonMark says, and definitions may
             // follow one another.
-            refs.entry(label).or_insert(dest);
+            refs.entry(label).or_insert(dest.into());
             return false;
         }
         starts_block = is_blank(line) || atx_heading(t).is_some() || thematic_break(t);
@@ -976,7 +978,7 @@ fn tokenize(s: &str, base: &Fmt, depth: usize, refs: &Refs) -> Vec<Node> {
                             let dest = link_dest(s, close + 1);
                             scan_budget = scan_budget.saturating_sub(dest.as_ref().map_or(s.len(), |d| d.1).saturating_sub(close));
                             let (dest, end) = dest?;
-                            return Some((text.to_string(), dest, end));
+                            return Some((text.to_string(), Arc::from(dest), end));
                         }
                         // A reference link: `[text][label]`, `[text][]` and `[text]` all take
                         // their destination from a definition collected before parsing (#3238).
@@ -1013,7 +1015,8 @@ fn tokenize(s: &str, base: &Fmt, depth: usize, refs: &Refs) -> Vec<Node> {
                     Some((inner, dest, end)) if base.link.is_none() => {
                         flush!();
                         let mut f = base.clone();
-                        f.link = Some(dest);
+                        // A destination too long to keep leaves its text unlinked.
+                        f.link = (dest.len() <= model::MAX_LINK).then_some(dest);
                         for x in parse_inlines(&inner, &f, depth + 1, refs) {
                             nodes.push(Node::Inl(x));
                         }
@@ -1034,7 +1037,7 @@ fn tokenize(s: &str, base: &Fmt, depth: usize, refs: &Refs) -> Vec<Node> {
                 if is_auto {
                     flush!();
                     let mut f = base.clone();
-                    f.link = Some(if inner.contains('@') && !inner.contains(':') { format!("mailto:{inner}") } else { inner.to_string() });
+                    f.link = Some(if inner.contains('@') && !inner.contains(':') { format!("mailto:{inner}").into() } else { inner.into() });
                     push_text(&mut nodes, inner, &f);
                     i += inner.len() + 2;
                     text_start = i;
@@ -1364,7 +1367,7 @@ fn inlines_md_impl(inlines: &[Inline], in_table: bool) -> String {
     }
     let mut out = String::new();
     let mut stack: Vec<Mark> = Vec::new();
-    let mut link: Option<String> = None;
+    let mut link: Option<Arc<str>> = None;
     let close_all = |out: &mut String, stack: &mut Vec<Mark>| {
         while let Some(m) = stack.pop() {
             out.push_str(marker(m));
@@ -1653,7 +1656,7 @@ mod tests {
         let s = inl("see [the *site*](http://x.org \"T\") and `a*b*` \\*lit\\* &amp; <https://y.com>");
         let link: Vec<_> = s
             .iter()
-            .filter_map(|i| if let Inline::Text(t, f) = i { f.link.as_ref().map(|l| (t.clone(), l.clone(), f.italic)) } else { None })
+            .filter_map(|i| if let Inline::Text(t, f) = i { f.link.as_ref().map(|l| (t.clone(), l.to_string(), f.italic)) } else { None })
             .collect();
         assert_eq!(link[0], ("the ".into(), "http://x.org".into(), false));
         assert_eq!(link[1], ("site".into(), "http://x.org".into(), true));
@@ -1674,7 +1677,7 @@ mod tests {
                     .inlines
                     .iter()
                     .filter_map(|x| match x {
-                        Inline::Text(t, f) => f.link.clone().map(|l| (t.clone(), l)),
+                        Inline::Text(t, f) => f.link.as_deref().map(|l| (t.clone(), l.to_string())),
                         _ => None,
                     })
                     .collect(),
@@ -2124,7 +2127,7 @@ mod tests {
         ] {
             let out = md(l);
             let back = inl(&out);
-            let got: Vec<_> = back.iter().filter_map(|i| if let Inline::Text(_, f) = i { f.link.clone() } else { None }).collect();
+            let got: Vec<_> = back.iter().filter_map(|i| if let Inline::Text(_, f) = i { f.link.as_deref().map(str::to_string) } else { None }).collect();
             assert_eq!(got, [l.to_string()], "{l:?} → {out:?}");
         }
         // Ordinary destinations are written as before.

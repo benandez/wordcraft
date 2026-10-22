@@ -725,7 +725,7 @@ fn apply_style(css: &str, f: &mut Fmt, align: &mut Option<Align>, preserve: &mut
                 if model::is_mono(&fam) || fam.eq_ignore_ascii_case("monospace") {
                     f.code = true;
                 } else if !fam.is_empty() && !matches!(fam.to_ascii_lowercase().as_str(), "serif" | "sans-serif" | "inherit" | "initial") {
-                    f.font = Some(fam);
+                    f.font = model::kept_font(&fam).or(f.font.take());
                 }
             }
             "vertical-align" => {
@@ -1227,7 +1227,7 @@ impl<'r> Builder<'r> {
                     if model::is_mono(&fam) {
                         fmt.code = true;
                     } else if !fam.is_empty() {
-                        fmt.font = Some(fam);
+                        fmt.font = model::kept_font(&fam).or(fmt.font.take());
                     }
                 }
                 if let Some(sz) = attr(attrs, "size") {
@@ -1246,7 +1246,7 @@ impl<'r> Builder<'r> {
             }
             "a" => {
                 if let Some(h) = attr(attrs, "href").filter(|h| wordcraft_doc::link::is_safe_href(h)) {
-                    fmt.link = Some(h.trim().to_string());
+                    fmt.link = model::kept_link(h.trim());
                 }
             }
             _ => {}
