@@ -38,6 +38,8 @@ Exact line spacing keeps the run font baseline around tall equations; automatic 
 
 Legacy Word imports (#2445): interactive Save for `.doc`/`.dot` uses the existing DOCX Save As dialog. Cancel and write failures retain the draft and original path; Save before Close continues only after a successful supported-format save. This narrows save reliability under gap #3; binary `.doc` writing remains unsupported. Late Save As answers are rejected before writing if automation has replaced the document.
 
+Document model hangs (#3614, #3692): paragraph object walks, image deduplication, linear-equation letter runs and text box paste no longer do quadratic work or unbounded copies on hostile files. This narrows gap #3; the engine, DOCX reader and UI loops named in #3614 remain.
+
 Active footnote and endnote text stays readable while editing (#2545). This fixes a display-context defect; the broader fidelity, accessibility and readiness gates below are unchanged.
 
 Russian language-aware sorting now keeps ё with е instead of after я, with the diaeresis as a secondary difference. Composed and decomposed ё and й compare equally. Fixed synthetic collation tests cover order, case and index headings; this does not establish full Cyrillic or CLDR collation parity.
@@ -124,6 +126,7 @@ Footer page-table height and body wrapping are corrected. Other pagination gaps 
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-22 | trivial | Gap #3 note: document model quadratic scans and text box paste copies bounded (#3692, part of #3614) |
 | 2026-10-22 | trivial | Gap 10: group connector rerouting preserves rotated/flipped free and unresolved endpoints under nonuniform scaling, with safe degenerate-dimension and display-size-cap handling; routing around shapes and readiness estimates unchanged |
 | 2026-10-21 | trivial | The ranked gap list held two rows each for #19, #20 and #21; the stale copies are gone, so each gap appears once, and the #20 row carries the measured figure (#3411) |
 | 2026-10-21 | trivial | #20 narrowed: a document with many relationships opens in the time its part takes (#3411) |
