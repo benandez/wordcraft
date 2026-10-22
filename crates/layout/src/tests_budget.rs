@@ -97,3 +97,47 @@ fn a_huge_grid_after_is_bounded_like_the_docx_readers() {
     let l = lay(&d);
     assert!(l.pages[0].items.iter().any(|i| matches!(i, Placed::Cell { row: 0, cell: 1, .. })));
 }
+
+/// A `size` × `size` PNG, transparent but for an opaque disc in the middle.
+fn disc_png(size: u32) -> Vec<u8> {
+    let c = size as f32 / 2.0;
+    let img = image::RgbaImage::from_fn(size, size, |x, y| {
+        let (dx, dy) = (x as f32 + 0.5 - c, y as f32 + 0.5 - c);
+        image::Rgba([0, 0, 0, if dx * dx + dy * dy < c * c * 0.5 { 255 } else { 0 }])
+    });
+    let mut buf = Vec::new();
+    image::DynamicImage::from(img).write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png).unwrap();
+    buf
+}
+
+#[test]
+fn a_picture_cropped_many_ways_is_decoded_once() {
+    let png = disc_png(64);
+    let mut alphas = contour::Alphas::default();
+    for i in 0..300 {
+        let f = i as f32 / 1000.0;
+        assert!(alphas.outline(&png, [f, f, 0.0, 0.0]).is_some(), "crop {i} follows the disc");
+    }
+    assert_eq!(alphas.decoded, 64 * 64, "one decode for every crop");
+    // A crop's outline is the one the picture alone gives.
+    let mut fresh = contour::Alphas::default();
+    assert_eq!(alphas.outline(&png, [0.1, 0.0, 0.2, 0.0]), fresh.outline(&png, [0.1, 0.0, 0.2, 0.0]));
+}
+
+#[test]
+fn decoding_pictures_stops_at_the_layouts_budget() {
+    let (a, b) = (disc_png(64), disc_png(32));
+    let mut alphas = contour::Alphas::default();
+    alphas.decoded = contour::MAX_DECODED_PIXELS - 64 * 64 + 1;
+    // Too many pixels left to decode: the picture wraps as its rectangle.
+    assert!(alphas.outline(&a, [0.0; 4]).is_none());
+    // A smaller one still fits.
+    assert!(alphas.outline(&b, [0.0; 4]).is_some());
+    assert!(alphas.decoded <= contour::MAX_DECODED_PIXELS);
+    // Pictures alternating past the budget aren't decoded again.
+    for _ in 0..10 {
+        assert!(alphas.outline(&a, [0.0; 4]).is_none());
+        let _ = alphas.outline(&b, [0.0; 4]);
+    }
+    assert!(alphas.decoded <= contour::MAX_DECODED_PIXELS);
+}

@@ -164,26 +164,90 @@ pub fn contour_area(r: Rect, float: &Float, outline: &[(f32, f32)]) -> Option<(R
 /// Largest picture (each side, pixels) whose transparency is looked at.
 const MAX_PICTURE_SIDE: u32 = 8192;
 
-/// The outline of a picture's opaque pixels within `crop` (left, top, right, bottom fractions),
-/// in unit coordinates of the cropped picture. `None` for pictures without transparency (or
-/// that don't decode): their rectangle is their outline.
-pub fn picture_outline(bytes: &[u8], crop: [f32; 4]) -> Option<Vec<(f32, f32)>> {
-    let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format().ok()?;
+/// Most picture pixels decoded for their transparency in one layout. Every picture a document
+/// wraps tightly is decoded in full whatever its crop; past this, pictures wrap as their
+/// rectangles. Room for four pictures of the largest size looked at, or hundreds of photos.
+pub(crate) const MAX_DECODED_PIXELS: u64 = 1 << 28;
+
+/// A picture's transparency: one alpha byte per pixel, row by row.
+struct Alpha {
+    w: u32,
+    h: u32,
+    a: Vec<u8>,
+}
+
+impl Alpha {
+    fn opaque(&self, x: u32, y: u32) -> bool {
+        x < self.w
+            && (y as usize)
+                .checked_mul(self.w as usize)
+                .and_then(|r| r.checked_add(x as usize))
+                .and_then(|i| self.a.get(i))
+                .is_some_and(|a| *a >= 128)
+    }
+}
+
+/// Pictures' transparency decoded during one layout. A picture shown with many crops (each an
+/// outline of its own) is decoded once, and decoding stops at [`MAX_DECODED_PIXELS`].
+#[derive(Default)]
+pub(crate) struct Alphas {
+    /// The picture decoded last: its bytes (address and length) and transparency (`None`: none).
+    last: Option<((usize, usize), Option<Arc<Alpha>>)>,
+    /// Pixels decoded so far.
+    pub(crate) decoded: u64,
+}
+
+impl Alphas {
+    /// The outline of picture `bytes`'s opaque pixels within `crop` (left, top, right, bottom
+    /// fractions), in unit coordinates of the cropped picture. `None` for pictures without
+    /// transparency (or that don't decode, or past the budget): their rectangle is their outline.
+    pub(crate) fn outline(&mut self, bytes: &[u8], crop: [f32; 4]) -> Option<Vec<(f32, f32)>> {
+        let key = (bytes.as_ptr() as usize, bytes.len());
+        let alpha = match &self.last {
+            Some((k, alpha)) if *k == key => alpha.clone(),
+            _ => {
+                let alpha = decode_alpha(bytes, &mut self.decoded).map(Arc::new);
+                self.last = Some((key, alpha.clone()));
+                alpha
+            }
+        };
+        alpha_in_crop(&*alpha?, crop)
+    }
+}
+
+/// The transparency of picture `bytes`, charging its pixels to `decoded`. `None` for pictures
+/// without transparency, that don't decode, or that would take `decoded` past
+/// [`MAX_DECODED_PIXELS`].
+fn decode_alpha(bytes: &[u8], decoded: &mut u64) -> Option<Alpha> {
+    let reader = || {
+        let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format().ok()?;
+        let mut limits = image::Limits::default();
+        limits.max_image_width = Some(MAX_PICTURE_SIDE);
+        limits.max_image_height = Some(MAX_PICTURE_SIDE);
+        limits.max_alloc = Some(512 << 20);
+        reader.limits(limits);
+        Some(reader)
+    };
     // Formats that can't be transparent aren't decoded.
-    if matches!(reader.format(), None | Some(image::ImageFormat::Jpeg)) {
+    if matches!(reader()?.format(), None | Some(image::ImageFormat::Jpeg)) {
         return None;
     }
-    let mut limits = image::Limits::default();
-    limits.max_image_width = Some(MAX_PICTURE_SIDE);
-    limits.max_image_height = Some(MAX_PICTURE_SIDE);
-    limits.max_alloc = Some(512 << 20);
-    reader.limits(limits);
-    let img = reader.decode().ok()?;
+    let (w, h) = reader()?.into_dimensions().ok()?;
+    let pixels = u64::from(w.min(MAX_PICTURE_SIDE)) * u64::from(h.min(MAX_PICTURE_SIDE));
+    let total = decoded.checked_add(pixels).filter(|t| *t <= MAX_DECODED_PIXELS)?;
+    *decoded = total;
+    let img = reader()?.decode().ok()?;
     if !img.color().has_alpha() {
         return None;
     }
     let img = img.into_rgba8();
-    let (iw, ih) = img.dimensions();
+    let (w, h) = img.dimensions();
+    Some(Alpha { w, h, a: img.pixels().map(|p| p.0[3]).collect() })
+}
+
+/// The outline of `img`'s opaque pixels within `crop`: see [`Alphas::outline`].
+fn alpha_in_crop(img: &Alpha, crop: [f32; 4]) -> Option<Vec<(f32, f32)>> {
+    let (iw, ih) = (img.w, img.h);
     // The part the renderers draw (#1899): a sliver keeps its partly covered pixels.
     let [cl, ct, vw, vh] = wordcraft_metafile::crop_window(crop);
     let (fw, fh) = (f64::from(iw), f64::from(ih));
@@ -202,9 +266,7 @@ pub fn picture_outline(bytes: &[u8], crop: [f32; 4]) -> Option<Vec<(f32, f32)>> 
     let opaque = |gx: usize, gy: usize| {
         let (px0, py0) = (x0 + gx as u32 * cell, y0 + gy as u32 * cell);
         let (px1, py1) = ((px0 + cell).min(x1), (py0 + cell).min(y1));
-        (py0..py1)
-            .step_by(step as usize)
-            .any(|y| (px0..px1).step_by(step as usize).any(|x| img.get_pixel_checked(x, y).is_some_and(|p| p.0[3] >= 128)))
+        (py0..py1).step_by(step as usize).any(|y| (px0..px1).step_by(step as usize).any(|x| img.opaque(x, y)))
     };
     let pts = alpha_outline(gw as usize, gh as usize, opaque)?;
     // Grid points onto the picture as the renderers draw the window, whose edges fall within
@@ -218,6 +280,10 @@ pub fn picture_outline(bytes: &[u8], crop: [f32; 4]) -> Option<Vec<(f32, f32)>> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn picture_outline(bytes: &[u8], crop: [f32; 4]) -> Option<Vec<(f32, f32)>> {
+        Alphas::default().outline(bytes, crop)
+    }
 
     fn diamond(through: bool) -> Contour {
         Contour::new(&[(50.0, 0.0), (100.0, 50.0), (50.0, 100.0), (0.0, 50.0)], 0.0, 0.0, 0.0, through).unwrap().1
