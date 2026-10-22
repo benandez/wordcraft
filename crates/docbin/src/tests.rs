@@ -2427,3 +2427,39 @@ fn a_difat_repeating_one_fat_sector_is_refused_before_cfb_builds_the_fat() {
     // A file cfb wrote itself passes.
     assert!(super::cfb_precheck(&cfb_file(&[("WordDocument", &[0u8; 4096])])).is_ok());
 }
+
+/// #3708: a long HYPERLINK target over a long result was copied (and compared) once per result
+/// character. It is now copied once per run.
+#[test]
+fn a_long_hyperlink_over_a_long_result_is_one_linked_run() {
+    let n = 250_000;
+    let target = "x".repeat(n);
+    let text: &'static str = Box::leak(format!("\u{13}HYPERLINK \"http://{target}\"\u{14}{}\u{15}\r", "y".repeat(n)).into_boxed_str());
+    let spec = structured_spec(text, text.chars().count() as u32);
+    let t = std::time::Instant::now();
+    let doc = read(&struct_doc(&spec)).expect("opens");
+    // Copying the target per character took ~2.5 s here; once per run takes milliseconds.
+    assert!(t.elapsed().as_millis() < 1000, "opened in {:?}", t.elapsed());
+    let p0 = doc.body.first().and_then(|b| b.as_para()).expect("para");
+    let linked: Vec<_> = p0.runs.iter().filter(|r| r.props.link.is_some()).collect();
+    assert_eq!(linked.len(), 1);
+    assert_eq!(linked.first().map(|r| r.len), Some(n));
+}
+
+/// #3708: a result whose formatting changes every character pays for a target copy per run
+/// out of the character budget; past it the text stays, unlinked.
+#[test]
+fn hyperlink_target_copies_are_charged_to_the_char_budget() {
+    use wordcraft_doc::props::CharProps;
+    let bold = CharProps { bold: Some(true), ..Default::default() };
+    let result: Vec<(char, CharProps)> = (0..1000).map(|i| ('a', if i % 2 == 0 { bold.clone() } else { CharProps::default() })).collect();
+    let f = super::FieldBuild { depth: 1, instr: format!("HYPERLINK \"{}\"", "u".repeat(100)), sep: Some(result) };
+    let mut pb = super::ParaBuild::default();
+    let budget = std::cell::Cell::new(10_000);
+    super::finish_field(&mut pb, f, &budget);
+    assert_eq!(pb.text.len(), 1000, "all text kept");
+    let linked: usize = pb.runs.iter().filter_map(|r| r.props.link.as_ref()).map(|l| l.len()).sum();
+    assert!(linked <= 10_000, "linked bytes {linked}");
+    assert_eq!(pb.runs.iter().filter(|r| r.props.link.is_some()).count(), 100);
+    assert_eq!(budget.get(), 0);
+}

@@ -429,6 +429,14 @@ impl ParaBuild {
         }
         self.text.push(c);
     }
+
+    /// Append `c` to the current run, whose properties the caller knows it matches.
+    fn extend(&mut self, c: char) {
+        if let Some(r) = self.runs.last_mut() {
+            r.len += c.len_utf8();
+        }
+        self.text.push(c);
+    }
 }
 
 /// Walk a CP range, splitting paragraphs at 0x0D/0x07 marks, applying the direct character
@@ -554,7 +562,7 @@ fn walk(ctx: &WalkCtx, cp_start: u32, cp_end: u32, pics: &mut media::Pictures) -
                         f.depth -= 1;
                         field = Some(f);
                     } else {
-                        finish_field(&mut pb, f);
+                        finish_field(&mut pb, f, ctx.budget);
                     }
                 }
                 cp = cp.saturating_add(1);
@@ -630,17 +638,32 @@ struct FieldBuild {
 
 /// Emit a finished field: HYPERLINK keeps its result text as a linked run; every other
 /// field becomes one inline object with its cached result.
-fn finish_field(pb: &mut ParaBuild, f: FieldBuild) {
+///
+/// The target is copied once per run of equally formatted result text, not per character,
+/// and each copy is charged to the document's character `budget`; once that is spent the
+/// rest of the result is kept as plain text (#3708).
+fn finish_field(pb: &mut ParaBuild, f: FieldBuild, budget: &std::cell::Cell<u64>) {
     let instr = f.instr.trim().to_string();
     let result = f.sep.unwrap_or_default();
-    let result_text: String = result.iter().map(|(c, _)| *c).collect();
     if let Some(target) = hyperlink_target(&instr) {
-        for (c, mut props) in result {
-            props.link = Some(target.clone());
-            pb.push(c, props);
+        let cost = target.len() as u64;
+        let mut run: Option<CharProps> = None;
+        for (c, props) in result {
+            if run.as_ref() == Some(&props) {
+                pb.extend(c);
+                continue;
+            }
+            let mut linked = props.clone();
+            if budget.get() >= cost {
+                budget.set(budget.get() - cost);
+                linked.link = Some(target.clone());
+            }
+            pb.push(c, linked);
+            run = Some(props);
         }
         return;
     }
+    let result_text: String = result.iter().map(|(c, _)| *c).collect();
     pb.push('\u{FFFC}', CharProps::default());
     pb.objects.push(InlineObject::Field { instr, result: result_text, locked: false, dirty: false, code: false, form: String::new() });
 }
