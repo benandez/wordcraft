@@ -133,3 +133,25 @@ fn headers_inherited_through_many_sections_lay_out_in_linear_time() {
     assert_linear("sections", layout_time_ratio(doc, 2000, &LayoutOptions::default()));
 }
 
+/// A header of `n` short paragraphs.
+fn tall_header(n: usize) -> (Document, u32) {
+    let mut d = Document::from_text("Body");
+    let paras = (0..n).map(|i| wordcraft_doc::para_block(Paragraph::with_text(&format!("h{i}"), CharProps::default()))).collect();
+    let id = d.add_part(wordcraft_doc::PartKind::Header, paras);
+    d.last_section.headers.default = Some(id);
+    (d, id)
+}
+
+/// Finding 28: selecting across a header looked through the whole page for each paragraph.
+#[test]
+fn selecting_a_long_header_takes_linear_time() {
+    let n = 300;
+    let ((ds, ids), (db, idb)) = (tall_header(n), tall_header(SCALE * n));
+    let (ls, lb) = (lay(&ds, &LayoutOptions::default()), lay(&db, &LayoutOptions::default()));
+    let ends = |id: u32, n: usize| (Pos::new(StoryRef::Part(id), Path::top(0), 0), Pos::new(StoryRef::Part(id), Path::top(n - 1), 2));
+    let ((a, b), (c, e)) = (ends(ids, n), ends(idb, SCALE * n));
+    assert!(lb.selection_rects(&db, &c, &e, 0).len() >= SCALE * n, "a rectangle per paragraph");
+    let ratio = ratio_of(32, &(&ds, &ls, a, b), &(&db, &lb, c, e), |(d, l, a, b)| drop(std::hint::black_box(l.selection_rects(d, a, b, 0))));
+    assert_linear("header selection", ratio);
+}
+
