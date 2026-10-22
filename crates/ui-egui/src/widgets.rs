@@ -188,12 +188,14 @@ pub fn enabled(app: &WordApp, id: &str) -> bool {
 }
 
 pub(crate) fn bg(ui: &Ui, r: Rect, resp: &Response, checked: bool, t: &Tokens) {
+    // The hover fades in and out; with animations off egui's animation time is zero.
+    let h = ui.ctx().animate_bool_responsive(resp.id.with("hover"), resp.hovered());
     let fill = if resp.is_pointer_button_down_on() {
         t.pressed
     } else if checked {
         t.checked
-    } else if resp.hovered() {
-        t.hover
+    } else if h > 0.0 {
+        Color32::TRANSPARENT.lerp_to_gamma(t.hover, h)
     } else {
         return;
     };
@@ -435,6 +437,8 @@ pub fn group_titled(ui: &mut Ui, id_title: &str, title: &str, launcher: Option<&
         // Not folded: a drop-down left open while it was folded doesn't come back by itself.
         ui.data_mut(|d| d.remove::<bool>(collapsed_open_id(ui, id_title, position)));
         let label_w = ui.ctx().fonts_mut(|f| f.layout_no_wrap(title.to_string(), regular(11.0), t.group_label).size().x);
+        // Drawn under the buttons, once the group's width is known.
+        let glow = ui.painter().add(egui::Shape::Noop);
         let inner = ui.vertical(|ui| {
             ui.set_min_width(label_w + if launcher.is_some() { 22.0 } else { 10.0 });
             crate::ribbon_fit::set_compact(ui.ctx(), level == crate::ribbon_fit::COMPACT);
@@ -451,6 +455,12 @@ pub fn group_titled(ui: &mut Ui, id_title: &str, title: &str, launcher: Option<&
             let _ = content;
         });
         let r = inner.response.rect;
+        let area = Rect::from_min_max(start, pos2(r.max.x, start.y + CONTENT_H + LABEL_H));
+        let over = ui.rect_contains_pointer(area);
+        let lit = ui.ctx().animate_bool_responsive(ui.id().with(("group_glow", id_title)), over);
+        if lit > 0.0 {
+            ui.painter().set(glow, group_glow(area, t.accent, lit));
+        }
         title_row(
             ui,
             Rect::from_min_max(pos2(start.x, start.y + CONTENT_H), pos2(r.max.x, start.y + CONTENT_H + LABEL_H)),
@@ -465,6 +475,22 @@ pub fn group_titled(ui: &mut Ui, id_title: &str, title: &str, launcher: Option<&
     ui.painter().line_segment([pos2(x, start.y + 4.0), pos2(x, start.y + CONTENT_H + LABEL_H - 4.0)], Stroke::new(1.0, t.border));
     ui.add_space(6.0);
     crate::ribbon_fit::record(ui.ctx(), id_title, level, ui.cursor().min.x - start.x);
+}
+
+/// The glow of a hovered group: the accent colour rising from the bottom edge and fading out
+/// towards the top, `strength` (0..1) scaling it.
+fn group_glow(r: Rect, accent: Color32, strength: f32) -> egui::Shape {
+    let at = |alpha: f32| Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), (alpha * strength * 255.0) as u8);
+    let r = r.shrink2(vec2(1.0, 2.0));
+    let (bottom, top) = (at(0.26), at(0.0));
+    let mut mesh = egui::epaint::Mesh::default();
+    mesh.colored_vertex(r.left_bottom(), bottom);
+    mesh.colored_vertex(r.right_bottom(), bottom);
+    mesh.colored_vertex(r.right_top(), top);
+    mesh.colored_vertex(r.left_top(), top);
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(0, 2, 3);
+    egui::Shape::mesh(mesh)
 }
 
 /// A group's title row (`r`): the centred title and, with a `launcher`, its dialog launcher.
