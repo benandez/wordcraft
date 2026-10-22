@@ -50,3 +50,23 @@ fn listing_stops_at_the_field_budget() {
     doc.body = vec![para_block(objects_para(huge))];
     assert_eq!(fields::list(&doc).len(), 4);
 }
+
+// Finding 16: rich text with alternating formatting is built in one pass, not run by run with
+// every earlier run merged again.
+#[test]
+fn rich_text_with_many_runs_is_linear() {
+    let html: String = "<i>a</i>b".repeat(50_000);
+    let t = Instant::now();
+    let frag = crate::rich::fragment(&html, true, &CharProps::default());
+    let elapsed = t.elapsed();
+    let Some(wordcraft_doc::Block::Para(p)) = frag.blocks.first() else { panic!("no paragraph") };
+    assert_eq!(p.text, "ab".repeat(50_000));
+    assert_eq!(p.runs.len(), 100_000);
+    assert_eq!(p.runs.iter().map(|r| r.len).sum::<usize>(), p.text.len());
+    assert!(elapsed < Duration::from_secs(2), "{elapsed:?}");
+    // Neighbours with the same formatting are one run.
+    let frag = crate::rich::fragment("<i>a</i><i>b</i>c", true, &CharProps::default());
+    let Some(wordcraft_doc::Block::Para(p)) = frag.blocks.first() else { panic!("no paragraph") };
+    assert_eq!((p.text.as_str(), p.runs.len()), ("abc", 2));
+    assert_eq!(p.props_of_char(1).italic, Some(true));
+}
