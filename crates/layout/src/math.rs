@@ -631,19 +631,18 @@ impl Ctx {
             last_gid = Some(g.gid);
         }
         b.w = x;
-        // Character boundaries: where the first glyph of each character starts.
+        // Character boundaries: where the first glyph of each character starts. The glyph for a
+        // boundary is never before the previous boundary's, so one walk of the glyphs finds all.
         let mut cuts = Vec::with_capacity(text.len() + 1);
+        let (mut j, mut gx) = (0usize, 0.0f32);
         for (cb, _) in text.char_indices() {
-            let mut gx = 0.0f32;
-            let mut found = None;
-            for g in &shaped {
-                if g.cluster >= cb {
-                    found = Some(gx);
-                    break;
-                }
+            while let Some(g) = shaped.get(j)
+                && g.cluster < cb
+            {
                 gx += g.x_advance as f32 * k;
+                j += 1;
             }
-            cuts.push(found.unwrap_or(x));
+            cuts.push(if j < shaped.len() { gx } else { x });
         }
         cuts.push(x);
         b.cuts = cuts;
@@ -2373,5 +2372,20 @@ mod tests {
                 assert!(m.width.is_finite() && m.descent.is_finite());
             }
         }
+    }
+
+    /// Finding 23: each character's boundary in a run of text was found by walking the run's
+    /// glyphs from the first.
+    #[test]
+    fn a_long_text_run_lays_out_in_linear_time() {
+        use crate::tests::{SCALE, cost_ratio};
+        use wordcraft_doc::math::*;
+        let eq = |n: usize| Math { nodes: vec![MNode::Run(MRun { nor: true, ..MRun::new("a".repeat(n)) })], ..Default::default() };
+        let (small, big) = (eq(400), eq(SCALE * 400));
+        // Each timed 16 times over, so the timings are long against the clock's tick.
+        let lay_16 = |m: &Math| (0..16).for_each(|_| drop(std::hint::black_box(lay_in(m, "", false, 1e6, &MathProps::default()))));
+        let (t1, tk, ratio) = cost_ratio(SCALE, || lay_16(&small), || lay_16(&big));
+        eprintln!("t(n) {t1:.4} s, t(8n) {tk:.4} s, ratio {ratio:.1}");
+        assert!(ratio < 24.0, "8x the text took {ratio:.1}x the time ({t1:.4} s → {tk:.4} s): not linear");
     }
 }
