@@ -49,6 +49,9 @@ const MAX_PARTS: usize = 50_000;
 /// headers, notes, text boxes), whatever the file's size. The working budget is tied to the
 /// WordDocument stream (see [`read`]); this caps even a maximal stream.
 const MAX_TOTAL_CHARS: u64 = 64 << 20;
+/// Bytes of piece Prm grpprls (Prcs, up to 64 KB each) interpreted per document; past it the
+/// remaining pieces' Prm formatting is skipped (#3692).
+const MAX_PRM_WORK: u64 = 64 << 20;
 /// `sprmCPicLocation`: the fc of a picture in the Data stream.
 const C_PIC_LOCATION: u16 = 0x6A03;
 /// `sprmCSymbol`: the record font and character of a symbol character ([MS-DOC] §2.6.1); the
@@ -239,6 +242,7 @@ pub fn read_with_password(bytes: &[u8], password: Option<&str>) -> Result<Docume
     // many times can, so the walk is held to twice the stream's size — generous for real files,
     // tight against aliasing — and never past the absolute ceiling.
     let budget = std::cell::Cell::new((word.len() as u64).saturating_mul(2).min(MAX_TOTAL_CHARS));
+    let prm_work = std::cell::Cell::new(MAX_PRM_WORK);
 
     let ctx = WalkCtx {
         word: &word,
@@ -254,6 +258,7 @@ pub fn read_with_password(bytes: &[u8], password: Option<&str>) -> Result<Docume
         drawn: &[],
         sect_ends: &[],
         budget: &budget,
+        prm_work: &prm_work,
     };
 
     // Drawings: text box stories become parts first, then the floating shapes and pictures
@@ -398,6 +403,8 @@ struct WalkCtx<'a> {
     /// footnotes, text boxes) are hostile and can each span a whole subdocument, so thousands of
     /// them could otherwise materialise the same text thousands of times; this bounds the total.
     budget: &'a std::cell::Cell<u64>,
+    /// Prm grpprl bytes still to interpret ([`MAX_PRM_WORK`]).
+    prm_work: &'a std::cell::Cell<u64>,
 }
 
 /// State while assembling one paragraph from per-CP formatting.
@@ -448,7 +455,7 @@ impl ParaBuild {
 /// The range is clamped to the last piece's CP, and unreadable stretches (gaps, truncated
 /// pieces) are skipped a whole piece at a time, so the work is bounded by the text that
 /// really exists, not by the CP numbers a file claims.
-fn walk(ctx: &WalkCtx, cp_start: u32, cp_end: u32, pics: &mut media::Pictures) -> Vec<ParaOut> {
+fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pictures) -> Vec<ParaOut> {
     let cp_end = cp_end.min(ctx.pieces.cp_end());
     let mut out = Vec::new();
     let mut pb = ParaBuild::default();
@@ -457,6 +464,7 @@ fn walk(ctx: &WalkCtx, cp_start: u32, cp_end: u32, pics: &mut media::Pictures) -
     // Field assembly state: instruction characters are swallowed, the result is kept until
     // the end character, then emitted as one object (hyperlinks keep their result text).
     let mut field: Option<FieldBuild> = None;
+    let mut memo: Option<FmtMemo<'a>> = None;
     while cp < cp_end {
         // Bookmark boundaries at this CP (main-document walks only; subdocument walks get
         // an empty table and `cp` never matches the main-document CPs).
@@ -604,16 +612,16 @@ fn walk(ctx: &WalkCtx, cp_start: u32, cp_end: u32, pics: &mut media::Pictures) -
                     pb.objects.push(InlineObject::NoteRef { kind: *kind, id: *id, custom: String::new() });
                 }
             }
-            '\t' => push_formatted(&mut pb, cp, '\t', ctx, field.as_mut()),
-            '\u{B}' => push_formatted(&mut pb, cp, '\n', ctx, field.as_mut()),
-            '\u{C}' => push_formatted(&mut pb, cp, '\u{C}', ctx, field.as_mut()),
-            '\u{E}' => push_formatted(&mut pb, cp, '\u{E}', ctx, field.as_mut()),
-            '\u{1E}' => push_formatted(&mut pb, cp, '\u{2011}', ctx, field.as_mut()),
-            '\u{1F}' => push_formatted(&mut pb, cp, '\u{AD}', ctx, field.as_mut()),
+            '\t' => push_formatted(&mut pb, cp, '\t', ctx, field.as_mut(), &mut memo),
+            '\u{B}' => push_formatted(&mut pb, cp, '\n', ctx, field.as_mut(), &mut memo),
+            '\u{C}' => push_formatted(&mut pb, cp, '\u{C}', ctx, field.as_mut(), &mut memo),
+            '\u{E}' => push_formatted(&mut pb, cp, '\u{E}', ctx, field.as_mut(), &mut memo),
+            '\u{1E}' => push_formatted(&mut pb, cp, '\u{2011}', ctx, field.as_mut(), &mut memo),
+            '\u{1F}' => push_formatted(&mut pb, cp, '\u{AD}', ctx, field.as_mut(), &mut memo),
             // Object anchors, comment references and other special characters are dropped
             // (or handled by later passes).
             c if (c as u32) < 0x20 => {}
-            c => push_formatted(&mut pb, cp, c, ctx, field.as_mut()),
+            c => push_formatted(&mut pb, cp, c, ctx, field.as_mut(), &mut memo),
         }
         cp = cp.saturating_add(units);
     }
@@ -789,19 +797,28 @@ fn num_of(ilfo: i32) -> Option<u32> {
 /// plus the piece's Prm, over the paragraph style's base character props. Inside a field,
 /// the character is recorded into the instruction or the cached result instead of (or as
 /// well as) the visible text.
-fn push_formatted(pb: &mut ParaBuild, cp: u32, c: char, ctx: &WalkCtx, field: Option<&mut FieldBuild>) {
+fn push_formatted<'a>(pb: &mut ParaBuild, cp: u32, c: char, ctx: &WalkCtx<'a>, field: Option<&mut FieldBuild>, memo: &mut Option<FmtMemo<'a>>) {
     let fc = ctx.pieces.fc_of_cp(cp).unwrap_or(0);
     let grpprl = ctx.chpx_bins.chpx(ctx.word, fc);
-    let default;
-    let base = match pb.props.style.as_deref().and_then(|id| ctx.sheet.get(id)) {
-        Some(st) => &st.chr,
+    let prm = ctx.pieces.prm_of(cp);
+    let style = pb.props.style.as_deref();
+    let mut props = match memo.as_ref().filter(|m| std::ptr::eq(m.chpx, grpprl) && m.prm == prm && m.style.as_deref() == style) {
+        Some(m) => m.props.clone(),
         None => {
-            default = CharProps::default();
-            &default
+            let default;
+            let base = match style.and_then(|id| ctx.sheet.get(id)) {
+                Some(st) => &st.chr,
+                None => {
+                    default = CharProps::default();
+                    &default
+                }
+            };
+            let mut props = char_props(grpprl, ctx.fonts, base);
+            apply_prm(&mut props, ctx.pieces.piece_prm(cp), ctx.fonts, base, ctx.prm_work);
+            *memo = Some(FmtMemo { chpx: grpprl, prm, style: style.map(str::to_owned), props: props.clone() });
+            props
         }
     };
-    let mut props = char_props(grpprl, ctx.fonts, base);
-    apply_prm(&mut props, ctx.pieces.piece_prm(cp), ctx.fonts, base);
     // A symbol character (Insert › Symbol) is stored as the placeholder U+0028 with
     // sprmCSymbol carrying the font and the character code ([MS-DOC] §2.6.1).
     let mut c = c;
@@ -826,8 +843,20 @@ fn push_formatted(pb: &mut ParaBuild, cp: u32, c: char, ctx: &WalkCtx, field: Op
     }
 }
 
-/// Apply a piece's Prm (Prm0 short sprm or Prm1 grpprl) to character properties.
-fn apply_prm(props: &mut CharProps, prm: PrmRef<'_>, fonts: &[String], base: &CharProps) {
+/// The last character formatting resolved, reused while the CHPX, the piece's Prm and the
+/// paragraph style stay the same, so a Prm grpprl (up to 64 KB) is interpreted once per
+/// formatting change, not once per character (#3692).
+struct FmtMemo<'a> {
+    /// The CHPX grpprl, compared by address: it is a slice of the WordDocument stream.
+    chpx: &'a [u8],
+    prm: u16,
+    style: Option<String>,
+    props: CharProps,
+}
+
+/// Apply a piece's Prm (Prm0 short sprm or Prm1 grpprl) to character properties. A Prm1
+/// grpprl is charged to `work`; once that is spent the grpprl is skipped.
+fn apply_prm(props: &mut CharProps, prm: PrmRef<'_>, fonts: &[String], base: &CharProps, work: &std::cell::Cell<u64>) {
     match prm {
         PrmRef::None => {}
         PrmRef::Sprm0 { isprm, val } => {
@@ -840,6 +869,8 @@ fn apply_prm(props: &mut CharProps, prm: PrmRef<'_>, fonts: &[String], base: &Ch
             }
         }
         PrmRef::Grpprl(Some(g)) => {
+            let Some(left) = work.get().checked_sub(g.len() as u64) else { return };
+            work.set(left);
             for prl in sprm::iter(g) {
                 if prl.sgc() == 2 {
                     fmt::apply_char(props, &prl, base, fonts);

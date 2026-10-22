@@ -2463,3 +2463,42 @@ fn hyperlink_target_copies_are_charged_to_the_char_budget() {
     assert_eq!(pb.runs.iter().filter(|r| r.props.link.is_some()).count(), 100);
     assert_eq!(budget.get(), 0);
 }
+
+/// #3692: a piece's Prm grpprl (a Prc of up to 64 KB) was re-interpreted for every character.
+/// It is now resolved once per formatting change.
+#[test]
+fn a_large_prc_is_interpreted_once_per_formatting_change() {
+    let prc = grpprl(&vec![(0x0835u16, &[0x01u8][..]); 21_000]);
+    let text: &'static str = Box::leak(format!("{}\r", "a".repeat(100_000)).into_boxed_str());
+    let spec = RichSpec {
+        text,
+        styles: vec![(1, 0x0FFF, "Normal", Vec::new(), Vec::new())],
+        fonts: vec!["Times New Roman"],
+        chpx_runs: vec![(0, Vec::new())],
+        papx_entries: vec![(0, 0, Vec::new())],
+    };
+    let bytes = rich_doc_with(&spec, &RichExtra { prcs: vec![prc], prm: 0x0001, ..Default::default() });
+    let t = std::time::Instant::now();
+    let doc = read(&bytes).expect("opens");
+    assert!(t.elapsed().as_millis() < 1000, "opened in {:?}", t.elapsed());
+    let p = para0(&doc);
+    assert_eq!(p.runs.len(), 1);
+    assert_eq!(p.runs.first().and_then(|r| r.props.bold), Some(true));
+}
+
+/// #3692: Prm grpprls are charged to a document-wide work budget; once it is spent the Prm
+/// is skipped (the text keeps its CHPX formatting).
+#[test]
+fn prm_grpprls_past_the_work_budget_are_skipped() {
+    use wordcraft_doc::props::CharProps;
+    let g = grpprl(&[(0x0835, &[0x01])]);
+    let work = std::cell::Cell::new(g.len() as u64 + 1);
+    let base = CharProps::default();
+    let mut first = CharProps::default();
+    super::apply_prm(&mut first, crate::piece::PrmRef::Grpprl(Some(&g)), &[], &base, &work);
+    assert_eq!(first.bold, Some(true));
+    let mut second = CharProps::default();
+    super::apply_prm(&mut second, crate::piece::PrmRef::Grpprl(Some(&g)), &[], &base, &work);
+    assert_eq!(second.bold, None);
+    assert_eq!(work.get(), 1);
+}
