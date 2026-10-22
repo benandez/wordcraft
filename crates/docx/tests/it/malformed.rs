@@ -265,3 +265,12 @@ fn long_header_reference_chain_is_cut_off() {
     assert!(!d.parts.is_empty());
     assert!(d.parts.len() <= 8, "followed {} chained headers", d.parts.len());
 }
+
+/// #3642: a compound file whose DIFAT names one FAT sector thousands of times is refused by the
+/// encrypted-package sniff (reached for any `.docx` name) before `cfb` builds its FAT.
+#[test]
+fn a_repeating_difat_is_refused_before_cfb_opens_it() {
+    let f = wordcraft_doc::cfb_guard::repeating_difat_sample();
+    assert!(!wordcraft_docx::is_encrypted(&f));
+    assert!(matches!(wordcraft_docx::decrypt(&f, None), Err(e) if e.to_string().contains("FAT sectors in a file of")));
+}

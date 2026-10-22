@@ -44,7 +44,7 @@ const TABLE: u16 = 0x0236;
 
 /// Whether `bytes` is a compound file holding an Excel workbook stream.
 pub fn is_xls(bytes: &[u8]) -> bool {
-    if !bytes.starts_with(&MAGIC) {
+    if !bytes.starts_with(&MAGIC) || wordcraft_doc::cfb_guard::check(bytes).is_err() {
         return false;
     }
     let Ok(comp) = cfb::CompoundFile::open(Cursor::new(bytes)) else { return false };
@@ -68,6 +68,7 @@ pub fn read_rows(bytes: &[u8], pick: super::Pick<'_>) -> Result<(Vec<String>, Ve
 }
 
 fn workbook_stream(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    wordcraft_doc::cfb_guard::check(bytes).map_err(|e| format!("not a valid Excel 97–2003 workbook ({e})"))?;
     let mut comp = cfb::CompoundFile::open(Cursor::new(bytes)).map_err(|e| format!("not a valid Excel 97–2003 workbook ({e})"))?;
     if !comp.is_stream("/Workbook") {
         if comp.is_stream("/Book") {
@@ -538,6 +539,15 @@ mod tests {
 
     fn rows(r: &[&[&str]]) -> Vec<Vec<String>> {
         r.iter().map(|r| r.iter().map(|c| c.to_string()).collect()).collect()
+    }
+
+    /// #3642: a DIFAT naming one FAT sector thousands of times is refused before `cfb` builds
+    /// a FAT far larger than the file.
+    #[test]
+    fn a_repeating_difat_is_refused_before_cfb_opens_it() {
+        let f = wordcraft_doc::cfb_guard::repeating_difat_sample();
+        assert!(!is_xls(&f));
+        assert!(sheet_names(&f).is_err_and(|e| e.contains("FAT sectors in a file of")));
     }
 
     #[test]
