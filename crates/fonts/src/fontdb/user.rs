@@ -366,7 +366,8 @@ impl FontDb {
                     None
                 }
                 Err(e) => {
-                    log::warn!("couldn't store the font {name} in {}: {e}", dir.display());
+                    // Debug-quoted: a line break in the supplied name must not start a forged log record.
+                    log::warn!("couldn't store the font {name:?} in {}: {e}", dir.display());
                     Some(format!("added for this session only: couldn't store it in {}: {e}", dir.display()))
                 }
             },
@@ -901,6 +902,44 @@ pub(crate) mod tests {
         assert!(!path.exists());
         assert!(next.user_fonts().is_empty());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The messages logged while this test binary runs.
+    fn logged() -> &'static std::sync::Mutex<Vec<String>> {
+        static LOG: std::sync::OnceLock<std::sync::Mutex<Vec<String>>> = std::sync::OnceLock::new();
+        struct Capture;
+        impl log::Log for Capture {
+            fn enabled(&self, _: &log::Metadata) -> bool {
+                true
+            }
+            fn log(&self, r: &log::Record) {
+                if let Some(l) = LOG.get() {
+                    l.lock().unwrap().push(r.args().to_string());
+                }
+            }
+            fn flush(&self) {}
+        }
+        LOG.get_or_init(|| {
+            let _ = log::set_logger(&Capture);
+            log::set_max_level(log::LevelFilter::Warn);
+            std::sync::Mutex::new(Vec::new())
+        })
+    }
+
+    #[test]
+    fn a_supplied_name_is_logged_escaped() {
+        // #3692: a line break in the name must not start a forged record in the log file.
+        let log = logged();
+        let not_a_folder = temp_dir("not-a-folder");
+        std::fs::write(&not_a_folder, b"x").unwrap();
+        let db = db();
+        db.load_user_fonts(&not_a_folder);
+        let r = db.install_font("a\nERROR forged record.ttf", &renamed("SourceSans3-Regular.ttf", FAMILY)).unwrap();
+        assert!(r.warning.is_some(), "the font can't be stored");
+        let lines = log.lock().unwrap();
+        let line = lines.iter().find(|l| l.contains("forged record")).unwrap();
+        assert!(!line.contains('\n'), "{line}");
+        let _ = std::fs::remove_file(&not_a_folder);
     }
 
     #[test]

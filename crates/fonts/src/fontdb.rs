@@ -194,13 +194,13 @@ impl FontFace {
                     self.location(),
                     HintingOptions { engine: Engine::Interpreter, target: Target::Mono },
                 )
-                .map_err(|e| log::warn!("Cannot initialize outline interpreter for {}: {e}", self.family))
+                .map_err(|e| log::warn!("Cannot initialize outline interpreter for {:?}: {e}", self.family))
                 .ok()
             });
             let settings =
                 hinter.as_ref().map_or_else(|| DrawSettings::unhinted(Size::unscaled(), self.location()), |h| DrawSettings::hinted(h, false));
             if let Err(e) = g.draw(settings, &mut pen) {
-                log::warn!("Cannot draw glyph {gid} in {}: {e}", self.family);
+                log::warn!("Cannot draw glyph {gid} in {:?}: {e}", self.family);
                 return BezPath::new();
             }
         }
