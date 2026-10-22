@@ -265,3 +265,32 @@ fn long_header_reference_chain_is_cut_off() {
     assert!(!d.parts.is_empty());
     assert!(d.parts.len() <= 8, "followed {} chained headers", d.parts.len());
 }
+
+#[test]
+fn comments_with_non_numeric_ids_open_in_linear_time() {
+    // Each generated id was checked against every id given so far, so a comments part with many
+    // ids that aren't numbers took time quadratic in their count (#3692).
+    const RELS_NS: &str = "http://schemas.openxmlformats.org/package/2006/relationships";
+    const COMMENTS_REL: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments";
+    let n = 49_000;
+    let mut comments = format!("<w:comments {W_NS}>");
+    for i in 0..n {
+        comments.push_str(&format!(r#"<w:comment w:id="c{i}" w:author="A"><w:p/></w:comment>"#));
+    }
+    comments.push_str("</w:comments>");
+    let doc = format!("<w:document {W_NS}><w:body><w:p><w:r><w:t>body</w:t></w:r></w:p></w:body></w:document>");
+    let rels = format!(r#"<Relationships xmlns="{RELS_NS}"><Relationship Id="rId1" Type="{COMMENTS_REL}" Target="comments.xml"/></Relationships>"#);
+    let z = zip(&[
+        ("_rels/.rels", ROOT_RELS.as_bytes()),
+        ("word/document.xml", doc.as_bytes()),
+        ("word/_rels/document.xml.rels", rels.as_bytes()),
+        ("word/comments.xml", comments.as_bytes()),
+    ]);
+    let t = std::time::Instant::now();
+    let d = read(&z).unwrap();
+    let took = t.elapsed();
+    assert_eq!(d.comments.len(), n);
+    let ids: std::collections::HashSet<_> = d.comments.keys().collect();
+    assert_eq!(ids.len(), n, "every comment has its own id");
+    assert!(took.as_secs_f32() < 2.0, "opening took {took:?}");
+}
