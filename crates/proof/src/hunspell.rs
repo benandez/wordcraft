@@ -329,13 +329,12 @@ mod tests {
         // One byte over the cap (sparse: nothing is written) is refused without reading it.
         let big = dir.join("big.dic");
         std::fs::File::create(&big).unwrap().set_len(MAX_FILE + 1).unwrap();
-        let t = std::time::Instant::now();
         assert!(load(&aff, &big).unwrap_err().contains("too large"));
-        // A directory, and on Unix an endless device, are not dictionary files.
+        // A directory, and on Unix an endless device, are not dictionary files. (No clock: a
+        // reader that read `/dev/zero` would never return, so the error itself is the proof.)
         assert!(load(&aff, &dir).unwrap_err().contains("not a regular file"));
         #[cfg(unix)]
         assert!(load(&aff, Path::new("/dev/zero")).unwrap_err().contains("not a regular file"));
-        assert!(t.elapsed().as_secs_f64() < 1.0, "{:?}", t.elapsed());
         // Turkish reads through the same reader.
         let (tr_aff, tr_dic) = (dir.join("tr_TR.aff"), dir.join("tr_TR.dic"));
         std::fs::write(&tr_aff, "SET UTF-8\nSFX 1 Y 1\nSFX 1 0 lar .\n").unwrap();

@@ -298,7 +298,8 @@ mod tests {
         assert!(suggest_with(&d, &long, 8).is_empty());
         assert!(!d.contains(&long) && !d.contains(&format!("kitap{long}")));
         assert!(!super::super::is_correct_with(&d, &long));
-        assert!(t.elapsed().as_secs_f64() < 1.0, "{:?}", t.elapsed());
+        // Tens of milliseconds with the caps; without them this ran for over 5 minutes.
+        assert!(t.elapsed().as_secs_f64() < 10.0, "{:?}", t.elapsed());
     }
 
     #[test]

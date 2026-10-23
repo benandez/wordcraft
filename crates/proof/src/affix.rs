@@ -1310,11 +1310,13 @@ pub(crate) mod tests {
     #[test]
     fn self_continuing_rules_check_in_linear_time() {
         // Thousands of empty-append rules that continue with their own flag: each check used to
-        // follow every rule from every rule, millions of steps a word (#3613).
-        let d = many_rules(16_000, |_| "0 0/A .".into());
+        // follow every rule from every rule, millions of steps a word (#3613). The checks take
+        // about a millisecond; the old checker took 14 s for two of them at 16,000 rules, so at
+        // 40,000 (quadratic: minutes) the 10 s bound leaves a busy machine a wide margin.
+        let d = many_rules(40_000, |_| "0 0/A .".into());
         let t = std::time::Instant::now();
         assert!(d.check("kot") && !d.check("pies") && !d.check("kotx"));
-        assert!(t.elapsed().as_secs_f64() < 2.0, "{:?}", t.elapsed());
+        assert!(t.elapsed().as_secs_f64() < 10.0, "{:?}", t.elapsed());
     }
 
     #[test]
@@ -1324,7 +1326,9 @@ pub(crate) mod tests {
         let distinct = many_rules(3000, |i| format!("0 x{i}/A ."));
         let t = std::time::Instant::now();
         let (a, b) = (same.forms("kot"), distinct.forms("kot"));
-        assert!(t.elapsed().as_secs_f64() < 2.0, "{:?}", t.elapsed());
+        // The cap on the count is what tells the old code (9 million forms each) apart; the
+        // generous time bound (tens of ms here) only backs up the rule-visit cap.
+        assert!(t.elapsed().as_secs_f64() < 10.0, "{:?}", t.elapsed());
         assert!(a.len() <= MAX_FORMS && b.len() <= MAX_FORMS, "{} {}", a.len(), b.len());
         assert!(b.iter().any(|f| f == "kotx0x1"), "chained forms are still listed");
     }
@@ -1332,11 +1336,13 @@ pub(crate) mod tests {
     #[test]
     fn many_strips_per_suffix_index_in_linear_time() {
         // One append with thousands of strips: the index used to scan the append's groups for
-        // each rule.
+        // each rule. Building 200,000 rules takes well under a second; the old index took 3 s at
+        // 30,000 and over 10 minutes at 300,000.
+        let n = 200_000;
         let t = std::time::Instant::now();
-        let d = many_rules(30_000, |i| format!("k{i} y ."));
-        assert!(t.elapsed().as_secs_f64() < 2.0, "{:?}", t.elapsed());
-        assert_eq!(d.sfx_index.get("y").map(Vec::len), Some(30_000));
+        let d = many_rules(n, |i| format!("k{i} y ."));
+        assert!(t.elapsed().as_secs_f64() < 10.0, "{:?}", t.elapsed());
+        assert_eq!(d.sfx_index.get("y").map(Vec::len), Some(n));
         assert!(!d.contains("koty"));
     }
 
