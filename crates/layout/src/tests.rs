@@ -405,6 +405,36 @@ fn selection_bar_finds_the_line_beside_the_pointer() {
 }
 
 #[test]
+fn selection_bar_of_a_right_to_left_paragraph_is_in_the_right_margin() {
+    // Paragraph 0 reads left to right, paragraph 1 right to left, paragraph 2 left to right.
+    let mut d = Document::from_text("Left one\n\u{5e9}\u{5dc}\u{5d5}\u{5dd} \u{5e9}\u{5dc}\u{5d5}\u{5dd}\nLeft two");
+    let at = Pos::body(1, 0);
+    d.format_paragraphs(&at, &at, &|p: &mut ParaProps| p.bidi = Some(true)).unwrap();
+    let l = lay(&d);
+    let p = &l.pages[0];
+    let mid = |i: usize| {
+        let c = l.caret(&Pos::body(i, 0)).unwrap();
+        c.top + c.height / 2.0
+    };
+    let (left_x, right_x) = (p.body.x / 2.0, (p.body.right() + p.w) / 2.0);
+    // The right-to-left paragraph: the bar is on the right, not the left.
+    assert_eq!(l.selection_bar_at(0, right_x, mid(1)).map(|q| q.path), Some(Path::top(1)));
+    assert_eq!(l.selection_bar_at(0, left_x, mid(1)), None);
+    // Left-to-right neighbours keep the left margin only (each line uses its own side).
+    assert_eq!(l.selection_bar_at(0, left_x, mid(0)), Some(Pos::body(0, 0)));
+    assert_eq!(l.selection_bar_at(0, right_x, mid(0)), None);
+    assert_eq!(l.selection_bar_at(0, left_x, mid(2)), Some(Pos::body(2, 0)));
+    assert_eq!(l.selection_bar_at(0, right_x, mid(2)), None);
+    // Not in the text column, off the page, or hostile numbers.
+    assert_eq!(l.selection_bar_at(0, p.body.right() - 5.0, mid(1)), None);
+    assert_eq!(l.selection_bar_at(0, p.w + 5.0, mid(1)), None);
+    assert_eq!(l.selection_bar_at(0, f32::INFINITY, mid(1)), None);
+    // The line span is the whole line, as for the left bar.
+    let q = l.selection_bar_at(0, right_x, mid(1)).unwrap();
+    assert!(l.line_span(&q, 0).is_some());
+}
+
+#[test]
 fn deletions_leave_the_final_text_layout() {
     // "Keep " + deleted "DELETEDTEXT " (5..17) + inserted "INSERTED".
     let mut d = Document::from_text("Keep DELETEDTEXT INSERTED");

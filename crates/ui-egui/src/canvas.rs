@@ -71,7 +71,7 @@ pub struct CanvasState {
     column_drag: Option<((usize, f32, f32), (usize, f32, f32))>,
     /// The last primary press on the page (time, screen point, clicks in a row), to count
     /// double- and triple-presses as they go down (egui reports them on release).
-    last_press: Option<(f64, Pos2, u8)>,
+    pub(crate) last_press: Option<(f64, Pos2, u8)>,
     /// The first press of the current run of presses moved header/footer editing into another
     /// header/footer; the double-click it starts doesn't select a word there.
     hf_press_switched: bool,
@@ -324,9 +324,17 @@ struct UnitDrag {
     last: Pos,
 }
 
+/// After a whole-document selection from a press (not a line, so it can't grow): holds the press
+/// so its release isn't a caret click.
+pub(crate) fn hold_document_selection(app: &mut WordApp, clicks: u8) {
+    let (start, end) = app.session.sel.ordered();
+    app.canvas.unit_drag = Some(UnitDrag { unit: "document", clicks, start, last: end.clone(), end });
+    app.canvas.dragging = true;
+}
+
 /// Clicks in a row for a press at `at` (time `now`) after `last`: within the double-click
 /// delay and distance it counts up to 3 (a triple-click), otherwise it starts again at 1.
-fn press_count(last: Option<(f64, Pos2, u8)>, now: f64, at: Pos2, delay: f64, dist: f32) -> u8 {
+pub(crate) fn press_count(last: Option<(f64, Pos2, u8)>, now: f64, at: Pos2, delay: f64, dist: f32) -> u8 {
     match last {
         Some((t, p, n)) if now - t >= 0.0 && now - t < delay && p.distance(at) <= dist => n.saturating_add(1).min(3),
         _ => 1,
@@ -4463,6 +4471,61 @@ mod tests {
         h.event(Event::PointerMoved(at));
         h.step();
         assert_eq!(h.output().platform_output.cursor_icon, egui::CursorIcon::Default);
+    }
+
+    /// A right-to-left paragraph's selection bar is the right margin; the left margin beside it
+    /// is nothing special (a click there is the caret's).
+    #[test]
+    fn selection_bar_of_a_right_to_left_paragraph_is_on_the_right() {
+        use egui::{Event, PointerButton};
+        let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
+        a.run("text.insert", json!({"text": "First para\r\u{5e9}\u{5dc}\u{5d5}\u{5dd} \u{5e9}\u{5dc}\u{5d5}\u{5dd}\rThird para"})).unwrap();
+        a.run("caret.set", json!({"pos": serde_json::to_value(Pos::body(1, 0)).unwrap()})).unwrap();
+        a.run("para.rtl", json!({})).unwrap();
+        a.run("view.commentsPane", json!({"value": false})).unwrap();
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).with_step_dt(1.0 / 60.0).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            a,
+        );
+        for _ in 0..6 {
+            h.step();
+        }
+        let c = h.state_mut().session.layout().caret(&Pos::body(1, 0)).expect("caret");
+        let (body_x, page_w) = {
+            let l = h.state_mut().session.layout();
+            (l.pages[c.page].body.right(), l.pages[c.page].w)
+        };
+        let y = c.top + c.height / 2.0;
+        let right = page_to_screen(h.state_mut(), c.page, (body_x + page_w) / 2.0, y).expect("on screen");
+        let left = page_to_screen(h.state_mut(), c.page, 30.0, y).expect("on screen");
+        let click = |h: &mut egui_kittest::Harness<'_, WordApp>, at: Pos2| {
+            h.event(Event::PointerMoved(at));
+            h.step();
+            h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: true, modifiers: Default::default() });
+            h.step();
+            h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: false, modifiers: Default::default() });
+            for _ in 0..3 {
+                h.step();
+            }
+        };
+        h.event(Event::PointerMoved(right));
+        h.step();
+        assert_eq!(h.output().platform_output.cursor_icon, egui::CursorIcon::Default, "the bar's arrow on the right");
+        click(&mut h, right);
+        let (s, e) = h.state().session.sel.ordered();
+        assert_eq!(s, Pos::body(1, 0), "the line is selected");
+        assert!(e > s && (e.path == wordcraft_doc::Path::top(1) || e == Pos::body(2, 0)), "{s:?}..{e:?}");
+        // Beside it on the left: no bar (not the bar's arrow, and a caret, not a line selection).
+        // The cursor there is the text cursor, or none at all on some platforms' test windows.
+        h.event(Event::PointerMoved(left));
+        h.step();
+        assert_ne!(h.output().platform_output.cursor_icon, egui::CursorIcon::Default);
+        click(&mut h, left);
+        assert!(h.state().session.sel.is_collapsed(), "a click in the left margin beside it is a caret, not a line");
     }
 
     /// #3453: while the Format Painter is armed the pointer over the text says so, and it goes
