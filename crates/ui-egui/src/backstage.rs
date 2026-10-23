@@ -85,15 +85,18 @@ pub fn show(app: &mut WordApp, ui: &mut Ui, enter: f32) {
                 let (r, resp) = ui.add_enabled_ui(on, |ui| ui.allocate_exact_size(vec2(200.0, 38.0), Sense::click())).inner;
                 resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, on, tl!(label)));
                 let active = app.ui.backstage_page == id;
-                if active {
-                    ui.painter().rect_filled(r, 0.0, egui::Color32::from_white_alpha(46));
-                } else if on && resp.hovered() {
-                    ui.painter().rect_filled(r, 0.0, egui::Color32::from_white_alpha(26));
+                // The hover fades in and out, and the label eases a little to the right.
+                let h = ui.ctx().animate_bool_responsive(resp.id.with("hover"), on && resp.hovered());
+                let wash = if active { 46.0 } else { 0.0 };
+                let wash = wash.max(26.0 * h) as u8;
+                if wash > 0 {
+                    ui.painter().rect_filled(r, 0.0, egui::Color32::from_white_alpha(wash));
                 }
+                let nudge = 3.0 * h;
                 let ink = if on { egui::Color32::WHITE } else { egui::Color32::from_white_alpha(110) };
-                icons::paint(ui.painter(), Rect::from_center_size(pos2(r.min.x + 31.0, r.center().y), vec2(18.0, 18.0)), icon, ink, ink);
+                icons::paint(ui.painter(), Rect::from_center_size(pos2(r.min.x + 31.0 + nudge, r.center().y), vec2(18.0, 18.0)), icon, ink, ink);
                 ui.painter().text(
-                    pos2(r.min.x + 52.0, r.center().y),
+                    pos2(r.min.x + 52.0 + nudge, r.center().y),
                     Align2::LEFT_CENTER,
                     tl!(label),
                     if active { semibold(14.0) } else { medium(14.0) },
@@ -132,8 +135,9 @@ pub fn show(app: &mut WordApp, ui: &mut Ui, enter: f32) {
                 for (label, id) in [("About", "about"), ("Discord community", "discord")] {
                     let (r, resp) = ui.allocate_exact_size(vec2(200.0, 32.0), Sense::click());
                     resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), tl!(label)));
-                    if resp.hovered() {
-                        ui.painter().rect_filled(r, 0.0, egui::Color32::from_white_alpha(26));
+                    let h = ui.ctx().animate_bool_responsive(resp.id.with("hover"), resp.hovered());
+                    if h > 0.0 {
+                        ui.painter().rect_filled(r, 0.0, egui::Color32::from_white_alpha((26.0 * h) as u8));
                     }
                     ui.painter().text(pos2(r.min.x + 22.0, r.center().y), Align2::LEFT_CENTER, tl!(label), regular(13.0), egui::Color32::WHITE);
                     if resp.clicked() {
