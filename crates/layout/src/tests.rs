@@ -10723,6 +10723,34 @@ fn layout_cache_invalidates_on_changed_filepath() {
     assert_eq!(text_b, "/path/two/a.docx", "second layout with same cache shows /path/two/a.docx");
 }
 
+/// A kept-together paragraph starting a continuous section low on a page, with room there for
+/// one of its lines, moves whole to the next page, where it fits (#3907 review).
+#[test]
+fn kept_lines_at_a_low_continuous_section_move_to_the_next_page() {
+    use wordcraft_doc::props::LineSpacing;
+    use wordcraft_doc::section::{SectionProps, SectionStart};
+    let fill = 53; // 53 lines of 12 pt leave one line of a 648 pt body
+    let text = format!("{}{}", "x\n".repeat(fill), "word ".repeat(40));
+    let mut d = Document::from_text(&text);
+    for i in 0..=fill {
+        let p = d.para_mut(StoryRef::Body, &Path::top(i)).unwrap();
+        p.props.line_spacing = Some(LineSpacing::Exactly(12.0));
+        p.props.space_before = Some(0.0);
+        p.props.space_after = Some(0.0);
+    }
+    d.para_mut(StoryRef::Body, &Path::top(fill - 1)).unwrap().section =
+        Some(Box::new(SectionProps { start: SectionStart::Continuous, ..Default::default() }));
+    d.last_section.start = SectionStart::Continuous;
+    let kept = d.para_mut(StoryRef::Body, &Path::top(fill)).unwrap();
+    kept.props.keep_lines = Some(true);
+    kept.props.widow_control = Some(false);
+    let l = lay(&d);
+    let last_x = l.caret(&Pos::body(fill - 1, 0)).unwrap();
+    let first = l.caret(&Pos::body(fill, 0)).unwrap();
+    assert_eq!(last_x.page, 0, "the filler fits on page 1: {last_x:?}");
+    assert_eq!(first.page, 1, "kept paragraph moves whole: {first:?}");
+}
+
 /// Sections starting continuously one after another still go onto new pages: a paragraph that
 /// doesn't fit below the text above it moves on rather than running off the page (#3907). A
 /// hundred one-line sections lay out like a hundred plain paragraphs.
