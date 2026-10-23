@@ -61,7 +61,7 @@ pub fn suggest(word: &str, max: usize) -> Vec<String> {
 /// Suggest with a given dictionary.
 pub fn suggest_with(d: &TrDict, word: &str, max: usize) -> Vec<String> {
     let n = word.chars().count();
-    if n == 0 || n > MAX_LETTERS || max == 0 || word.contains(char::is_whitespace) {
+    if n == 0 || n > MAX_LETTERS || max == 0 {
         return Vec::new();
     }
 
@@ -78,6 +78,10 @@ pub fn suggest_with(d: &TrDict, word: &str, max: usize) -> Vec<String> {
                 return suggestions;
             }
         }
+    }
+    // Only the table takes more than one word (`bir kaç`).
+    if word.contains(char::is_whitespace) {
+        return suggestions;
     }
 
     // 2. Diacritic substitutions (`c` -> `ç`, `g` -> `ğ`, `ı` -> `i`, `o` -> `ö`, `s` -> `ş`, `u` -> `ü`)
@@ -295,6 +299,14 @@ mod tests {
         assert!(!d.contains(&long) && !d.contains(&format!("kitap{long}")));
         assert!(!super::super::is_correct_with(&d, &long));
         assert!(t.elapsed().as_secs_f64() < 1.0, "{:?}", t.elapsed());
+    }
+
+    #[test]
+    fn two_words_get_only_the_tables_replacement() {
+        let d = TrDict::from_hunspell("SET UTF-8\n", "2\nbirkaç\nsonra\n").unwrap();
+        assert_eq!(suggest_with(&d, "bir kaç", 3), vec!["birkaç".to_string()]);
+        assert_eq!(suggest_with(&d, "Bir kaç", 3), vec!["birkaç".to_string()]);
+        assert!(suggest_with(&d, "sorna sorna", 3).is_empty());
     }
 
     #[test]
