@@ -110,8 +110,15 @@ const MAX_HINT_GLYPH_BYTES: usize = 256 * 1024;
 /// still take seconds for one glyph, so [`MIN_HINT_STRIKES`] strikes that are also at least one
 /// in [`HINT_SLOW_RATIO`] of its hinted draws turn hinting off: a face that is slow throughout
 /// stops after a few glyphs, while the odd draw slowed by a busy machine leaves a face hinted.
-/// ponytail: wall-clock, not interpreter work (skrifa has no work bound yet, #3827). Native only
-/// (no clock on wasm).
+///
+/// Wall-clock, not interpreter work: skrifa's own budget (a million instructions a program, not
+/// settable) counts instructions, not the points each one moves, and it exposes no count of the
+/// work done, so time is the only measure there is (#3827). Whether such a face stays hinted can
+/// therefore depend on the machine, by design: only faces that need the interpreter to assemble
+/// their contours (legacy CJK fonts such as DFKai-SB) are hinted at all, and those typically hint
+/// a glyph in microseconds, so 50 ms is far above an honest face on a loaded machine; a face
+/// that trips it is drawn unhinted (its outlines possibly misassembled) rather than freezing the
+/// app. Native only (no clock on wasm).
 #[cfg(not(target_arch = "wasm32"))]
 const HINT_STRIKE: std::time::Duration = std::time::Duration::from_millis(50);
 #[cfg(not(target_arch = "wasm32"))]
