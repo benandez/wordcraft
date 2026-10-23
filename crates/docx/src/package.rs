@@ -248,21 +248,26 @@ impl Package {
         Package::new(files.into_iter().map(|(name, bytes)| (name, Arc::new(bytes))).collect())
     }
 
-    fn new(files: BTreeMap<String, Arc<Vec<u8>>>) -> Package {
+    fn new(mut files: BTreeMap<String, Arc<Vec<u8>>>) -> Package {
         let mut lower = HashMap::new();
         for name in files.keys() {
             lower.entry(name.to_ascii_lowercase()).or_insert_with(|| name.clone());
         }
+        // Entries whose names differ only in case are one part: keep the first spelling, so every
+        // spelling of the name reaches the same stored entry (#3704).
+        files.retain(|name, _| {
+            let kept = lower.get(&name.to_ascii_lowercase()) == Some(name);
+            if !kept {
+                log::warn!("docx: dropping zip entry {name}, a second spelling of a part");
+            }
+            kept
+        });
         Package { files, lower }
     }
 
-    /// The stored spelling of part `name` (leading `/` ignored; case-insensitive fallback).
+    /// The stored spelling of part `name` (leading `/` ignored; case-insensitive).
     pub fn canonical(&self, name: &str) -> Option<&str> {
-        let n = name.trim_start_matches('/');
-        match self.files.get_key_value(n) {
-            Some((k, _)) => Some(k),
-            None => self.lower.get(&n.to_ascii_lowercase()).map(String::as_str),
-        }
+        self.lower.get(&name.trim_start_matches('/').to_ascii_lowercase()).map(String::as_str)
     }
 
     /// Part bytes by name (leading `/` ignored; case-insensitive fallback).
@@ -435,6 +440,17 @@ mod tests {
     fn zip_of(entries: &[(&str, Vec<u8>)]) -> Vec<u8> {
         let e: Vec<(String, Vec<u8>)> = entries.iter().map(|(n, b)| (n.to_string(), b.clone())).collect();
         zip_entries(&e).unwrap()
+    }
+
+    #[test]
+    fn case_colliding_entries_are_one_part() {
+        let z = zip_of(&[("word/media/Image.png", b"upper".to_vec()), ("word/media/image.png", b"lower".to_vec())]);
+        let p = Package::open(&z).unwrap();
+        for spelling in ["word/media/Image.png", "word/media/image.png", "/WORD/MEDIA/IMAGE.PNG"] {
+            assert_eq!(p.canonical(spelling), Some("word/media/Image.png"), "{spelling}");
+            assert_eq!(p.get(spelling), Some(&b"upper"[..]), "{spelling}");
+        }
+        assert_eq!(p.files.len(), 1);
     }
 
     #[test]
