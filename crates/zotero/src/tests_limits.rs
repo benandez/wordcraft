@@ -34,11 +34,10 @@ fn a_note_referenced_many_times_is_listed_once() {
     let note = doc.add_part(PartKind::Endnote, vec![para_block(objects_para(citations(200)))]);
     let refs = (0..5_000).map(|_| InlineObject::NoteRef { kind: NoteKind::Endnote, id: note, custom: String::new() }).collect();
     doc.body = vec![para_block(objects_para(refs))];
-    let t = Instant::now();
+    // No clock: listing the note once per reference gave a million fields, which the count catches.
     let list = fields::list(&doc);
     assert_eq!(list.len(), 200, "each field once, at the note's first reference");
     assert!(list.iter().all(|f| f.start.story == StoryRef::Part(note) && f.note_index == 1));
-    assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
 }
 
 #[test]
@@ -66,7 +65,8 @@ fn rich_text_with_many_runs_is_linear() {
     assert_eq!(p.text, "ab".repeat(50_000));
     assert_eq!(p.runs.len(), 100_000);
     assert_eq!(p.runs.iter().map(|r| r.len).sum::<usize>(), p.text.len());
-    assert!(elapsed < Duration::from_secs(2), "{elapsed:?}");
+    // Under half a second on a loaded machine; merging again after every run ran past 9 minutes.
+    assert!(elapsed < Duration::from_secs(10), "{elapsed:?}");
     // Neighbours with the same formatting are one run.
     let frag = crate::rich::fragment("<i>a</i><i>b</i>c", true, &CharProps::default());
     let Some(wordcraft_doc::Block::Para(p)) = frag.blocks.first() else { panic!("no paragraph") };
@@ -84,7 +84,9 @@ fn call(b: &mut Bridge, s: &mut Session, method: &str, args: Value) -> Result<Va
 #[test]
 fn convert_with_one_id_repeated_is_one_check() {
     let mut doc = Document::from_text("");
-    doc.body = (0..300).map(|_| para_block(objects_para(citations(1)))).collect();
+    // Checking each id against a fresh list of the fields took 81 s with 300 of them; with 1,000
+    // that is minutes, against milliseconds for one indexed list.
+    doc.body = (0..1000).map(|_| para_block(objects_para(citations(1)))).collect();
     let mut s = Session::new(doc);
     let mut b = Bridge::new();
     call(&mut b, &mut s, "Application_getActiveDocument", json!([3])).unwrap();
@@ -94,7 +96,7 @@ fn convert_with_one_id_repeated_is_one_check() {
     let before = format!("{:?}", s.doc.body);
     let t = Instant::now();
     call(&mut b, &mut s, "Document_convert", json!([1, ids, 0, 0])).unwrap();
-    assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
+    assert!(t.elapsed() < Duration::from_secs(10), "{:?}", t.elapsed());
     assert_eq!(format!("{:?}", s.doc.body), before, "already in the text: nothing to do");
     // An unknown id is refused before anything moves.
     let r = call(&mut b, &mut s, "Document_convert", json!([1, [first.clone(), 999_999_999u64], 0, [1, 1]]));
