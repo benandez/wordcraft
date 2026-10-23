@@ -549,6 +549,11 @@ fn unique_name(name: &str, taken: impl Fn(&str) -> bool) -> String {
 /// Write `bytes` to a new file in `dir` named `name` (or a numbered variant when that exists),
 /// through a temporary file so a crash never leaves half a font.
 fn write_unique(dir: &Path, name: &str, bytes: &[u8]) -> std::io::Result<PathBuf> {
+    // One store at a time: two adds racing for the same name would otherwise pick the same file
+    // and unlink each other's temporary. ponytail: in-process only; two app instances adding the
+    // same name at the same instant can still collide (the later rename wins).
+    static STORE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _held = STORE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     std::fs::create_dir_all(dir)?;
     let name = unique_name(name, |n| dir.join(n).exists());
     let path = dir.join(&name);
@@ -985,5 +990,27 @@ pub(crate) mod tests {
         std::fs::write(dir.join(".b.ttf.part"), b"half a font").unwrap();
         assert_eq!(std::fs::read(write_unique(&dir, "b.ttf", b"whole").unwrap()).unwrap(), b"whole");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn fonts_stored_at_once_under_one_name_each_get_their_own_file() {
+        // #3703 review: concurrent adds of one name never share a temporary or a destination.
+        let dir = std::env::temp_dir().join(format!("wordcraft-font-race-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let paths: Vec<_> = (0..8u8)
+            .map(|i| {
+                let dir = dir.clone();
+                std::thread::spawn(move || (i, write_unique(&dir, "a.ttf", &[i; 64]).unwrap()))
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|t| t.join().unwrap())
+            .collect();
+        let distinct: std::collections::HashSet<_> = paths.iter().map(|(_, p)| p.clone()).collect();
+        assert_eq!(distinct.len(), 8);
+        for (i, p) in &paths {
+            assert_eq!(std::fs::read(p).unwrap(), vec![*i; 64], "{}", p.display());
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
