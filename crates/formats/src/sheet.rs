@@ -343,11 +343,22 @@ struct Grid {
     rows: Vec<Vec<String>>,
     cells: usize,
     text: TextBudget,
+    /// A row has been left out for its text (and logged, once per sheet).
+    refused: bool,
 }
 
 impl Grid {
     fn full(&self) -> bool {
         self.rows.len() >= MAX_ROWS || self.cells >= MAX_CELLS || self.text.0 >= MAX_TEXT_BYTES
+    }
+
+    /// Note that a row is left out because its text is over what is left of [`MAX_TEXT_BYTES`]:
+    /// logged once per sheet, not once per row.
+    fn refuse(&mut self) {
+        if !self.refused {
+            self.refused = true;
+            log::warn!("sheet: rows with more text than the {MAX_TEXT_BYTES} byte budget has left are left out of the recipient list");
+        }
     }
 
     /// Keep `row` (trailing blanks trimmed) `times` times, as far as the caps allow.
@@ -364,6 +375,7 @@ impl Grid {
             let keep = row.len().min(MAX_CELLS.saturating_sub(self.cells));
             let r = row.get(..keep).unwrap_or_default();
             if !self.text.take(r.iter().map(String::len).sum()) {
+                self.refuse();
                 return;
             }
             self.cells = self.cells.saturating_add(r.len());
@@ -988,6 +1000,7 @@ fn ods_read(xml: &[u8], want: Option<usize>) -> Result<(Vec<String>, Vec<Vec<Str
                     if *bytes > MAX_TEXT_BYTES.saturating_sub(grid.text.0) {
                         cells.clear();
                         *budget = None;
+                        grid.refuse();
                         return;
                     }
                     cells.resize(cells.len() + blanks, String::new());
@@ -1268,8 +1281,25 @@ mod tests {
         let book = ods(&format!(
             r#"<table:table-row><table:table-cell office:value-type="string" office:string-value="{wide}" table:number-columns-repeated="1000"/></table:table-row><table:table-row><table:table-cell><text:p>next</text:p></table:table-cell></table:table-row>"#
         ));
-        let (_, rows) = read_rows(&book, Pick::Index(0)).unwrap();
+        let ((_, rows), warned) = crate::test_log::warnings(|| read_rows(&book, Pick::Index(0)).unwrap());
         assert_eq!(rows, vec![vec!["next".to_string()]]);
+        // The row left out is said to be (review of #3873).
+        assert_eq!(warned.iter().filter(|w| w.contains("are left out of the recipient list")).count(), 1, "{warned:?}");
+    }
+
+    #[test]
+    fn rows_over_the_text_budget_are_logged_once_per_sheet() {
+        let wide = "€".repeat(MAX_CELL_CHARS);
+        let over = format!(
+            r#"<table:table-row><table:table-cell office:value-type="string" office:string-value="{wide}" table:number-columns-repeated="1000"/></table:table-row>"#
+        );
+        let book = ods(&format!("{over}{over}{over}<table:table-row><table:table-cell><text:p>next</text:p></table:table-cell></table:table-row>"));
+        let ((_, rows), warned) = crate::test_log::warnings(|| read_rows(&book, Pick::Index(0)).unwrap());
+        assert_eq!(rows, vec![vec!["next".to_string()]]);
+        assert_eq!(warned.iter().filter(|w| w.contains("recipient list")).count(), 1, "one warning, not one per row: {warned:?}");
+        let book = ods("<table:table-row><table:table-cell><text:p>fine</text:p></table:table-cell></table:table-row>");
+        let (_, warned) = crate::test_log::warnings(|| read_rows(&book, Pick::Index(0)).unwrap());
+        assert!(warned.is_empty(), "{warned:?}");
     }
 
     #[test]

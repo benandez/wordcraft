@@ -1057,6 +1057,7 @@ fn math_seq(t: &[MTok], pos: &mut usize, depth: usize, in_opt: bool) -> String {
 
 /// Import a LaTeX source file.
 pub fn import(bytes: &[u8]) -> Document {
+    model::begin_import();
     let mut d = model::to_doc(&parse(&crate::txt::decode(bytes.get(..MAX_SOURCE).unwrap_or(bytes))));
     d.ensure_nonempty();
     d

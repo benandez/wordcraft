@@ -1654,6 +1654,8 @@ impl Reader {
                         self.commit_style();
                     } else if self.style_name.len() < model::MAX_FONT_NAME {
                         self.style_name.push(c);
+                    } else {
+                        model::dropped(model::Dropped::StyleName);
                     }
                 }
             }
@@ -2854,6 +2856,7 @@ fn column_grid(rows: &mut [Vec<Cell>], rights: &[Vec<i32>]) -> Vec<f32> {
 
 /// Parse RTF bytes into a document.
 pub fn import(bytes: &[u8]) -> Result<Document, String> {
+    model::begin_import();
     let Parsed { flow, last_section, default_font, headers_footers, .. } = parse_full(bytes)?;
     let mut doc = model::to_doc_in(&flow, last_section);
     // Each section's own headers and footers; those it leaves out stay linked to the previous.

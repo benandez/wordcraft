@@ -25,11 +25,13 @@ const MAX_NEST: usize = 32;
 
 /// Parse Markdown text into a document.
 pub fn import(text: &str) -> Document {
+    model::begin_import();
     model::to_doc(&parse(text))
 }
 
 /// [`import`] onto `page`: Markdown gives no page size (#1381).
 pub fn import_on(text: &str, page: &wordcraft_doc::SectionProps) -> Document {
+    model::begin_import();
     model::to_doc_in(&parse(text), page.clone())
 }
 
@@ -1017,6 +1019,9 @@ fn tokenize(s: &str, base: &Fmt, depth: usize, refs: &Refs) -> Vec<Node> {
                         let mut f = base.clone();
                         // A destination too long to keep leaves its text unlinked.
                         f.link = (dest.len() <= model::MAX_LINK).then_some(dest);
+                        if f.link.is_none() {
+                            model::dropped(model::Dropped::Link);
+                        }
                         for x in parse_inlines(&inner, &f, depth + 1, refs) {
                             nodes.push(Node::Inl(x));
                         }

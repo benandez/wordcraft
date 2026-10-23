@@ -958,10 +958,47 @@ fn run_link_and_font_copies_are_budgeted() {
         let f = model::Fmt { bold: i % 2 == 0, link: Some(link.clone()), ..Default::default() };
         p.push_text("a", &f);
     }
-    let doc = model::to_doc(&model::Flow { blocks: vec![FBlock::Para(p)], ..Default::default() });
+    model::begin_import();
+    let (doc, warned) = crate::test_log::warnings(|| model::to_doc(&model::Flow { blocks: vec![FBlock::Para(p)], ..Default::default() }));
     let paras: Vec<_> = doc.body.iter().filter_map(|b| if let Block::Para(p) = &**b { Some(p) } else { None }).collect();
     assert_eq!(paras.iter().map(|p| p.text.len()).sum::<usize>(), 20_000, "all text kept");
     let runs: Vec<_> = paras.iter().flat_map(|p| p.runs.iter()).collect();
     let kept: usize = runs.iter().filter_map(|r| r.props.link.as_ref()).map(String::len).sum();
     assert!(kept > 0 && kept <= 64 << 20, "{kept}");
+    // The runs that lose theirs are said to, once for the document (review of #3873).
+    assert_eq!(warned.iter().filter(|w| w.contains("later runs lose them")).count(), 1, "{warned:?}");
+}
+
+/// Every limit that leaves a font name, link or style name out says so, once per kind per
+/// document rather than once per item (review of #3873; the tracker complains of silent loss).
+#[test]
+fn dropped_names_and_links_are_logged_once_per_document() {
+    let long = "x".repeat(model::MAX_LINK + 1);
+    let html = format!(
+        "<p><span style=\"font-family:'{long}'\"><a href=\"https://e.com/{long}\">a</a></span> <font face=\"{long}\">b</font> <a href=\"https://e.com/{long}\">c</a></p>"
+    );
+    let count = |w: &[String], what: &str| w.iter().filter(|l| l.contains(what)).count();
+    for _ in 0..2 {
+        // Each import is its own document: the second is reported too.
+        let (doc, warned) = crate::test_log::warnings(|| crate::html::import(&html));
+        assert!(doc.body.len() == 1, "the text is kept");
+        assert_eq!(count(&warned, "font names longer"), 1, "{warned:?}");
+        assert_eq!(count(&warned, "links longer"), 1, "{warned:?}");
+    }
+    let (_, warned) = crate::test_log::warnings(|| crate::html::import("<p><a href=\"https://e.com\" style=\"font-family:Georgia\">fine</a></p>"));
+    assert!(warned.is_empty(), "nothing left out, nothing said: {warned:?}");
+
+    let md = format!("[a](https://e.com/{long}) [b](https://e.com/{long})");
+    let (_, warned) = crate::test_log::warnings(|| crate::markdown::import(&md));
+    assert_eq!(count(&warned, "links longer"), 1, "{warned:?}");
+
+    let rtf =
+        format!("{{\\rtf1{{\\fonttbl{{\\f0 Arial;}}{{\\f1 {long};}}{{\\f2 {long};}}}}{{\\stylesheet{{\\s1 {long};}}{{\\s2 {long};}}}}\\f1 a\\f2 b}}");
+    let (_, warned) = crate::test_log::warnings(|| crate::rtf::import(rtf.as_bytes()).unwrap());
+    assert_eq!(count(&warned, "font names longer"), 1, "{warned:?}");
+    assert_eq!(count(&warned, "style names longer"), 1, "{warned:?}");
+
+    let tex = format!("\\href{{https://e.com/{long}}}{{a}} \\url{{https://e.com/{long}}}");
+    let (_, warned) = crate::test_log::warnings(|| crate::latex::import(tex.as_bytes()));
+    assert_eq!(count(&warned, "links longer"), 1, "{warned:?}");
 }

@@ -30,14 +30,72 @@ pub const MAX_LINK: usize = 8 << 10;
 /// lose their link and font rather than multiply a small file into gigabytes (#3713).
 const MAX_RUN_STRINGS: usize = 64 << 20;
 
-/// `name` as a span's font, unless it is longer than [`MAX_FONT_NAME`].
+/// `name` as a span's font, unless it is longer than [`MAX_FONT_NAME`] (then reported, see
+/// [`dropped`]).
 pub fn kept_font(name: &str) -> Option<Arc<str>> {
-    (name.len() <= MAX_FONT_NAME).then(|| name.into())
+    let kept = (name.len() <= MAX_FONT_NAME).then(|| name.into());
+    if kept.is_none() {
+        dropped(Dropped::Font);
+    }
+    kept
 }
 
-/// `target` as a span's link, unless it is longer than [`MAX_LINK`].
+/// `target` as a span's link, unless it is longer than [`MAX_LINK`] (then reported, see
+/// [`dropped`]).
 pub fn kept_link(target: &str) -> Option<Arc<str>> {
-    (target.len() <= MAX_LINK).then(|| target.into())
+    let kept = (target.len() <= MAX_LINK).then(|| target.into());
+    if kept.is_none() {
+        dropped(Dropped::Link);
+    }
+    kept
+}
+
+/// What an importer leaves out to stay within a limit (review of #3873: no limit drops data
+/// without saying so).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Dropped {
+    /// A font name over [`MAX_FONT_NAME`].
+    Font,
+    /// A link target over [`MAX_LINK`].
+    Link,
+    /// Runs' links and fonts past [`MAX_RUN_STRINGS`].
+    RunStrings,
+    /// A style name cut to [`MAX_FONT_NAME`].
+    StyleName,
+}
+
+impl Dropped {
+    fn message(self) -> String {
+        match self {
+            Dropped::Font => format!("import: font names longer than {MAX_FONT_NAME} bytes are dropped; that text keeps the surrounding font"),
+            Dropped::Link => format!("import: links longer than {MAX_LINK} bytes are dropped; their text is kept"),
+            Dropped::RunStrings => {
+                format!("import: the document's runs carry more than {MAX_RUN_STRINGS} bytes of links and font names; later runs lose them")
+            }
+            Dropped::StyleName => format!("import: style names longer than {MAX_FONT_NAME} bytes are cut short"),
+        }
+    }
+}
+
+thread_local! {
+    /// The kinds of [`Dropped`] already reported for the document being imported on this thread.
+    /// Per thread because a document is parsed and built on one, and the parsers drop things
+    /// from places that have no log of their own to hand.
+    static REPORTED: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
+}
+
+/// Log that the importer left something of `kind` out: once per kind per imported document
+/// ([`begin_import`]), not once per item.
+pub(crate) fn dropped(kind: Dropped) {
+    let bit = 1u8 << (kind as u8);
+    if REPORTED.with(|r| r.replace(r.get() | bit)) & bit == 0 {
+        log::warn!("{}", kind.message());
+    }
+}
+
+/// Start a new document's reports: each importer's entry point calls this first.
+pub(crate) fn begin_import() {
+    REPORTED.with(|r| r.set(0));
 }
 
 /// Character formatting the text formats can express.
@@ -580,7 +638,12 @@ impl<'a> Builder<'a> {
         let n = cp.link.as_ref().map_or(0, String::len).saturating_add(cp.font.as_ref().map_or(0, String::len));
         match self.run_strings.checked_add(n).filter(|&t| t <= MAX_RUN_STRINGS) {
             Some(t) => self.run_strings = t,
-            None => (cp.link, cp.font) = (None, None),
+            None => {
+                if cp.link.is_some() || cp.font.is_some() {
+                    dropped(Dropped::RunStrings);
+                }
+                (cp.link, cp.font) = (None, None);
+            }
         }
         cp
     }
