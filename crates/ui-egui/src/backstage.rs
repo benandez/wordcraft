@@ -87,7 +87,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui, enter: f32) {
                 let active = app.ui.backstage_page == id;
                 // The hover fades in and out, and the label eases a little to the right.
                 let h = ui.ctx().animate_bool_responsive(resp.id.with("hover"), on && resp.hovered());
-                let wash = if active { 46.0 } else { 0.0 };
+                let wash: f32 = if active { 46.0 } else { 0.0 };
                 let wash = wash.max(26.0 * h) as u8;
                 if wash > 0 {
                     ui.painter().rect_filled(r, 0.0, egui::Color32::from_white_alpha(wash));
