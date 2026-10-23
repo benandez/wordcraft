@@ -37,7 +37,7 @@ const TEXTURE_KEEP_SCREENS: f32 = 3.0;
 
 pub struct CanvasState {
     textures: HashMap<usize, (u64, TextureHandle)>,
-    /// Thumbnails of the page textures for the blurred ribbon; kept only while it is on.
+    /// Thumbnails of the page textures, for the blurred ribbon.
     pub(crate) thumbs: HashMap<usize, crate::ribbon_blur::Thumb>,
     /// Visible full-resolution tiles of pages too tall for one GPU texture.
     tiles: HashMap<(usize, usize), (u64, TextureHandle)>,
@@ -220,12 +220,6 @@ impl CanvasState {
     /// the page would make the other objects blink.
     fn dragged_off_page(&self) -> Option<(usize, Pos)> {
         crate::objects::dragged_off_page(self.obj_drag.as_ref())
-    }
-
-    /// Drop the page textures and thumbnails, so the next frame draws them again.
-    pub(crate) fn forget_thumbs(&mut self) {
-        self.thumbs.clear();
-        self.textures.clear();
     }
 
     /// How many pages have a cached rendering.
@@ -1270,10 +1264,8 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                 opts.display.hide_object = hidden.as_ref().filter(|(page, _)| *page == i).map(|(_, p)| p.clone());
                 let img = wordcraft_render::render_page(&app.session.doc, page, scale_px, &opts);
                 let ci = page_image(&img);
-                if app.ui.ribbon_blur {
-                    let paper = if dark_page { Color32::from_gray(dark_paper) } else { Color32::WHITE };
-                    app.canvas.thumbs.insert(i, crate::ribbon_blur::Thumb::of(&ci, crate::ribbon_blur::block_for(ppp), paper));
-                }
+                let paper = if dark_page { Color32::from_gray(dark_paper) } else { Color32::WHITE };
+                app.canvas.thumbs.insert(i, crate::ribbon_blur::Thumb::of(&ci, crate::ribbon_blur::block_for(ppp), paper));
                 match app.canvas.textures.get_mut(&i) {
                     Some((k, tex)) => {
                         tex.set(ci, egui::TextureOptions::LINEAR);

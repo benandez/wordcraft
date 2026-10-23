@@ -29,7 +29,10 @@ fn back_chevron_c(band_min_x: f32, center_y: f32, fullscreen: bool, content_left
     pos2(band_min_x + x, center_y)
 }
 
-pub fn show(app: &mut WordApp, ui: &mut Ui) {
+/// `enter` runs 0 to 1 as the page comes in or goes out: the nav slides from the left edge and
+/// the page fades in beside it.
+pub fn show(app: &mut WordApp, ui: &mut Ui, enter: f32) {
+    let enter = enter.clamp(0.0, 1.0);
     let t = Tokens::get(ui.ctx());
     // No document open (#1129): only the pages that open or create one, and Options.
     let has_document = app.has_document();
@@ -38,11 +41,15 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
     }
     let mac = app.integrated_titlebar;
     egui::Panel::left("backstage_nav")
-        .exact_size(200.0)
+        .exact_size(200.0 * enter.max(0.01))
         // Fixed width, as in Word: without this egui shows a resize handle that does nothing (#502).
         .resizable(false)
         .frame(egui::Frame::NONE.fill(t.nav).inner_margin(egui::Margin { left: 0, right: 0, top: if mac { 0 } else { 12 }, bottom: 12 }))
-        .show(ui, |ui| {
+        .show(ui, |panel| {
+            let from = panel.max_rect().min - vec2((1.0 - enter) * 200.0, 0.0);
+            let slid_to = Rect::from_min_size(from, vec2(200.0, panel.max_rect().height()));
+            let mut slid = panel.new_child(egui::UiBuilder::new().max_rect(slid_to).layout(*panel.layout()));
+            let ui = &mut slid;
             let back = if mac {
                 // macOS (#222): the Backstage covers the title bar, so its top band is the title
                 // bar: the back button sits beside the traffic lights, centred with them and as far
@@ -139,24 +146,31 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                 }
             });
         });
-    egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.ribbon).inner_margin(egui::Margin::symmetric(40, 30))).show(ui, |ui| {
-        // The Print page fills the pane and scrolls its settings and its preview itself (#1156).
-        if app.ui.backstage_page == "print" {
-            export_page(app, ui);
-            return;
-        }
-        egui::ScrollArea::vertical().show(ui, |ui| match app.ui.backstage_page.as_str() {
-            "home" => home_page(app, ui),
-            "new" => new_page(app, ui),
-            "open" => open_page(app, ui),
-            "saveAs" => save_as_page(app, ui),
-            "info" => info_page(app, ui),
-            "recover" => recovery_page(app, ui),
-            "print" | "export" => export_page(app, ui),
-            "options" => crate::options::page(app, ui),
-            _ => home_page(app, ui),
-        });
-    });
+    egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.ribbon.gamma_multiply(enter)).inner_margin(egui::Margin::symmetric(40, 30))).show(
+        ui,
+        |panel| {
+            let shift = vec2((1.0 - enter) * 40.0, 0.0);
+            let mut slid = panel.new_child(egui::UiBuilder::new().max_rect(panel.max_rect().translate(shift)).layout(*panel.layout()));
+            slid.set_opacity(enter);
+            let ui = &mut slid;
+            // The Print page fills the pane and scrolls its settings and its preview itself (#1156).
+            if app.ui.backstage_page == "print" {
+                export_page(app, ui);
+                return;
+            }
+            egui::ScrollArea::vertical().show(ui, |ui| match app.ui.backstage_page.as_str() {
+                "home" => home_page(app, ui),
+                "new" => new_page(app, ui),
+                "open" => open_page(app, ui),
+                "saveAs" => save_as_page(app, ui),
+                "info" => info_page(app, ui),
+                "recover" => recovery_page(app, ui),
+                "print" | "export" => export_page(app, ui),
+                "options" => crate::options::page(app, ui),
+                _ => home_page(app, ui),
+            });
+        },
+    );
 }
 
 /// Recovery is a separate copy. Leaving this page never discards it.

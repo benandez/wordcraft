@@ -414,7 +414,16 @@ fn search_box(app: &mut WordApp, ui: &mut Ui, control_h: f32) {
     let (r, resp) = ui.allocate_exact_size(vec2(260.0, control_h), Sense::click());
     let ph = tl!("Search commands and help");
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, ph));
-    ui.painter().rect(r, 6.0, if resp.hovered() { t.input } else { t.ribbon }, Stroke::new(1.0, t.border), egui::StrokeKind::Inside);
+    if app.ribbon_glass() {
+        // A pane of frosted glass: a faint light (or dark) wash and a hairline rim.
+        let (wash, rim) = if t.dark { (255, 255) } else { (0, 0) };
+        let a = if resp.hovered() { 34 } else { 18 };
+        let fill = egui::Color32::from_rgba_unmultiplied(wash, wash, wash, a);
+        let edge = egui::Color32::from_rgba_unmultiplied(rim, rim, rim, 48);
+        ui.painter().rect(r, 6.0, fill, Stroke::new(1.0, edge), egui::StrokeKind::Inside);
+    } else {
+        ui.painter().rect(r, 6.0, if resp.hovered() { t.input } else { t.ribbon }, Stroke::new(1.0, t.border), egui::StrokeKind::Inside);
+    }
     icons::paint(ui.painter(), Rect::from_center_size(pos2(r.min.x + 16.0, r.center().y), vec2(16.0, 16.0)), "search", t.text_dim, t.accent);
     let pfont = TypeRung::Control.regular();
     let ptrack = TypeRung::Control.tracking();

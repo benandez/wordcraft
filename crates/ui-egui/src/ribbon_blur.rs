@@ -198,8 +198,11 @@ pub fn button_fill(ctx: &Context, fill: Color32) -> Color32 {
     if on { fill.gamma_multiply(0.6) } else { fill }
 }
 
-/// A menu's fill, a little see-through: the text behind it stays faint.
-pub fn menu_glass(c: Color32) -> Color32 {
+/// A menu's fill, a little see-through and shaded (darker in a dark theme, lighter in a
+/// light one), so the page behind it does not fight the text.
+pub fn menu_glass(c: Color32, dark: bool) -> Color32 {
+    let shade = if dark { Color32::BLACK } else { Color32::WHITE };
+    let c = c.lerp_to_gamma(shade, 0.5);
     Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 242)
 }
 

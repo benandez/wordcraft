@@ -1789,12 +1789,7 @@ impl WordApp {
                 // `value` true or false turns the blur under the ribbon on or off; no value reads it.
                 match p.get("value") {
                     None => {}
-                    Some(Value::Bool(on)) => {
-                        if self.ui.ribbon_blur != *on {
-                            self.canvas.forget_thumbs();
-                        }
-                        self.ui.ribbon_blur = *on;
-                    }
+                    Some(Value::Bool(on)) => self.ui.ribbon_blur = *on,
                     Some(_) => return Some(Err("`value` must be true or false".into())),
                 }
                 json!({"ribbonBlur": self.ui.ribbon_blur})
@@ -2402,8 +2397,11 @@ impl WordApp {
             backstage::forget_open_error(&ctx);
             backstage::forget_save_as_error(&ctx);
         }
-        if self.ui.backstage {
-            backstage::show(self, ui);
+        // File slides in over the editor and out again; the editor stays drawn under it meanwhile.
+        let enter = ctx.animate_bool_responsive(egui::Id::new("backstage_enter"), self.ui.backstage);
+        let enter = egui::emath::easing::cubic_out(enter);
+        if self.ui.backstage && enter >= 1.0 {
+            backstage::show(self, ui, 1.0);
         } else if !self.has_document() {
             // No document open (#1129): the ribbon greyed out but for Help, and no page.
             chrome::title_bar(self, ui);
@@ -2425,7 +2423,7 @@ impl WordApp {
                 glass = self.ribbon_glass().then(|| (ui.painter().add(egui::Shape::Noop), before));
                 let menu_fill = ctx.global_style().visuals.window_fill;
                 if glass.is_some() {
-                    ctx.global_style_mut(|s| s.visuals.window_fill = ribbon_blur::menu_glass(menu_fill));
+                    ctx.global_style_mut(|s| s.visuals.window_fill = ribbon_blur::menu_glass(menu_fill, s.visuals.dark_mode));
                 }
                 ribbon::show(self, ui);
                 if glass.is_some() {
@@ -2448,6 +2446,10 @@ impl WordApp {
             if self.focus_ribbon {
                 chrome::focus_ribbon(self, &ctx);
             }
+        }
+        if enter > 0.0 && enter < 1.0 {
+            let mut over = ui.new_child(egui::UiBuilder::new().max_rect(ctx.content_rect()));
+            backstage::show(self, &mut over, enter);
         }
         content_controls::popup(self, &ctx);
         dialogs::show(self, &ctx);
