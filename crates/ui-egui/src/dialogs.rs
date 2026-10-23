@@ -1945,84 +1945,91 @@ fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             ui.separator();
             match *tab {
                 0 => {
-                    ui.label(egui::RichText::new(tl!("General")).font(semibold(12.5)));
-                    ui.horizontal(|ui| {
-                        ui.label(tl!("Direction:"));
-                        // Neither while the selected paragraphs differ.
-                        let blank = mixed.contains("bidi");
-                        for (value, text) in [(true, tl!("Right-to-left")), (false, tl!("Left-to-right"))] {
-                            if ui.radio(!blank && *rtl == value, text).clicked() {
-                                *rtl = value;
-                                mixed.remove("bidi");
-                            }
-                        }
-                    });
-                    const ALIGNS: [(&str, &str); 4] = [("left", "Left"), ("center", "Center"), ("right", "Right"), ("justify", "Justify")];
-                    ui.horizontal(|ui| {
-                        ui.label(tl!("Alignment:"));
-                        let shown = if mixed.contains("align") {
-                            ""
-                        } else {
-                            ALIGNS.iter().find(|(v, _)| v == align).map_or(align.as_str(), |(_, l)| tl!(l))
-                        };
-                        egui::ComboBox::from_id_salt("para_align").selected_text(shown).show_ui(ui, |ui| {
-                            for (v, l) in ALIGNS {
-                                if ui.selectable_value(align, v.to_string(), tl!(l)).clicked() {
-                                    mixed.remove("align");
+                    crate::widgets::section(ui, tl!("General"), |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(tl!("Direction:"));
+                            // Neither while the selected paragraphs differ.
+                            let blank = mixed.contains("bidi");
+                            for (value, text) in [(true, tl!("Right-to-left")), (false, tl!("Left-to-right"))] {
+                                if ui.radio(!blank && *rtl == value, text).clicked() {
+                                    *rtl = value;
+                                    mixed.remove("bidi");
                                 }
                             }
                         });
+                        const ALIGNS: [(&str, &str); 4] = [("left", "Left"), ("center", "Center"), ("right", "Right"), ("justify", "Justify")];
+                        ui.horizontal(|ui| {
+                            ui.label(tl!("Alignment:"));
+                            let shown = if mixed.contains("align") {
+                                ""
+                            } else {
+                                ALIGNS.iter().find(|(v, _)| v == align).map_or(align.as_str(), |(_, l)| tl!(l))
+                            };
+                            egui::ComboBox::from_id_salt("para_align").selected_text(shown).show_ui(ui, |ui| {
+                                for (v, l) in ALIGNS {
+                                    if ui.selectable_value(align, v.to_string(), tl!(l)).clicked() {
+                                        mixed.remove("align");
+                                    }
+                                }
+                            });
+                        });
                     });
-                    ui.label(egui::RichText::new(tl!("Indentation")).font(semibold(12.5)));
-                    // Mirrored indents are the inside and outside ones (they swap on even pages).
-                    let (l_label, r_label) = if opts[0] { ("Inside:", "Outside:") } else { ("Left:", "Right:") };
-                    egui::Grid::new("ind").num_columns(4).show(ui, |ui| {
-                        ui.label(tl!(l_label));
-                        para_number(ui, left, ParaNumber::Length, "left", mixed);
-                        ui.label(tl!(r_label));
-                        para_number(ui, right, ParaNumber::Length, "right", mixed);
-                        ui.end_row();
-                        ui.label(tl!("First line:"));
-                        para_number(ui, first, ParaNumber::Length, "indentFirst", mixed);
-                        ui.end_row();
+                    crate::widgets::section(ui, tl!("Indentation"), |ui| {
+                        // Mirrored indents are the inside and outside ones (they swap on even pages).
+                        let (l_label, r_label) = if opts[0] { ("Inside:", "Outside:") } else { ("Left:", "Right:") };
+                        egui::Grid::new("ind").num_columns(4).show(ui, |ui| {
+                            ui.label(tl!(l_label));
+                            para_number(ui, left, ParaNumber::Length, "left", mixed);
+                            ui.label(tl!(r_label));
+                            para_number(ui, right, ParaNumber::Length, "right", mixed);
+                            ui.end_row();
+                            ui.label(tl!("First line:"));
+                            para_number(ui, first, ParaNumber::Length, "indentFirst", mixed);
+                            ui.end_row();
+                        });
+                        para_check(ui, &mut opts[0], tl!("Mirror indents"), "mirrorIndents", mixed);
                     });
-                    para_check(ui, &mut opts[0], tl!("Mirror indents"), "mirrorIndents", mixed);
-                    ui.label(egui::RichText::new(tl!("Spacing")).font(semibold(12.5)));
-                    egui::Grid::new("sp").num_columns(4).show(ui, |ui| {
-                        ui.label(tl!("Before:"));
-                        para_number(ui, before, ParaNumber::Points, "spaceBefore", mixed);
-                        ui.label(tl!("Line spacing:"));
-                        para_number(ui, line, ParaNumber::Lines, "lineSpacing", mixed);
-                        ui.end_row();
-                        ui.label(tl!("After:"));
-                        para_number(ui, after, ParaNumber::Points, "spaceAfter", mixed);
-                        ui.end_row();
+                    crate::widgets::section(ui, tl!("Spacing"), |ui| {
+                        egui::Grid::new("sp").num_columns(4).show(ui, |ui| {
+                            ui.label(tl!("Before:"));
+                            para_number(ui, before, ParaNumber::Points, "spaceBefore", mixed);
+                            ui.label(tl!("Line spacing:"));
+                            para_number(ui, line, ParaNumber::Lines, "lineSpacing", mixed);
+                            ui.end_row();
+                            ui.label(tl!("After:"));
+                            para_number(ui, after, ParaNumber::Points, "spaceAfter", mixed);
+                            ui.end_row();
+                        });
+                        para_check(ui, &mut opts[1], tl!("Don't add space between paragraphs of the same style"), "contextualSpacing", mixed);
                     });
-                    para_check(ui, &mut opts[1], tl!("Don't add space between paragraphs of the same style"), "contextualSpacing", mixed);
                 }
                 1 => {
-                    ui.label(egui::RichText::new(tl!("Line and Page Breaks")).font(semibold(12.5)));
-                    para_check(ui, widow, tl!("Widow/Orphan control"), "widowControl", mixed);
-                    para_check(ui, keep_next, tl!("Keep with next"), "keepNext", mixed);
-                    para_check(ui, keep_lines, tl!("Keep lines together"), "keepLines", mixed);
-                    para_check(ui, page_break, tl!("Page break before"), "pageBreakBefore", mixed);
-                    ui.label(egui::RichText::new(tl!("Formatting exceptions")).font(semibold(12.5)));
-                    para_check(ui, &mut opts[2], tl!("Suppress line numbers"), "suppressLineNumbers", mixed);
-                    para_check(ui, &mut opts[3], tl!("Don't hyphenate"), "suppressHyphens", mixed);
+                    crate::widgets::section(ui, tl!("Line and Page Breaks"), |ui| {
+                        para_check(ui, widow, tl!("Widow/Orphan control"), "widowControl", mixed);
+                        para_check(ui, keep_next, tl!("Keep with next"), "keepNext", mixed);
+                        para_check(ui, keep_lines, tl!("Keep lines together"), "keepLines", mixed);
+                        para_check(ui, page_break, tl!("Page break before"), "pageBreakBefore", mixed);
+                    });
+                    crate::widgets::section(ui, tl!("Formatting exceptions"), |ui| {
+                        para_check(ui, &mut opts[2], tl!("Suppress line numbers"), "suppressLineNumbers", mixed);
+                        para_check(ui, &mut opts[3], tl!("Don't hyphenate"), "suppressHyphens", mixed);
+                    });
                 }
                 _ => {
                     let [kinsoku, word_wrap, overflow, top_line, de, dn] = asian;
-                    ui.label(egui::RichText::new(tl!("Line breaking")).font(semibold(12.5)));
-                    para_check(ui, kinsoku, tl!("Apply Asian line-breaking rules (kinsoku)"), "kinsoku", mixed);
-                    // The model's flag is "wrap whole words"; the box offers the opposite.
-                    let mut mid_word = !*word_wrap;
-                    para_check(ui, &mut mid_word, tl!("Allow Latin text to wrap in the middle of a word"), "wordWrap", mixed);
-                    *word_wrap = !mid_word;
-                    para_check(ui, overflow, tl!("Allow hanging punctuation"), "overflowPunct", mixed);
-                    ui.label(egui::RichText::new(tl!("Character Spacing")).font(semibold(12.5)));
-                    para_check(ui, top_line, tl!("Compress punctuation at the start of a line"), "topLinePunct", mixed);
-                    para_check(ui, de, tl!("Add space between Asian and Latin text"), "autoSpaceDE", mixed);
-                    para_check(ui, dn, tl!("Add space between Asian text and numbers"), "autoSpaceDN", mixed);
+                    crate::widgets::section(ui, tl!("Line breaking"), |ui| {
+                        para_check(ui, kinsoku, tl!("Apply Asian line-breaking rules (kinsoku)"), "kinsoku", mixed);
+                        // The model's flag is "wrap whole words"; the box offers the opposite.
+                        let mut mid_word = !*word_wrap;
+                        para_check(ui, &mut mid_word, tl!("Allow Latin text to wrap in the middle of a word"), "wordWrap", mixed);
+                        *word_wrap = !mid_word;
+                        para_check(ui, overflow, tl!("Allow hanging punctuation"), "overflowPunct", mixed);
+                    });
+                    crate::widgets::section(ui, tl!("Character Spacing"), |ui| {
+                        para_check(ui, top_line, tl!("Compress punctuation at the start of a line"), "topLinePunct", mixed);
+                        para_check(ui, de, tl!("Add space between Asian and Latin text"), "autoSpaceDE", mixed);
+                        para_check(ui, dn, tl!("Add space between Asian text and numbers"), "autoSpaceDN", mixed);
+                    });
                 }
             }
             ui.add_space(6.0);

@@ -1299,6 +1299,26 @@ pub fn icon_menu_item(ui: &mut Ui, icon: &str, text: &str, shortcut: &str, min_w
     resp
 }
 
+/// A dialog section: a heading with space above it, then the settings in
+/// a soft rounded panel.
+pub fn section<R>(ui: &mut Ui, title: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
+    let t = Tokens::get(ui.ctx());
+    let fill = ui.visuals().window_fill.lerp_to_gamma(t.text, 0.04);
+    ui.add_space(8.0);
+    ui.label(egui::RichText::new(title).font(crate::theme::semibold(12.5)));
+    ui.add_space(2.0);
+    egui::Frame::new()
+        .fill(fill)
+        .stroke(Stroke::new(1.0, t.border.gamma_multiply(0.6)))
+        .corner_radius(CornerRadius::same(6))
+        .inner_margin(egui::Margin::symmetric(10, 8))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            add(ui)
+        })
+        .inner
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
