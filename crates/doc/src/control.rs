@@ -660,6 +660,8 @@ impl Document {
                 }
             }
         }
+        // Sorted and without repeats: `delete_range` groups this by paragraph and binary-searches
+        // each group (`control_markers_kept_are_sorted` pins it).
         out.sort();
         out.dedup();
         out

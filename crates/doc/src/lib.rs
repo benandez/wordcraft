@@ -765,14 +765,14 @@ pub struct Document {
     /// Lookup cache for [`Document::add_media`]; not part of the document (never saved, ignored
     /// by `==`).
     #[serde(skip)]
-    pub media_index: MediaIndex,
+    media_index: MediaIndex,
 }
 
 /// [`Document::media`] by content, so adding media is linear in the bytes added rather than a
 /// scan of every earlier image (CWE-407). Rebuilt whenever `media` changed size behind its back;
 /// a hit is always checked against `media`, so a stale entry can at worst miss a duplicate.
 #[derive(Clone, Default)]
-pub struct MediaIndex {
+struct MediaIndex {
     by_bytes: std::collections::HashMap<Arc<Vec<u8>>, String>,
     /// `media.len()` when the index last matched it.
     len: usize,
@@ -1726,5 +1726,7 @@ fn story_word_count_of(bl: &Blocks, numbering: &Numbering, styles: &styles::Styl
     total
 }
 
+#[cfg(test)]
+mod test_log;
 #[cfg(test)]
 mod tests;

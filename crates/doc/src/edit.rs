@@ -199,6 +199,17 @@ struct BoxBudget {
     /// The source stories being copied, innermost last: a box inside one of them showing it
     /// again is a cycle.
     active: Vec<u32>,
+    /// Each source story's cost ([`block_cost`]), worked out once per paste: a story too big for
+    /// what is left is not walked again for every box that shows it.
+    costs: BTreeMap<u32, usize>,
+    /// Boxes left without a story because the paste's budget couldn't hold theirs.
+    skipped: usize,
+}
+
+impl BoxBudget {
+    fn new() -> BoxBudget {
+        BoxBudget { stories: MAX_PASTED_BOXES, bytes: MAX_PASTED_BOX_BYTES, active: Vec::new(), costs: BTreeMap::new(), skipped: 0 }
+    }
 }
 
 /// Rough size of a block's content, and whether it holds text boxes (and so must be copied).
@@ -567,7 +578,13 @@ impl Document {
         }
         // Content control markers whose partner is outside the range stay (the control is
         // emptied, not broken).
-        let kept = self.kept_control_markers(&a, &b);
+        let mut kept = self.kept_control_markers(&a, &b);
+        // The walk below groups `kept` by paragraph (`chunk_by`) and looks offsets up
+        // (`binary_search`), so it must be sorted; `kept_control_markers` returns it so, and this
+        // keeps a change there from quietly losing markers.
+        if !kept.is_sorted() {
+            kept.sort();
+        }
         let kept_in = |path: &Path| -> Vec<usize> { kept.iter().filter(|(p, _)| p == path).map(|(_, o)| *o).collect() };
         if a.path == b.path {
             self.para_mut(a.story, &a.path)?.delete_except(a.off, b.off, &kept_in(&a.path))?;
@@ -873,29 +890,34 @@ impl Document {
 
     /// A new text box story copied from `old`; its own boxes get new stories too. Blocks without
     /// text boxes are shared with the source (copy-on-write), the others copied. A box showing a
-    /// story it is inside, or past the paste's budget, gets none (CWE-400).
+    /// story it is inside, or whose story the paste's budget can't hold, gets none (CWE-400);
+    /// only that box: a later box with a smaller story is still copied while the budget lasts.
     fn adopt_text_box(&mut self, old: u32, parts: &BTreeMap<u32, Part>, depth: usize, budget: &mut BoxBudget) -> Option<u32> {
-        // A spent byte budget stops before costing the story again (that walks its payloads).
-        if depth >= MAX_BOX_DEPTH || budget.stories == 0 || budget.bytes == 0 || budget.active.contains(&old) {
+        if depth >= MAX_BOX_DEPTH || budget.active.contains(&old) {
+            return None;
+        }
+        if budget.stories == 0 {
+            budget.skipped = budget.skipped.saturating_add(1);
             return None;
         }
         let src = parts.get(&old).or_else(|| self.parts.get(&old).filter(|p| p.kind == PartKind::TextBox))?;
-        // Charge the whole story before copying any of it; once a story doesn't fit, the paste
-        // adopts no more (as when it runs out of stories).
-        let costs: Vec<(usize, bool)> = src.blocks.iter().map(|b| block_cost(b)).collect();
-        let cost = costs.iter().fold(0usize, |a, (c, _)| a.saturating_add(*c));
-        if cost > budget.bytes {
-            budget.bytes = 0;
+        // Charge the whole story before copying any of it. Its cost is worked out once per paste
+        // (that walks its payloads), however many boxes show it.
+        let cost = *budget.costs.entry(old).or_insert_with(|| src.blocks.iter().fold(0usize, |a, b| a.saturating_add(block_cost(b).0)));
+        let Some(left) = budget.bytes.checked_sub(cost) else {
+            budget.skipped = budget.skipped.saturating_add(1);
             return None;
-        }
-        budget.bytes -= cost;
+        };
+        budget.bytes = left;
         budget.stories -= 1;
         let src_blocks = src.blocks.clone();
         // The copy keeps its text direction and alignment, not its link (a copy stands alone).
         let body = crate::TextBody { next: None, ..src.body };
         budget.active.push(old);
         let mut blocks: Blocks = Vec::with_capacity(src_blocks.len());
-        for (b, (_, boxes)) in src_blocks.into_iter().zip(costs) {
+        for b in src_blocks {
+            let mut boxes = false;
+            each_para(&b, 0, &mut |p| boxes |= box_ids(p).next().is_some());
             if boxes {
                 let mut copy = (*b).clone();
                 self.adopt_text_boxes(std::slice::from_mut(&mut copy), parts, depth + 1, budget);
@@ -927,8 +949,15 @@ impl Document {
             return Err(DocError::BadPath(pos.path.to_string()));
         }
         // Pasted text boxes get stories of their own (never shared with the copy's source).
-        let mut budget = BoxBudget { stories: MAX_PASTED_BOXES, bytes: MAX_PASTED_BOX_BYTES, active: Vec::new() };
+        let mut budget = BoxBudget::new();
         self.adopt_text_boxes(&mut blocks, &frag.parts, 0, &mut budget);
+        if budget.skipped > 0 {
+            // Once per paste, not once per box (review of #3874).
+            log::warn!(
+                "paste: {} text boxes are left empty; their stories are past what one paste copies ({MAX_PASTED_BOXES} stories, {MAX_PASTED_BOX_BYTES} bytes)",
+                budget.skipped
+            );
+        }
         // Single paragraph: inline insert keeping runs.
         if blocks.len() == 1
             && let Some(Block::Para(src)) = blocks.first()
@@ -1353,6 +1382,30 @@ mod tests {
     }
 
     #[test]
+    fn a_box_over_the_budget_leaves_later_smaller_boxes_their_stories() {
+        // Review of #3874: once one story didn't fit, every later box in the paste was left
+        // empty, however small its story. Only the box that doesn't fit is.
+        let big = para_block(Paragraph::with_text(&"x".repeat(100_000), CharProps::default()));
+        let small = para_block(Paragraph::with_text("small", CharProps::default()));
+        let mut p = Paragraph::new();
+        for story in [2, 1, 2, 1] {
+            p.insert_object(0, box_shape(Some(story)), &CharProps::default()).unwrap();
+        }
+        let mut parts = BTreeMap::new();
+        parts.insert(1, crate::Part { kind: PartKind::TextBox, blocks: vec![big], body: Default::default() });
+        parts.insert(2, crate::Part { kind: PartKind::TextBox, blocks: vec![small], body: Default::default() });
+        let mut blocks = vec![Block::Para(p)];
+        let mut d = doc(&["x"]);
+        let mut budget = BoxBudget { bytes: 50_000, ..BoxBudget::new() };
+        d.adopt_text_boxes(&mut blocks, &parts, 0, &mut budget);
+        let Some(Block::Para(p)) = blocks.first() else { panic!() };
+        let got: Vec<Option<u32>> = p.objects.iter().map(|o| if let InlineObject::Shape { story, .. } = o { *story } else { None }).collect();
+        assert_eq!(got.iter().map(Option::is_some).collect::<Vec<_>>(), [false, true, false, true], "{got:?}");
+        assert_eq!(budget.skipped, 2);
+        assert_eq!(budget.costs.len(), 2, "each story costed once");
+    }
+
+    #[test]
     fn pasted_box_copies_are_capped_in_bytes() {
         // Story 1 is a 1 MiB paragraph that holds a text box itself, so each box showing it needs
         // its own copy; 64 of them used to copy 64 MiB.
@@ -1361,8 +1414,12 @@ mod tests {
         let f = fan_out(vec![para_block(p)], 64);
         let mut d = doc(&["x"]);
         let before = d.parts.len();
-        d.insert_fragment(&Pos::body(0, 1), &f).unwrap();
+        let (_, warned) = crate::test_log::warnings(|| d.insert_fragment(&Pos::body(0, 1), &f).unwrap());
         let added = d.parts.len() - before;
+        // The boxes left empty are said to be, once for the paste (review of #3874).
+        let empty: Vec<_> = warned.iter().filter(|w| w.contains("text boxes are left empty")).collect();
+        assert_eq!(empty.len(), 1, "{warned:?}");
+        assert!(empty[0].starts_with(&format!("paste: {} text boxes", 64 - added)), "{empty:?}");
         let copied: usize = d.parts.values().flat_map(|p| p.blocks.iter()).map(|b| if let Block::Para(p) = &**b { p.text.len() } else { 0 }).sum();
         assert!((1..64).contains(&added), "{added}");
         assert!(copied <= MAX_PASTED_BOX_BYTES, "{copied}");

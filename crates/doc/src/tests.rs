@@ -562,3 +562,23 @@ fn deleting_across_many_lone_control_markers_is_not_quadratic() {
     assert_eq!(d.plain_text(StoryRef::Body), "befter");
     assert!(t.elapsed().as_secs_f32() < 2.0, "{:?}", t.elapsed());
 }
+
+#[test]
+fn control_markers_kept_are_sorted() {
+    // `delete_range` groups the kept markers by paragraph and binary-searches each group, so
+    // `kept_control_markers` must hand them over sorted and without repeats (review of #3874).
+    let start = || InlineObject::ControlStart { control: Box::default() };
+    let mut d = Document::from_text("before");
+    // Controls open and close across paragraphs: 1 closes the one 0 opens, 3 the one 2 opens…
+    for i in 0..12 {
+        let objs = if i % 2 == 0 { vec![start(), start()] } else { vec![InlineObject::ControlEnd, InlineObject::ControlEnd] };
+        d.body.push(Arc::new(Block::Para(para_of_objects(objs))));
+    }
+    d.body.push(Arc::new(Block::Para(Paragraph::with_text("after", CharProps::default()))));
+    let w = para::OBJ.len_utf8();
+    for (a, b) in [(Pos::body(2, w), Pos::body(11, w)), (Pos::body(1, w), Pos::body(12, w)), (Pos::body(3, w), Pos::body(8, 0))] {
+        let kept = d.kept_control_markers(&a, &b);
+        assert!(!kept.is_empty(), "{a:?}..{b:?}");
+        assert!(kept.windows(2).all(|p| p[0] < p[1]), "sorted, no repeats: {kept:?}");
+    }
+}
