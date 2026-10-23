@@ -2773,3 +2773,42 @@ preview	Title	Пример
 	More tabs	Другие вкладки
 # #3013: Insert Table of Figures
 	Include label and number	Включить подпись и номер
+	First Record	Первая запись
+	Last Record	Последняя запись
+	Go to Record	Перейти к записи
+	Edit Individual Documents…	Изменить отдельные документы…
+	Print Documents…	Печать документов…
+	Print Documents	Печать документов
+	Current record	Текущая запись
+	From:	С:
+	To:	По:
+	Enter a number.	Введите число.
+# Why a ribbon control is off (#2678)
+	a drawing canvas can't be ungrouped	полотно для рисования нельзя разгруппировать
+	a drawing canvas can't go inside a text box	полотно для рисования нельзя поместить в текстовое поле
+	charts and diagrams can't be moved or resized yet	диаграммы и схемы пока нельзя перемещать или менять их размер
+	no equation at the caret	у курсора нет уравнения
+	not editing an equation	уравнение не редактируется
+	only in Outline view	только в режиме структуры
+	select a SmartArt graphic first	сначала выделите рисунок SmartArt
+	select a chart first	сначала выделите диаграмму
+	select a connector first	сначала выделите соединительную линию
+	select a drawing canvas first	сначала выделите полотно для рисования
+	select a floating picture or shape first	сначала выделите плавающий рисунок или фигуру
+	select a group first	сначала выделите группу
+	select a picture first	сначала выделите рисунок
+	select a shape first	сначала выделите фигуру
+	select a text box first	сначала выделите текстовое поле
+	select a text box linked to another first	сначала выделите текстовое поле, связанное с другим
+	the Clipboard pane is empty	область «Буфер обмена» пуста
+	there is nothing to undo	нечего отменять
+	this SmartArt was made in another program: WordCraft shows it but can't edit it	этот SmartArt создан в другой программе: WordCraft показывает его, но не может изменить
+	this chart was made in another program: WordCraft shows it but can't edit it	эта диаграмма создана в другой программе: WordCraft показывает её, но не может изменить
+	this text box is already linked: break the link first	это текстовое поле уже связано: сначала разорвите связь
+	leave the equation first	сначала выйдите из уравнения
+	the Spike is empty	копилка пуста
+# More reasons a ribbon control is off (#2678)
+	a group holding Word ink can't be ungrouped yet	группу с рукописным вводом Word пока нельзя разгруппировать
+	drop caps can't go in a table	буквицу нельзя поместить в таблицу
+	the document is protected	документ защищён
+	Open a document first	Сначала откройте документ

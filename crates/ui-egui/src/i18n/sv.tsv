@@ -2802,3 +2802,42 @@ template	Letter	Brev
 	More tabs	Fler flikar
 # #3013: Insert Table of Figures
 	Include label and number	Ta med etikett och nummer
+	First Record	Första post
+	Last Record	Sista post
+	Go to Record	Gå till post
+	Edit Individual Documents…	Redigera enskilda dokument…
+	Print Documents…	Skriv ut dokument…
+	Print Documents	Skriv ut dokument
+	Current record	Aktuell post
+	From:	Från:
+	To:	Till:
+	Enter a number.	Ange ett tal.
+# Why a ribbon control is off (#2678)
+	a drawing canvas can't be ungrouped	en rityta kan inte delas upp
+	a drawing canvas can't go inside a text box	en rityta kan inte placeras i en textruta
+	charts and diagrams can't be moved or resized yet	diagram och grafik kan ännu inte flyttas eller storleksändras
+	no equation at the caret	ingen ekvation vid markören
+	not editing an equation	ingen ekvation redigeras
+	only in Outline view	bara i dispositionsvyn
+	select a SmartArt graphic first	markera en SmartArt-grafik först
+	select a chart first	markera ett diagram först
+	select a connector first	markera en koppling först
+	select a drawing canvas first	markera en rityta först
+	select a floating picture or shape first	markera en flytande bild eller figur först
+	select a group first	markera en grupp först
+	select a picture first	markera en bild först
+	select a shape first	markera en figur först
+	select a text box first	markera en textruta först
+	select a text box linked to another first	markera en textruta som är länkad till en annan först
+	the Clipboard pane is empty	fönstret Urklipp är tomt
+	there is nothing to undo	det finns inget att ångra
+	this SmartArt was made in another program: WordCraft shows it but can't edit it	denna SmartArt skapades i ett annat program: WordCraft visar den men kan inte redigera den
+	this chart was made in another program: WordCraft shows it but can't edit it	detta diagram skapades i ett annat program: WordCraft visar det men kan inte redigera det
+	this text box is already linked: break the link first	denna textruta är redan länkad: bryt länken först
+	leave the equation first	lämna först ekvationen
+	the Spike is empty	samlaren är tom
+# More reasons a ribbon control is off (#2678)
+	a group holding Word ink can't be ungrouped yet	en grupp med Word-bläck kan inte avgrupperas än
+	drop caps can't go in a table	en anfang kan inte läggas i en tabell
+	the document is protected	dokumentet är skyddat
+	Open a document first	Öppna först ett dokument

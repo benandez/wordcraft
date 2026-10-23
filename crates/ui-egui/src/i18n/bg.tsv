@@ -2764,3 +2764,42 @@
 	More tabs	Още раздели
 # #3013: Insert Table of Figures
 	Include label and number	Включване на етикета и номера
+	First Record	Първи запис
+	Last Record	Последен запис
+	Go to Record	Отиване до запис
+	Edit Individual Documents…	Редактиране на отделни документи…
+	Print Documents…	Печат на документи…
+	Print Documents	Печат на документи
+	Current record	Текущ запис
+	From:	От:
+	To:	До:
+	Enter a number.	Въведете число.
+# Why a ribbon control is off (#2678)
+	a drawing canvas can't be ungrouped	платното за рисуване не може да се разгрупира
+	a drawing canvas can't go inside a text box	платното за рисуване не може да се постави в текстово поле
+	charts and diagrams can't be moved or resized yet	диаграмите и схемите все още не могат да се преместват или преоразмеряват
+	no equation at the caret	няма уравнение при курсора
+	not editing an equation	не се редактира уравнение
+	only in Outline view	само в изгледа „Структура“
+	select a SmartArt graphic first	първо изберете SmartArt графика
+	select a chart first	първо изберете диаграма
+	select a connector first	първо изберете съединител
+	select a drawing canvas first	първо изберете платно за рисуване
+	select a floating picture or shape first	първо изберете плаваща картина или фигура
+	select a group first	първо изберете група
+	select a picture first	първо изберете картина
+	select a shape first	първо изберете фигура
+	select a text box first	първо изберете текстово поле
+	select a text box linked to another first	първо изберете текстово поле, свързано с друго
+	the Clipboard pane is empty	екранът „Клипборд“ е празен
+	there is nothing to undo	няма нищо за отмяна
+	this SmartArt was made in another program: WordCraft shows it but can't edit it	този SmartArt е създаден в друга програма: WordCraft го показва, но не може да го редактира
+	this chart was made in another program: WordCraft shows it but can't edit it	тази диаграма е създадена в друга програма: WordCraft я показва, но не може да я редактира
+	this text box is already linked: break the link first	това текстово поле вече е свързано: първо прекъснете връзката
+	leave the equation first	излезте първо от уравнението
+	the Spike is empty	натрупването е празно
+# More reasons a ribbon control is off (#2678)
+	a group holding Word ink can't be ungrouped yet	група с мастило от Word още не може да се разгрупира
+	drop caps can't go in a table	буквицата не може да се постави в таблица
+	the document is protected	документът е защитен
+	Open a document first	Първо отворете документ

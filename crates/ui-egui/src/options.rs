@@ -238,7 +238,8 @@ fn general(app: &mut WordApp, ui: &mut Ui) {
     egui::Grid::new("options_user").num_columns(2).spacing(vec2(8.0, 6.0)).show(ui, |ui| {
         ui.label(tl!("User name:"));
         let mut n = app.session.author.clone();
-        if ui.add(egui::TextEdit::singleline(&mut n).desired_width(260.0)).changed() {
+        let protected = wordcraft_engine::cmd::protect::enforced(&app.session.doc);
+        if ui.add_enabled(!protected, egui::TextEdit::singleline(&mut n).desired_width(260.0)).changed() && !protected {
             app.session.author = n;
         }
         ui.end_row();
@@ -716,7 +717,15 @@ fn language_picker(app: &mut WordApp, ui: &mut Ui) {
 pub fn lenient<T: Serialize + DeserializeOwned + Default>(input: &Value) -> T {
     let mut base = serde_json::to_value(T::default()).unwrap_or(Value::Null);
     if base.is_object() {
-        overlay::<T>(&mut base, &mut Vec::new(), input, 0);
+        let mut extra = Vec::new();
+        overlay::<T>(&mut base, &mut Vec::new(), input, 0, &mut extra);
+        // Keys with no slot in the defaults (write-only legacy settings, or unknown ones) are
+        // kept only after the loop, so `base` stays the size of `T` while each key is checked.
+        for (path, k, v) in extra {
+            if let Some(parent) = object_at(&mut base, &path) {
+                parent.insert(k, v);
+            }
+        }
     }
     serde_json::from_value(base).unwrap_or_default()
 }
@@ -730,18 +739,34 @@ fn object_at<'a>(root: &'a mut Value, path: &[String]) -> Option<&'a mut Map<Str
     v.as_object_mut()
 }
 
-fn overlay<T: DeserializeOwned>(root: &mut Value, path: &mut Vec<String>, input: &Value, depth: usize) {
+fn overlay<T: DeserializeOwned>(
+    root: &mut Value,
+    path: &mut Vec<String>,
+    input: &Value,
+    depth: usize,
+    extra: &mut Vec<(Vec<String>, String, Value)>,
+) {
     let Some(map) = input.as_object() else { return };
     for (k, v) in map {
         let Some(parent) = object_at(root, path) else { return };
         let old = parent.get(k).cloned();
         if depth < 4 && v.is_object() && old.as_ref().is_some_and(Value::is_object) {
             path.push(k.clone());
-            overlay::<T>(root, path, v, depth + 1);
+            overlay::<T>(root, path, v, depth + 1, extra);
             path.pop();
             continue;
         }
         parent.insert(k.clone(), v.clone());
+        if old.is_none() {
+            let ok = serde_json::from_value::<T>(root.clone()).is_ok();
+            if let Some(parent) = object_at(root, path) {
+                parent.remove(k);
+            }
+            if ok {
+                extra.push((path.clone(), k.clone(), v.clone()));
+            }
+            continue;
+        }
         if serde_json::from_value::<T>(root.clone()).is_err()
             && let Some(parent) = object_at(root, path)
         {
@@ -805,6 +830,18 @@ mod tests {
     use crate::theme::Appearance;
     use crate::{Services, UiState, WordApp};
 
+    #[test]
+    fn unknown_settings_keys_load_in_linear_time() {
+        let mut map = serde_json::Map::new();
+        for i in 0..20_000 {
+            map.insert(format!("unknownKey{i}"), json!(i));
+        }
+        map.insert("miniToolbar".into(), json!(false));
+        let bytes = serde_json::to_vec(&serde_json::Value::Object(map)).unwrap();
+        let state = UiState::from_json(&bytes).unwrap();
+        assert!(!state.mini_toolbar);
+    }
+
     fn app() -> WordApp {
         WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Services::default())
     }
@@ -824,6 +861,17 @@ mod tests {
         );
         h.run_steps(4);
         h
+    }
+
+    /// File › Options must not offer a way around the protected document's author check.
+    #[test]
+    fn user_name_field_disables_when_protection_starts() {
+        let mut h = nav_harness("en", 100);
+        let user_name = || egui_kittest::kittest::By::new().role(egui::accesskit::Role::TextInput).value("WordCraft User");
+        assert!(!h.get(user_name()).accesskit_node().is_disabled());
+        h.state_mut().run("review.restrict", json!({"mode": "readOnly"})).unwrap();
+        h.run_steps(4);
+        assert!(h.get(user_name()).accesskit_node().is_disabled());
     }
 
     /// #1266: check the actual painted text and renderer clip, including the bold selected
