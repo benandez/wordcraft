@@ -1246,7 +1246,8 @@ mod tests {
         let row = vec!["Name".to_string(); 5_000];
         let t = std::time::Instant::now();
         let names = field_names(&row);
-        assert!(t.elapsed() < std::time::Duration::from_secs(2), "{:?}", t.elapsed());
+        // Milliseconds; the old numbering ran past 6 minutes.
+        assert!(t.elapsed() < std::time::Duration::from_secs(10), "{:?}", t.elapsed());
         assert_eq!(names.len(), 5_000);
         assert_eq!(names[0], "Name");
         assert_eq!(names[4_999], "Name 5000");

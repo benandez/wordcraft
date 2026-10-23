@@ -2436,7 +2436,8 @@ mod tests {
         let html = format!("<p>{}x</p>", "<b><br></b><i><br></i>".repeat(100_000));
         let t = std::time::Instant::now();
         let f = parse(&html);
-        assert!(t.elapsed() < std::time::Duration::from_secs(2), "{:?}", t.elapsed());
+        // About a second on a loaded machine; trimming one span at a time ran past 6 minutes.
+        assert!(t.elapsed() < std::time::Duration::from_secs(20), "{:?}", t.elapsed());
         let texts: Vec<String> = f.blocks.iter().filter_map(|b| if let FBlock::Para(p) = b { Some(p.text()) } else { None }).collect();
         assert_eq!(texts, ["x"]);
     }

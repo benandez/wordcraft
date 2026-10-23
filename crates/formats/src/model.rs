@@ -1677,7 +1677,8 @@ mod tests {
         p.push_text("  x ", &Fmt::default());
         let t = std::time::Instant::now();
         p.trim();
-        assert!(t.elapsed() < std::time::Duration::from_secs(1), "{:?}", t.elapsed());
+        // A fraction of a second; `Vec::remove(0)` per span ran past 6 minutes.
+        assert!(t.elapsed() < std::time::Duration::from_secs(10), "{:?}", t.elapsed());
         assert_eq!(p.inlines, vec![Inline::Text("x".into(), Fmt::default())]);
         // The first span left keeps its formatting and loses only its leading blanks.
         let mut p = Para::default();

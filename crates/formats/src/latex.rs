@@ -3250,7 +3250,8 @@ Caf\'e na\"ive \c{c}a \v{s}\'{e} and {\bfseries grouped bold} after.
         let src = format!("\\begin{{tabular}}{{l}}{}x{}\\\\\\end{{tabular}}", "\\multicolumn{1}{c}{".repeat(n), "}".repeat(n));
         let t = std::time::Instant::now();
         let f = parse(&src);
-        assert!(t.elapsed() < std::time::Duration::from_secs(2), "{:?}", t.elapsed());
+        // Under a second on a loaded machine; unwrapping every wrapper took 213 s.
+        assert!(t.elapsed() < std::time::Duration::from_secs(10), "{:?}", t.elapsed());
         assert!(f.blocks.iter().any(|b| matches!(b, FBlock::Table(_))));
         // One or two wrappers, as written in real tables, are still read.
         let f = parse("\\begin{tabular}{ll}\\multicolumn{2}{c}{\\multirow{2}{*}{Both}}\\\\\\end{tabular}");

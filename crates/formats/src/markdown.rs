@@ -2103,7 +2103,8 @@ mod tests {
         let src = "*_".repeat(200_000);
         let t = std::time::Instant::now();
         let out = inl(&src);
-        assert!(t.elapsed() < std::time::Duration::from_secs(2), "{:?}", t.elapsed());
+        // Under a second on a loaded machine; the backwards search ran past 6 minutes.
+        assert!(t.elapsed() < std::time::Duration::from_secs(10), "{:?}", t.elapsed());
         let text: String = out.iter().filter_map(|i| if let Inline::Text(t, _) = i { Some(t.as_str()) } else { None }).collect();
         assert!(text.chars().all(|c| matches!(c, '*' | '_')), "only delimiters come out");
         // Literal delimiters still take the link of the text before them.
