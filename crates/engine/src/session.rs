@@ -637,12 +637,23 @@ fn doc_bib_style(doc: &Document) -> String {
     doc.settings.bib_style.as_deref().and_then(crate::cmd::citations::find_style).map_or("APA", |st| st.name).to_string()
 }
 
+/// Most pending front-end requests a session keeps.
+pub const MAX_UI_REQUESTS: usize = 64;
 /// Maximum undo depth.
 const MAX_UNDO: usize = 500;
 /// How many steps the Undo button's list shows (#701); `edit.undoTo` reaches no further.
 pub const UNDO_LIST_MAX: usize = 100;
 
 impl Session {
+    /// Queue a request for the front end. A headless session never drains the queue, so only
+    /// the newest [`MAX_UI_REQUESTS`] are kept.
+    pub fn push_ui_request(&mut self, req: Value) {
+        if self.ui_requests.len() >= MAX_UI_REQUESTS {
+            self.ui_requests.remove(0);
+        }
+        self.ui_requests.push(req);
+    }
+
     /// File name of the persisted custom dictionary inside the settings folder.
     pub const USER_DICT_FILE: &str = "custom-dictionary.txt";
 

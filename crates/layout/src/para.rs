@@ -646,6 +646,11 @@ pub(crate) fn ligature_features(l: wordcraft_doc::props::Ligatures) -> [wordcraf
     [f(b"liga", l.standard), f(b"clig", l.contextual), f(b"hlig", l.historical), f(b"dlig", l.discretional)]
 }
 
+/// A Khmer letter, sign or digit (U+1780–U+17FF, Khmer Symbols U+19E0–U+19FF).
+fn is_khmer(c: char) -> bool {
+    matches!(u32::from(c), 0x1780..=0x17FF | 0x19E0..=0x19FF)
+}
+
 /// Whether `c`'s capital is more than one character (ß → SS), so All Caps draws more
 /// characters than the document holds.
 fn caps_expands(c: char) -> bool {
@@ -1060,7 +1065,10 @@ impl<'a> Builder<'a> {
             // The shaper kerns by default; Word kerns only when Kerning for fonts covers the size.
             // Without `w14:ligatures` the shaper's default (standard and contextual) stays.
             let [kern_off] = no_kern;
-            let all = match rc.ligatures {
+            // Khmer shaping builds its syllables (pre-base vowels, stacked signs) in `liga` and
+            // `clig`, so a run's ligature setting never reaches Khmer text: Word ignores it there.
+            let ligatures = rc.ligatures.filter(|_| !shape_text.chars().any(is_khmer));
+            let all = match ligatures {
                 Some(l) => {
                     let [a, b, c, d] = ligature_features(l);
                     [kern_off, a, b, c, d]
@@ -1068,7 +1076,7 @@ impl<'a> Builder<'a> {
                 None => [kern_off; 5],
             };
             let from = usize::from(rc.kerned());
-            let to = if rc.ligatures.is_some() { all.len() } else { 1 };
+            let to = if ligatures.is_some() { all.len() } else { 1 };
             let features: &[wordcraft_fonts::Feature] = all.get(from..to).unwrap_or_default();
             let shaped = if use_levels {
                 wordcraft_fonts::shape_run(&st.face, shape_text, features, map, key.rtl)
@@ -1914,7 +1922,10 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
     pl.hyph_after = hyphenation_points(&text, to_para, &pl, auto, env.doc.settings.hyphenate_caps, &runs);
     // A paragraph whose text and mark are all a deletion the layout leaves out (a deleted
     // paragraph in the final text, or moved-away text marked Hidden) is gone: it takes no room.
-    let gone = env.hide_deleted.hides(doc, mark_rc.del) && (p.text.is_empty() || left.first() == Some(&(0..p.text.len())));
+    // So is one whose mark is hidden and whose text is empty or hidden too: Word shows nothing of
+    // it, not even its list number, though the number is counted (#3982).
+    let mark_left_out = env.hide_deleted.hides(doc, mark_rc.del) || (mark_rc.hidden && !env.show_hidden);
+    let gone = mark_left_out && (p.text.is_empty() || left.first() == Some(&(0..p.text.len())));
     pl.left_out = left;
     for k in pl.hyph_after.clone() {
         if let Some(c) = pl.clusters.get_mut(k as usize) {

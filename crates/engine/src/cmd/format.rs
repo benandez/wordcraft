@@ -139,7 +139,7 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("format.charStyle", "Apply Character Style", "Home › Styles", char_style).params(r#"{"style": string}"#),
         CommandSpec::new("format.set", "Set Character Formatting", "Home › Font › Font", set).params(r#"{"props": CharProps}"#),
         CommandSpec::new("format.fontDialog", "Font Dialog", "Home › Font", |s, _| {
-            s.ui_requests.push(json!({"open": "font"}));
+            s.push_ui_request(json!({"open": "font"}));
             sel_result(s)
         })
         .key("Mod+D")

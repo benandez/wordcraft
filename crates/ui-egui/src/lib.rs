@@ -1421,10 +1421,33 @@ impl WordApp {
         // Drawing leaves the caret where it was: following it would pull the view off the ink.
         // A mouse drag on a table (`run_keep_view`) does the same (#1738). A caret in an empty
         // story (a footer just made) also spans the whole story: it isn't a selection of it, and
-        // the view follows it.
+        // the view follows it. Saving, exporting, printing, the document's properties and File ›
+        // Options move neither the caret nor the text, so the view stays where the user is
+        // reading (#3864); AutoSave runs its save on the session and never gets here.
+        let file_keeps_view = matches!(
+            id,
+            "file.save"
+                | "file.saveAs"
+                | "file.saveTemplate"
+                | "file.exportPdf"
+                | "file.exportPng"
+                | "file.printPdf"
+                | "file.print"
+                | "file.printMarkup"
+                | "file.properties"
+                | "file.info"
+                | "file.rename"
+                | "file.privacy"
+                | "file.privacyOptions"
+                | "file.setAuthor"
+                | "file.compatibility"
+                | "file.encrypt"
+                | "file.share"
+                | "file.options"
+        );
         if (self.session.selects_whole_story() && !self.session.sel.is_collapsed()) || id == "select.all" || self.canvas.keep_view {
             self.canvas.scroll_to_caret = false;
-        } else if !["ui.", "view.", "document.", "format.state", "draw."].iter().any(|p| id.starts_with(p)) {
+        } else if !file_keeps_view && !["ui.", "view.", "document.", "format.state", "draw."].iter().any(|p| id.starts_with(p)) {
             self.canvas.scroll_to_caret = true;
         }
         for req in std::mem::take(&mut self.session.ui_requests) {
@@ -5143,6 +5166,50 @@ mod tests {
         assert!((a.canvas.scroll_offset.y - before.y).abs() < 1.0, "the view stays put: {before:?} -> {:?}", a.canvas.scroll_offset);
     }
 
+    /// #3734: `ui.resize` refuses sizes that aren't positive and clamps the rest to a window the
+    /// GPU can draw, replying with the size it asked for.
+    #[test]
+    fn control_resize_rejects_bad_sizes_and_clamps_huge_ones() {
+        let ctx = egui::Context::default();
+        let mut a = app();
+        let mut resize = |params: Value| {
+            let (req, _reply) = ControlRequest::new("ui.resize", params);
+            let mut reply = Value::Null;
+            let out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                let control::Outcome::Done(v) = control::handle(&mut a, ui.ctx(), &req) else { panic!("ui.resize replies at once") };
+                reply = v;
+            });
+            let sent: Vec<egui::Vec2> = out
+                .viewport_output
+                .values()
+                .flat_map(|v| v.commands.iter())
+                .filter_map(|c| if let egui::ViewportCommand::InnerSize(s) = c { Some(*s) } else { None })
+                .collect();
+            out.drop_without_applying_deltas();
+            (reply, sent)
+        };
+        // 1e300 is past f32: infinite once read, so refused too.
+        for bad in [
+            json!({"width": -5, "height": 600}),
+            json!({"width": 0, "height": 0}),
+            json!({"width": 1200, "height": -1}),
+            json!({"width": 1e300, "height": 600}),
+        ] {
+            let (v, sent) = resize(bad.clone());
+            assert_eq!(v["ok"], false, "{bad} is refused: {v}");
+            assert!(sent.is_empty(), "{bad} sends no size: {sent:?}");
+        }
+        let max = ctx.input(|i| i.max_texture_side) as f32 / ctx.pixels_per_point();
+        let (v, sent) = resize(json!({"width": 1e9, "height": 600}));
+        assert_eq!(sent, [egui::vec2(max, 600.0)], "{v}");
+        assert_eq!(v["result"], json!({"width": max, "height": 600.0}));
+        let (v, sent) = resize(json!({"width": 10, "height": 10}));
+        assert_eq!(sent, [window_geometry::MIN_SIZE], "{v}");
+        let (v, sent) = resize(json!({"width": 1200, "height": 800}));
+        assert_eq!(sent, [egui::vec2(1200.0, 800.0)]);
+        assert_eq!(v["result"], json!({"width": 1200.0, "height": 800.0}));
+    }
+
     /// The control channel's `ui.wheel` scrolls the canvas like a mouse wheel over it.
     #[test]
     fn control_wheel_scrolls_the_canvas() {
@@ -8763,6 +8830,46 @@ mod tests {
         assert!(!a.canvas.scroll_to_caret, "switching tabs left the view alone");
         a.run("text.insert", json!({"text": "x"})).unwrap();
         assert!(a.canvas.scroll_to_caret, "typing still brings the caret into view");
+    }
+
+    /// #3864: Save (Ctrl+S, the Save button) jumped the view back to the caret, pages away from
+    /// where the user was reading. Saving, exporting, printing and the document's properties move
+    /// neither the caret nor the text, so the view stays, as in Word; opening another document
+    /// still shows its caret.
+    #[test]
+    fn saving_and_exporting_keep_the_view_where_it_is() {
+        let dir = scratch("save-keeps-view");
+        let path = |name: &str| dir.join(name).to_string_lossy().to_string();
+        let mut a = typed();
+        let keeps_view = |a: &mut WordApp, id: &str, params: Value| {
+            a.canvas.scroll_to_caret = false;
+            let r = a.run(id, params);
+            assert!(r.is_ok(), "{id}: {r:?}");
+            assert!(!a.canvas.scroll_to_caret, "{id} scrolled to the caret");
+        };
+        keeps_view(&mut a, "file.saveAs", json!({"path": path("report.docx")}));
+        a.run("text.insert", json!({"text": "x"})).unwrap();
+        keeps_view(&mut a, "file.save", json!({}));
+        keeps_view(&mut a, "file.encrypt", json!({"password": "hunter2"}));
+        keeps_view(&mut a, "file.exportPdf", json!({"path": path("report.pdf")}));
+        keeps_view(&mut a, "file.exportPng", json!({"path": path("report.png")}));
+        keeps_view(&mut a, "file.printPdf", json!({"path": path("printed.pdf")}));
+        keeps_view(&mut a, "file.saveTemplate", json!({"path": path("report.dotx")}));
+        keeps_view(&mut a, "file.print", json!({}));
+        keeps_view(&mut a, "file.printMarkup", json!({"value": true}));
+        keeps_view(&mut a, "file.properties", json!({"title": "Quarterly report"}));
+        keeps_view(&mut a, "file.info", json!({}));
+        keeps_view(&mut a, "file.rename", json!({"name": "renamed"}));
+        keeps_view(&mut a, "file.privacyOptions", json!({"removeDateTime": true}));
+        keeps_view(&mut a, "file.privacy", json!({}));
+        keeps_view(&mut a, "file.setAuthor", json!({"name": "Ada"}));
+        keeps_view(&mut a, "file.compatibility", json!({}));
+        keeps_view(&mut a, "file.share", json!({}));
+        keeps_view(&mut a, "file.options", json!({"checkSpelling": false}));
+        a.canvas.scroll_to_caret = false;
+        a.execute("file.new", json!({})).unwrap();
+        assert!(a.canvas.scroll_to_caret, "a new document still shows its caret");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Go to Footer into a footer just made — empty, so the caret at its start also "selects the
