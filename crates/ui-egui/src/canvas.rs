@@ -1276,6 +1276,10 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                 && !app.canvas.thumbs.contains_key(&i)
                 && sr.max.y > ui.clip_rect().min.y - 200.0
                 && sr.min.y < ui.clip_rect().min.y;
+            // A cached page has no thumbnail from before the blur was on: render it again.
+            if blur_needs {
+                fresh = false;
+            }
             // Render before placing the page: a page re-rendered in this frame (a zoom step, an
             // edit) then sits on the pixel grid in this frame too, rather than a frame later.
             if visible && !tiled && !fresh && (forced || blur_needs || rendered < 2 || !app.canvas.textures.contains_key(&i) && rendered < 4) {
@@ -1285,7 +1289,9 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                 let img = wordcraft_render::render_page(&app.session.doc, page, scale_px, &opts);
                 let ci = page_image(&img);
                 let paper = if dark_page { Color32::from_gray(dark_paper) } else { Color32::WHITE };
-                app.canvas.thumbs.insert(i, crate::ribbon_blur::Thumb::of(&ci, crate::ribbon_blur::block_for(ppp), paper));
+                if app.ribbon_glass() {
+                    app.canvas.thumbs.insert(i, crate::ribbon_blur::Thumb::of(&ci, crate::ribbon_blur::block_for(ppp), paper));
+                }
                 match app.canvas.textures.get_mut(&i) {
                     Some((k, tex)) => {
                         tex.set(ci, egui::TextureOptions::LINEAR);
@@ -1449,7 +1455,8 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
         let clip = ui.clip_rect();
         let near = clip.expand2(vec2(clip.width(), clip.height() * TEXTURE_KEEP_SCREENS));
         app.canvas.textures.retain(|k, _| *k < n && geo.rects.get(*k).is_some_and(|r| r.translate(content_origin.to_vec2()).intersects(near)));
-        app.canvas.thumbs.retain(|k, _| app.canvas.textures.contains_key(k));
+        let glass = app.ribbon_glass();
+        app.canvas.thumbs.retain(|k, _| glass && app.canvas.textures.contains_key(k));
         app.canvas.tiles.retain(|id, _| visible_tile_keys.contains(id));
         app.canvas.page_rects = rects.clone();
         let view_rect = ui.clip_rect();
@@ -3954,6 +3961,23 @@ mod tests {
         );
         h.run_steps(4);
         assert!(h.state().canvas.caret_bg.is_none(), "no caret, no colour lookup");
+    }
+
+    /// Page thumbnails feed the ribbon blur only, so none are kept while it is off.
+    #[test]
+    fn no_page_thumbnails_are_made_while_the_ribbon_blur_is_off() {
+        let a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("Hello WordCraft")), Default::default());
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            a,
+        );
+        h.run_steps(4);
+        assert!(!h.state().canvas.textures.is_empty(), "the page was drawn");
+        assert!(h.state().canvas.thumbs.is_empty(), "no thumbnail without the blur");
     }
 
     /// #167: dragging a ruler's margin edge sets that margin, snapped, never negative, and
