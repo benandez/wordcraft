@@ -445,6 +445,7 @@ fn xml_fragment<'a>(ct: &str, bytes: &'a [u8]) -> Option<&'a str> {
 /// close the wrapper and add parts of its own, so it goes out as `pkg:binaryData` (#3742).
 fn one_element(s: &str) -> bool {
     let mut r = quick_xml::Reader::from_str(s);
+    r.config_mut().check_comments = true;
     let (mut depth, mut roots) = (0usize, 0usize);
     loop {
         let attrs_ok = |e: &BytesStart| e.attributes().all(|a| a.is_ok());
@@ -574,9 +575,19 @@ mod tests {
         for ok in ["<a/>", "<?xml version=\"1.0\"?>\n<a x=\"1\"><b>t &amp; <![CDATA[c]]></b></a>\n<!-- end -->", "<!-- c --><a/><?pi x?>"] {
             assert!(xml_fragment(ct, ok.as_bytes()).is_some(), "{ok}");
         }
-        for bad in
-            ["<a/><b/>", "<a></b>", "<a>", "<a/></x>", "<a/>text", "<a/>&amp;", "<a x=1/>", "<a/><?xml version=\"1.0\"?>", "<a></a></pkg:xmlData>"]
-        {
+        for bad in [
+            "<a/><b/>",
+            "<a></b>",
+            "<a>",
+            "<a/></x>",
+            "<a/>text",
+            "<a/>&amp;",
+            "<a x=1/>",
+            "<a/><?xml version=\"1.0\"?>",
+            "<a></a></pkg:xmlData>",
+            "<a><!-- x -- y --></a>",
+            "<a/><!-- x--->",
+        ] {
             assert!(xml_fragment(ct, bad.as_bytes()).is_none(), "{bad}");
         }
     }
