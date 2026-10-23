@@ -26,7 +26,18 @@ const VAL_AX: &str = "500000002";
 /// The chart part for `spec`: a complete XML document, written as [`ChartSpec::sanitize`] leaves
 /// it (a value that isn't finite is a gap).
 pub fn chart_xml(spec: &ChartSpec) -> String {
-    let spec = &bounded(spec);
+    chart_part(spec).0
+}
+
+/// [`chart_xml`], and whether the chart limits left series or points of `spec` out of it.
+pub(crate) fn chart_part(spec: &ChartSpec) -> (String, bool) {
+    let kept = bounded(spec);
+    let points = spec.series.iter().map(|s| s.values.len()).max().unwrap_or(0).max(spec.categories.len());
+    let cut = kept.series.len() < spec.series.len() || kept.points() < points;
+    (write_chart(&kept), cut)
+}
+
+fn write_chart(spec: &ChartSpec) -> String {
     let mut w = W::new();
     w.open("c:chartSpace", &[("xmlns:c", NS_C), ("xmlns:a", NS_A), ("xmlns:r", NS_R)]);
     w.empty("c:roundedCorners", &[("val", "0")]);

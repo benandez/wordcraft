@@ -326,9 +326,37 @@ fn a_kept_glossary_that_cant_be_rewritten_privately_is_written_from_the_model() 
     let mut doc = wordcraft_docx::read(&bytes).unwrap();
     assert_eq!(doc.glossary.len(), 1);
     doc.settings.remove_personal_info = true;
-    let files = save(&doc);
+    let (files, warned) = warnings(|| save(&doc));
     let g = text(&files, &glossary_target(&files).expect("a glossary"));
     assert!(g.contains("Added clause") && !g.contains("Quill Ramsey"), "{g}");
+    // What the model doesn't hold is lost: the save says so (review of #3872).
+    assert_eq!(warned.iter().filter(|w| w.contains("written from its entries")).count(), 1, "{warned:?}");
+}
+
+/// `f`'s result and the warnings logged on this thread while it ran.
+fn warnings<T>(f: impl FnOnce() -> T) -> (T, Vec<String>) {
+    use std::cell::RefCell;
+    struct Capture;
+    thread_local! {
+        static LINES: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    }
+    impl log::Log for Capture {
+        fn enabled(&self, m: &log::Metadata) -> bool {
+            m.level() <= log::Level::Warn
+        }
+        fn log(&self, r: &log::Record) {
+            if self.enabled(r.metadata()) {
+                LINES.with(|l| l.borrow_mut().push(r.args().to_string()));
+            }
+        }
+        fn flush(&self) {}
+    }
+    static CAPTURE: Capture = Capture;
+    let _ = log::set_logger(&CAPTURE);
+    log::set_max_level(log::LevelFilter::Warn);
+    LINES.with(|l| l.borrow_mut().clear());
+    let out = f();
+    (out, LINES.with(|l| std::mem::take(&mut *l.borrow_mut())))
 }
 
 /// The relationships part of a part in `word/`.

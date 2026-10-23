@@ -50,6 +50,8 @@ pub(crate) struct EmbedWriter<'d> {
     pub drop_glossary: bool,
     /// Kept parts written with these bytes instead of their own (see [`Self::scrub_glossary`]).
     scrubbed: HashMap<String, Vec<u8>>,
+    /// A chart past the chart limits has been written (and the loss logged, once per save).
+    chart_cut: bool,
 }
 
 impl<'d> EmbedWriter<'d> {
@@ -96,6 +98,7 @@ impl<'d> EmbedWriter<'d> {
             parts: Vec::new(),
             drop_glossary: false,
             scrubbed: HashMap::new(),
+            chart_cut: false,
         }
     }
 
@@ -260,7 +263,12 @@ impl<'d> EmbedWriter<'d> {
                 Some(b) => {
                     self.scrubbed.insert(p, b);
                 }
-                None => return false,
+                None => {
+                    log::warn!(
+                        "docx: the glossary's part {p} can't be cleaned of personal information; the glossary is written from its entries, without what WordCraft doesn't model"
+                    );
+                    return false;
+                }
             }
         }
         true
@@ -445,7 +453,12 @@ impl super::Writer<'_> {
     /// related from the story part through `rels`.
     pub(super) fn chart_graphic(&mut self, spec: &wordcraft_doc::chart::ChartSpec, rels: &mut PartRels) -> String {
         let name = self.embeds.fresh("word/charts/chart", ".xml");
-        let bytes = crate::chart_spec::chart_xml(spec).into_bytes();
+        let (xml, cut) = crate::chart_spec::chart_part(spec);
+        if cut && !self.embeds.chart_cut {
+            self.embeds.chart_cut = true;
+            log::warn!("docx: a chart has more series or points than a chart part holds; the rest are left out of the file");
+        }
+        let bytes = xml.into_bytes();
         self.embeds.parts.push((name.clone(), bytes, crate::chart_spec::CHART_CT.to_string(), PartRels::default()));
         let id = rels.add(crate::package::rt::CHART, &relative(STORY_PART, &name), false);
         let mut w = xml::W::default();
@@ -819,6 +832,40 @@ fn valid_part_name(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn charts_cut_to_the_limits_on_save_say_so_once() {
+        // A model deserialised as is can hold more than a chart part keeps; the save left the rest
+        // out without a word (review of #3872).
+        use std::sync::Arc;
+        use wordcraft_doc::chart::{ChartSeries, ChartSpec, ChartType, MAX_SERIES};
+        use wordcraft_doc::graphic::{Graphic, GraphicKind};
+        use wordcraft_doc::{CharProps, InlineObject, Pos};
+        let chart = |series: usize| {
+            let spec = ChartSpec {
+                kind: ChartType::Column,
+                categories: vec!["a".into(), "b".into()],
+                series: (0..series).map(|i| ChartSeries { name: format!("S{i}"), values: vec![Some(1.0); 2] }).collect(),
+                title: None,
+                legend: None,
+                data_labels: false,
+            };
+            let graphic = Graphic { kind: GraphicKind::Chart, w: 100.0, h: 100.0, chart: Some(Arc::new(spec)), ..Default::default() };
+            InlineObject::Graphic { w: 100.0, h: 100.0, alt: String::new(), float: Default::default(), graphic: Arc::new(graphic) }
+        };
+        let save = |charts: Vec<InlineObject>| {
+            let mut doc = wordcraft_doc::Document::new();
+            for c in charts {
+                doc.insert_object(&Pos::body(0, 0), c, &CharProps::default()).unwrap();
+            }
+            crate::test_log::warnings(|| crate::write(&doc).unwrap()).1
+        };
+        let cut = |w: &Vec<String>| w.iter().filter(|w| w.contains("chart")).count();
+        let warned = save(vec![chart(MAX_SERIES + 1), chart(MAX_SERIES + 5), chart(2)]);
+        assert_eq!(cut(&warned), 1, "one warning for the save, not one per chart: {warned:?}");
+        let warned = save(vec![chart(3)]);
+        assert_eq!(cut(&warned), 0, "nothing left out: {warned:?}");
+    }
 
     #[test]
     fn data_part_drawing_ids_are_rewritten_once() {

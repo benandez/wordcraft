@@ -40,6 +40,7 @@ pub fn embedded_fonts(doc: &Document) -> Vec<EmbeddedFont> {
 
 /// [`embedded_fonts`], copying at most `budget` bytes of font files.
 fn fonts_within(doc: &Document, mut budget: u64) -> Vec<EmbeddedFont> {
+    let budget_total = budget;
     let Some(table) = doc.passthrough.get(FONT_TABLE_PART).and_then(|b| crate::xml::parse(b).ok()) else {
         return Vec::new();
     };
@@ -50,6 +51,7 @@ fn fonts_within(doc: &Document, mut budget: u64) -> Vec<EmbeddedFont> {
     let mut out = Vec::new();
     // A reference repeating one already taken (same file, key and name) gives the same font.
     let mut taken: HashSet<(&str, [u8; 16], &str)> = HashSet::new();
+    let mut over_budget = 0usize;
     let embeds = table
         .children("w:font")
         .flat_map(|f| f.els().filter(|e| EMBEDS.contains(&e.name.as_str())).map(move |e| (f.attr("w:name").unwrap_or(""), e)));
@@ -80,7 +82,7 @@ fn fonts_within(doc: &Document, mut budget: u64) -> Vec<EmbeddedFont> {
         }
         // Checked before the copy is made.
         let Some(left) = budget.checked_sub(bytes.len() as u64) else {
-            log::warn!("docx: embedded fonts past {MAX_FONT_BYTES} bytes; {} is not loaded", rel.target);
+            over_budget += 1;
             continue;
         };
         budget = left;
@@ -89,6 +91,10 @@ fn fonts_within(doc: &Document, mut budget: u64) -> Vec<EmbeddedFont> {
             *b ^= key.get(i % 16).copied().unwrap_or(0);
         }
         out.push(EmbeddedFont { name: name.to_string(), data });
+    }
+    if over_budget > 0 {
+        // Once for the document, not once per font.
+        log::warn!("docx: embedded fonts past the {budget_total} byte budget; {over_budget} of them are not loaded");
     }
     out
 }
@@ -148,7 +154,11 @@ mod tests {
         let refs: Vec<(String, &str)> = (0..MAX_FONTS).map(|i| (format!("Font {i}"), "word/fonts/a.odttf")).collect();
         let refs: Vec<(&str, &str)> = refs.iter().map(|(n, p)| (n.as_str(), *p)).collect();
         let doc = doc_with(&refs, &[("word/fonts/a.odttf", 1000)]);
-        assert_eq!(fonts_within(&doc, 3500).len(), 3, "three copies fit");
+        let (fonts, warned) = crate::test_log::warnings(|| fonts_within(&doc, 3500));
+        assert_eq!(fonts.len(), 3, "three copies fit");
+        let budget: Vec<_> = warned.iter().filter(|w| w.contains("byte budget")).collect();
+        assert_eq!(budget.len(), 1, "one warning for the document, not one per font: {warned:?}");
+        assert!(budget.iter().all(|w| w.contains(&format!("{} of them", MAX_FONTS - 3))), "{budget:?}");
         assert_eq!(embedded_fonts(&doc).len(), MAX_FONTS, "well within the real budget");
     }
 }

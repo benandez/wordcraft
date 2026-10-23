@@ -1,6 +1,7 @@
 //! OPC package access: bounded zip reading, relationships, part names.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::hash_map::Entry;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{Cursor, Read, Write};
 use std::sync::Arc;
 
@@ -249,19 +250,31 @@ impl Package {
     }
 
     fn new(mut files: BTreeMap<String, Arc<Vec<u8>>>) -> Package {
-        let mut lower = HashMap::new();
+        let mut lower: HashMap<String, String> = HashMap::new();
+        let mut collides = false;
         for name in files.keys() {
-            lower.entry(name.to_ascii_lowercase()).or_insert_with(|| name.clone());
-        }
-        // Entries whose names differ only in case are one part: keep the first spelling, so every
-        // spelling of the name reaches the same stored entry (#3704).
-        files.retain(|name, _| {
-            let kept = lower.get(&name.to_ascii_lowercase()) == Some(name);
-            if !kept {
-                log::warn!("docx: dropping zip entry {name}, a second spelling of a part");
+            match lower.entry(name.to_ascii_lowercase()) {
+                Entry::Occupied(_) => collides = true,
+                Entry::Vacant(v) => {
+                    v.insert(name.clone());
+                }
             }
-            kept
-        });
+        }
+        if !collides {
+            return Package { files, lower };
+        }
+        // Entries whose names differ only in case are one part, so every spelling of the name
+        // reaches the same stored entry (#3704). The spelling kept is the one a relationship
+        // names, so the part the document points at is the one read; the first in byte order only
+        // when no relationship names any of them.
+        let named = rel_targets(&files);
+        for name in files.keys().rev().filter(|n| named.contains(n.as_str())) {
+            lower.insert(name.to_ascii_lowercase(), name.clone());
+        }
+        let before = files.len();
+        files.retain(|name, _| lower.get(&name.to_ascii_lowercase()) == Some(name));
+        let dropped = before.saturating_sub(files.len());
+        log::warn!("docx: {dropped} zip entries are other spellings of parts already read; they are left out");
         Package { files, lower }
     }
 
@@ -386,6 +399,24 @@ fn split_dir(part: &str) -> (&str, &str) {
     }
 }
 
+/// Every internal part name the relationship parts in `files` target, spelled as they spell it.
+fn rel_targets(files: &BTreeMap<String, Arc<Vec<u8>>>) -> HashSet<String> {
+    let mut named = HashSet::new();
+    for (name, bytes) in files {
+        // `dir/_rels/file.rels` relates `dir/file`, so its targets resolve against `dir`.
+        let Some(at) = name.rfind("_rels/").filter(|_| name.to_ascii_lowercase().ends_with(".rels")) else { continue };
+        let dir = name.get(..at).unwrap_or("").trim_end_matches('/');
+        let Ok(root) = xml::parse(bytes) else { continue };
+        for r in root.els().filter(|e| e.local() == "Relationship") {
+            let external = r.attr("TargetMode").is_some_and(|m| m.eq_ignore_ascii_case("External"));
+            if let (Some(target), false) = (r.attr("Target"), external) {
+                named.insert(resolve(dir, target));
+            }
+        }
+    }
+    named
+}
+
 /// Resolve a relative target against a source directory into a package path.
 pub fn resolve(dir: &str, target: &str) -> String {
     let target = target.split('#').next().unwrap_or(target);
@@ -451,6 +482,28 @@ mod tests {
             assert_eq!(p.get(spelling), Some(&b"upper"[..]), "{spelling}");
         }
         assert_eq!(p.files.len(), 1);
+    }
+
+    #[test]
+    fn the_spelling_a_relationship_names_is_kept() {
+        // The first spelling in byte order ("Image.png") was kept even when the document's
+        // relationship named the other one, so the picture shown was not the one it pointed at.
+        let rels = r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="image" Target="media/image.png"/></Relationships>"#;
+        let z = zip_of(&[
+            ("word/_rels/document.xml.rels", rels.as_bytes().to_vec()),
+            ("word/media/Image.png", b"upper".to_vec()),
+            ("word/media/image.png", b"lower".to_vec()),
+            ("word/media/Other.png", b"first".to_vec()),
+            ("word/media/other.png", b"second".to_vec()),
+        ]);
+        let (p, warned) = crate::test_log::warnings(|| Package::open(&z).unwrap());
+        assert_eq!(p.canonical("word/media/IMAGE.png"), Some("word/media/image.png"));
+        assert_eq!(p.get("word/media/Image.png"), Some(&b"lower"[..]));
+        assert_eq!(p.get("word/media/OTHER.PNG"), Some(&b"first"[..]), "no relationship names it: first in byte order");
+        assert_eq!(p.files.len(), 3);
+        let folded: Vec<_> = warned.iter().filter(|w| w.contains("other spellings")).collect();
+        assert_eq!(folded.len(), 1, "one warning for the package: {warned:?}");
+        assert!(folded.iter().all(|w| w.contains("2 zip entries")), "{folded:?}");
     }
 
     #[test]
