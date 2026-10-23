@@ -728,6 +728,9 @@ struct Ctx<'a> {
     /// Empty body paragraphs with hidden marks or continuous section breaks, in order:
     /// they take no room (see [`place_para`]).
     quiet_marks: Vec<usize>,
+    /// Empty paragraphs closing a continuous section right after another section's mark, in
+    /// order: each takes its line while it fits, then stays at the page's bottom (#3907).
+    stacked_marks: Vec<usize>,
     /// Whether even pages are mirrored (mirrored margins, on pages): see [`mirror_even_pages`].
     mirror: bool,
     /// Cache-key hashes of the table-style text formatting cells were laid out with
@@ -1673,6 +1676,9 @@ struct PageBuilder<'a> {
     cols: Vec<(f32, f32)>,
     y: f32,
     top: f32,
+    /// The body's top on this page: `top` moves down below the text when a continuous section
+    /// starts mid-page.
+    page_top: f32,
     bottom: f32,
     number: u32,
     web: bool,
@@ -2173,6 +2179,7 @@ impl PageBuilder<'_> {
         self.col = 0;
         self.cols = s.column_boxes();
         self.top = body_top;
+        self.page_top = body_top;
         self.bottom = if self.web { f32::MAX / 8.0 } else { bottom };
         self.orig_bottom = self.bottom;
         self.y = self.top;
@@ -2211,6 +2218,12 @@ impl PageBuilder<'_> {
     }
     fn at_top(&self) -> bool {
         self.y <= self.top + 0.01
+    }
+    /// At the top with nothing above on this page, so moving on gains no room. A continuous
+    /// section starting mid-page is at its top but not fresh: what doesn't fit there goes to the
+    /// next page (#3907).
+    fn fresh(&self) -> bool {
+        self.at_top() && self.top <= self.page_top + 0.01
     }
     /// Move to the next column or page.
     fn advance(&mut self, block: usize, body_top: f32) {
@@ -2327,6 +2340,7 @@ fn layout_pass(
         track_totals: true,
         pct_base: None,
         quiet_marks: Vec::new(),
+        stacked_marks: Vec::new(),
         mirror: false,
         table_keys: Vec::new(),
         fitted: HashMap::new(),
@@ -2340,12 +2354,13 @@ fn layout_pass(
     let read = opts.view == ViewMode::Read;
     let reflow = web || read;
     ctx.mirror = doc.settings.mirror_margins && !reflow;
-    ctx.quiet_marks = sections
+    // Only the first of a run of such marks is quiet; the rest are stacked (Word, #3907).
+    (ctx.stacked_marks, ctx.quiet_marks) = sections
         .windows(2)
         .filter(|w| w[1].1.start == SectionStart::Continuous)
         .map(|w| w[0].0)
         .filter(|end| doc.body.get(*end).and_then(|b| b.as_para()).is_some_and(|p| p.text.is_empty()))
-        .collect();
+        .partition(|end| end.checked_sub(1).and_then(|i| doc.body.get(i)).and_then(|b| b.as_para()).is_some_and(|p| p.section.is_some()));
     if !opts.show_hidden {
         ctx.quiet_marks.extend(
             doc.body
@@ -2390,6 +2405,7 @@ fn layout_pass(
         cols: Vec::new(),
         y: 0.0,
         top: 0.0,
+        page_top: 0.0,
         bottom: 0.0,
         number: 0,
         web,
@@ -3641,6 +3657,19 @@ fn place_para(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, block: usize, 
         }
         return;
     }
+    if !pb.web && ctx.stacked_marks.binary_search(&block).is_ok() {
+        // Measured in Word (#3907): each takes its line while it fits; past the bottom it stays
+        // there instead of starting a page, so the text after a long run starts the next page.
+        let (y, prev, bottom, content_bottom, at) = (pb.y, pb.prev.clone(), pb.bottom, pb.content_bottom, (pb.pages.len(), pb.col));
+        pb.bottom = f32::MAX / 4.0;
+        place_para_in_flow(ctx, pb, p, block, body_top);
+        pb.bottom = bottom;
+        if (pb.pages.len(), pb.col) == at && pb.y > bottom + 0.01 {
+            // At the bottom: nothing more fits on the page, even a line smaller than the mark's.
+            (pb.y, pb.prev, pb.content_bottom) = (bottom.max(y), prev, content_bottom);
+        }
+        return;
+    }
     place_para_in_flow(ctx, pb, p, block, body_top);
 }
 
@@ -3791,7 +3820,7 @@ fn place_para_in_flow(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, block:
     if pl.rp.keep_lines || (pl.rp.keep_next && pb.y + height <= pb.bottom + 0.01) {
         let need = height + if pl.rp.keep_next { next_first_line(ctx, block, width, 0, &mut ctx.counters.clone()) } else { 0.0 };
         // (Against the whole column: balanced columns grow to hold it.)
-        if pb.y + need > pb.bottom && !pb.at_top() && need <= pb.uncapped_bottom() - pb.top {
+        if pb.y + need > pb.bottom && !pb.fresh() && need <= pb.uncapped_bottom() - pb.top {
             pb.advance(block, body_top);
             pb.y += pl.rp.space_before.min(0.0);
             applied_before = pl.rp.space_before.min(0.0);
@@ -3935,7 +3964,7 @@ fn place_para_in_flow(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, block:
             // An empty paragraph closing a section before a new page: measured in Word, it stays
             // on a full page instead of starting one of its own.
             let closing_mark = pb.next_starts_page && p.section.is_some() && p.text.is_empty();
-            if over && l1 == l0 && !pb.at_top() && !split && !only_break && !closing_mark {
+            if over && l1 == l0 && !pb.fresh() && !split && !only_break && !closing_mark {
                 break;
             }
             new_notes.extend(line_notes);
@@ -3954,11 +3983,11 @@ fn place_para_in_flow(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, block:
         }
         // Widow/orphan control (2-line minimum at either end).
         if forced_break.is_none() && l1 < n && pl.rp.widow_control && n >= 2 {
-            if l1 - l0 == 1 && l0 == 0 && !pb.at_top() {
+            if l1 - l0 == 1 && l0 == 0 && !pb.fresh() {
                 l1 = l0; // orphan: move the first line to the next page
             } else if n - l1 == 1 && (l1 - l0 >= 3 || (l0 > 0 && l1 - l0 >= 2)) {
                 l1 -= 1; // widow: take one more line along
-            } else if n - l1 == 1 && l0 == 0 && l1 - l0 == 2 && !pb.at_top() {
+            } else if n - l1 == 1 && l0 == 0 && l1 - l0 == 2 && !pb.fresh() {
                 // Neither split of a three-line paragraph is allowed (two and a widow, or an
                 // orphan and two): it moves whole, as in Word.
                 l1 = l0;
@@ -3969,7 +3998,7 @@ fn place_para_in_flow(ctx: &mut Ctx, pb: &mut PageBuilder, p: &Paragraph, block:
             l1 -= 1;
         }
         if l1 == l0 {
-            if pb.at_top() {
+            if pb.fresh() {
                 l1 = l0 + 1; // can't fit even one line on an empty page: overflow
             } else {
                 pb.advance(block, body_top);

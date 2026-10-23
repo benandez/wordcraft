@@ -136,6 +136,7 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 
 ## Progress log
 
+- 2026-10-23: Layout: paragraphs that each start a continuous section now go onto new pages. A run of them ran off the bottom of the first page, because each new section counted as the top of a page. Empty section-break paragraphs after the first in a row take a line each until the page is full and then stay at its bottom, so the text after them starts the next page, as measured in Word (#3907).
 - 2026-10-22: Headers and footers: while editing the header, a single click in the footer edits the footer with the caret where clicked (and the reverse, and another page's own header or footer). The click went to the header being edited and the view scrolled back up to it, so a double-click on the footer rarely landed unless both were on screen.
 - 2026-10-21: Bullets and Numbering toggle off style-inherited lists at their effective level, including basedOn chains and numbered ListParagraph styles; other paragraphs and list definitions stay unchanged (related to #3459).
 
@@ -583,6 +584,7 @@ Footer page-table height and body wrapping are corrected. Other pagination gaps 
 | 2026-10-22 | minor | The CLI author flag and the Options user name field cannot change the session name after protection starts (#3279 follow-up). |
 | 2026-10-20 | minor | Restrict Editing, three more gaps closed: the protection of a protected document only changes through the explicit stop, the session author can't change through `file.setAuthor` under protection, and the post-check compares the settings and the metadata as well as the text and the formatting |
 | 2026-10-20 | minor | Restrict Editing: a file command that changes the open document is checked like any other — the privacy options, the properties and the inspector's removals are refused on a protected document, and restoring a stored version no longer lifts the protection or drops its password |
+| 2026-10-23 | trivial | Progress log: continuous sections paginate, #3907 |
 | 2026-10-22 | trivial | Progress log: a click in the footer while editing the header moves there |
 | 2026-10-18 | trivial | Explicit New/Open is not interrupted by startup recovery discovery; older copies stay available and Recover follows the interface theme. |
 | 2026-10-17 | trivial | Progress log: Home › Underline drop-down (#2738) |
