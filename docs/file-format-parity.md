@@ -252,6 +252,7 @@ Imported text fields use the first nonempty cached result run's formatting on th
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-22 | trivial | Importer hardening (#3692, #3705, #3713, #3714): spreadsheet header numbering and ODS repeated cells, LaTeX wrapper nesting and verbatim ends, Markdown delimiter runs, blank-span trimming and link destinations, and font/link copies per run are bounded or escaped; normal documents unchanged |
 | 2026-10-22 | trivial | Importer hardening (#3692, #3705, #3713, #3714, #3739): spreadsheet header numbering and ODS repeated cells, LaTeX wrapper nesting and verbatim ends, Markdown delimiter runs, blank-span trimming and link destinations, HTML font names in CSS, and font/link copies per run are bounded or escaped; normal documents unchanged |
 | 2026-10-23 | trivial | A relationship the markup names without the prefix is read as it wrote: an unqualified `id` on an element that carries a relationship names that relationship, and the writer keeps the attribute with the id the new package holds the part under; an ordinary `id` — a VML shape's, a drawing's — names no part (#3411 follow-up) |
 | 2026-10-21 | trivial | The reader takes the relationship ids the markup refers to from the relationship attributes of the main document it has already parsed, so a document with many relationships opens in the time its part takes, and an id that only appears as text is not a reference (#3411) |
