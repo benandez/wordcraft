@@ -52,8 +52,88 @@ const MAX_TOTAL_CHARS: u64 = 64 << 20;
 /// Bytes of repeated work per document beyond the text itself: piece Prm grpprls (Prcs, up
 /// to 64 KB each) interpreted (#3692), hyperlink targets (#3708), picture alt text (#3709)
 /// and floating objects (#3710) copied into every run or anchor. Past it Prms are skipped,
-/// copied strings left empty and floating objects dropped.
+/// copied strings left empty and floating objects dropped, each kind logged once a document
+/// ([`Work::log`]).
 const MAX_WORK: u64 = 64 << 20;
+
+/// What the [`MAX_WORK`] budget pays for, and leaves out once it is spent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Cost {
+    /// A piece's Prm grpprl: past the budget the piece keeps its CHPX formatting only.
+    Formatting,
+    /// A hyperlink target copied into a run of its result: past it the text is kept, unlinked.
+    LinkTarget,
+    /// A picture's alt text copied into an anchor: past it the picture has none.
+    AltText,
+    /// A floating object copied into its anchor: past it the object is left out.
+    FloatingObject,
+}
+
+impl Cost {
+    const ALL: [Cost; 4] = [Cost::Formatting, Cost::LinkTarget, Cost::AltText, Cost::FloatingObject];
+
+    /// What is left out, for the log.
+    fn left_out(self) -> &'static str {
+        match self {
+            Cost::Formatting => "some text keeps only part of its formatting",
+            Cost::LinkTarget => "some hyperlinks' text is kept without its link",
+            Cost::AltText => "some pictures are left without their alt text",
+            Cost::FloatingObject => "some floating shapes and pictures are left out",
+        }
+    }
+}
+
+/// One document's [`MAX_WORK`] budget, and what it has left out (each kind logged once when
+/// the document has been read, [`Work::log`]).
+struct Work {
+    left: std::cell::Cell<u64>,
+    dropped: std::cell::Cell<[bool; 4]>,
+}
+
+impl Work {
+    fn new(budget: u64) -> Self {
+        Work { left: std::cell::Cell::new(budget), dropped: std::cell::Cell::new([false; 4]) }
+    }
+
+    /// Spends `cost` bytes on `what`: false (and `what` noted as left out) when they aren't left.
+    fn charge(&self, cost: u64, what: Cost) -> bool {
+        match self.left.get().checked_sub(cost) {
+            Some(left) => {
+                self.left.set(left);
+                true
+            }
+            None => {
+                let mut dropped = self.dropped.get();
+                if let Some(d) = Cost::ALL.iter().position(|c| *c == what).and_then(|i| dropped.get_mut(i)) {
+                    *d = true;
+                }
+                self.dropped.set(dropped);
+                false
+            }
+        }
+    }
+
+    /// The kinds of work left out so far, in [`Cost::ALL`] order.
+    fn dropped(&self) -> Vec<Cost> {
+        Cost::ALL.iter().zip(self.dropped.get()).filter(|(_, d)| *d).map(|(c, _)| *c).collect()
+    }
+
+    /// Logs one warning for each kind left out.
+    fn log(&self) {
+        let dropped = self.dropped();
+        for c in &dropped {
+            log::warn!(".doc: the document repeats more than WordCraft copies ({MAX_WORK} bytes): {}", c.left_out());
+        }
+        #[cfg(test)]
+        LAST_DROPPED.with(|d| *d.borrow_mut() = dropped);
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// What the last document read on this thread left out for the work budget ([`Work::log`]).
+    static LAST_DROPPED: std::cell::RefCell<Vec<Cost>> = const { std::cell::RefCell::new(Vec::new()) };
+}
 /// `sprmCPicLocation`: the fc of a picture in the Data stream.
 const C_PIC_LOCATION: u16 = 0x6A03;
 /// `sprmCSymbol`: the record font and character of a symbol character ([MS-DOC] §2.6.1); the
@@ -186,7 +266,7 @@ pub fn read_with_password(bytes: &[u8], password: Option<&str>) -> Result<Docume
     // many times can, so the walk is held to twice the stream's size — generous for real files,
     // tight against aliasing — and never past the absolute ceiling.
     let budget = std::cell::Cell::new((word.len() as u64).saturating_mul(2).min(MAX_TOTAL_CHARS));
-    let work = std::cell::Cell::new(MAX_WORK);
+    let work = Work::new(MAX_WORK);
 
     let ctx = WalkCtx {
         word: &word,
@@ -311,6 +391,7 @@ pub fn read_with_password(bytes: &[u8], password: Option<&str>) -> Result<Docume
     doc.media.extend(pics.media);
     doc.body = table::assemble(paras);
     doc.ensure_nonempty();
+    work.log();
     Ok(doc)
 }
 
@@ -347,8 +428,8 @@ struct WalkCtx<'a> {
     /// footnotes, text boxes) are hostile and can each span a whole subdocument, so thousands of
     /// them could otherwise materialise the same text thousands of times; this bounds the total.
     budget: &'a std::cell::Cell<u64>,
-    /// Repeated-work bytes left ([`MAX_WORK`]).
-    work: &'a std::cell::Cell<u64>,
+    /// Repeated-work bytes left ([`MAX_WORK`]), and what they left out.
+    work: &'a Work,
 }
 
 /// State while assembling one paragraph from per-CP formatting.
@@ -528,13 +609,7 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                     Some(p) => {
                         // Every anchor of a picture gets its own copy of the alt text; the
                         // copies are charged to the work budget (#3709).
-                        let alt = match ctx.work.get().checked_sub(p.alt.len() as u64) {
-                            Some(left) => {
-                                ctx.work.set(left);
-                                p.alt.clone()
-                            }
-                            None => String::new(),
-                        };
+                        let alt = if ctx.work.charge(p.alt.len() as u64, Cost::AltText) { p.alt.clone() } else { String::new() };
                         pb.push('\u{FFFC}', CharProps::default());
                         pb.objects.push(InlineObject::Image {
                             media: p.key.clone(),
@@ -555,9 +630,9 @@ fn walk<'a>(ctx: &WalkCtx<'a>, cp_start: u32, cp_end: u32, pics: &mut media::Pic
                 // Each copy (a story can be walked more than once) is charged to the work budget
                 // by what a clone copies: a picture's alt text, a group with all its members (#3710).
                 for (_, obj) in ctx.drawn.get(at..).unwrap_or_default().iter().take_while(|(c, _)| *c == cp) {
-                    let cost = object_cost(obj);
-                    let Some(left) = ctx.work.get().checked_sub(cost) else { continue };
-                    ctx.work.set(left);
+                    if !ctx.work.charge(object_cost(obj), Cost::FloatingObject) {
+                        continue;
+                    }
                     pb.push('\u{FFFC}', CharProps::default());
                     pb.objects.push(obj.clone());
                 }
@@ -619,7 +694,7 @@ fn object_cost(obj: &InlineObject) -> u64 {
 /// The target is copied once per run of equally formatted result text, not per character,
 /// and each copy is charged to `work` ([`MAX_WORK`]); once that is spent the rest of the
 /// result is kept as plain text (#3708).
-fn finish_field(pb: &mut ParaBuild, f: FieldBuild, work: &std::cell::Cell<u64>) {
+fn finish_field(pb: &mut ParaBuild, f: FieldBuild, work: &Work) {
     let instr = f.instr.trim().to_string();
     let result = f.sep.unwrap_or_default();
     if let Some(target) = hyperlink_target(&instr) {
@@ -631,8 +706,7 @@ fn finish_field(pb: &mut ParaBuild, f: FieldBuild, work: &std::cell::Cell<u64>) 
                 continue;
             }
             let mut linked = props.clone();
-            if let Some(left) = work.get().checked_sub(cost) {
-                work.set(left);
+            if work.charge(cost, Cost::LinkTarget) {
                 linked.link = Some(target.clone());
             }
             pb.push(c, linked);
@@ -825,7 +899,7 @@ struct FmtMemo<'a> {
 
 /// Apply a piece's Prm (Prm0 short sprm or Prm1 grpprl) to character properties. A Prm1
 /// grpprl is charged to `work`; once that is spent the grpprl is skipped.
-fn apply_prm(props: &mut CharProps, prm: PrmRef<'_>, fonts: &[String], base: &CharProps, work: &std::cell::Cell<u64>) {
+fn apply_prm(props: &mut CharProps, prm: PrmRef<'_>, fonts: &[String], base: &CharProps, work: &Work) {
     match prm {
         PrmRef::None => {}
         PrmRef::Sprm0 { isprm, val } => {
@@ -838,8 +912,9 @@ fn apply_prm(props: &mut CharProps, prm: PrmRef<'_>, fonts: &[String], base: &Ch
             }
         }
         PrmRef::Grpprl(Some(g)) => {
-            let Some(left) = work.get().checked_sub(g.len() as u64) else { return };
-            work.set(left);
+            if !work.charge(g.len() as u64, Cost::Formatting) {
+                return;
+            }
             for prl in sprm::iter(g) {
                 if prl.sgc() == 2 {
                     fmt::apply_char(props, &prl, base, fonts);

@@ -351,6 +351,8 @@ fn alt_text_copies_across_many_anchors_are_bounded() {
     let total: usize = alts.iter().map(|a| a.len()).sum();
     assert!(total <= 64 << 20, "alt bytes {total}");
     assert_eq!(alts.last().copied(), Some(""));
+    // Leaving it out is logged, once (#3871 review).
+    assert_eq!(crate::LAST_DROPPED.with(|d| d.borrow().clone()), [crate::Cost::AltText]);
 }
 
 /// #3710: every PlcSpa entry naming a group built another copy of all its members. A shape is

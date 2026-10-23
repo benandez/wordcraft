@@ -2406,6 +2406,66 @@ fn a_difat_repeating_one_fat_sector_is_refused_before_cfb_builds_the_fat() {
     assert!(wordcraft_doc::cfb_guard::check(&cfb_file(&[("WordDocument", &[0u8; 4096])])).is_ok());
 }
 
+/// A compound file `cfb` writes in `version`: `streams` at its root, then `extra` streams under
+/// an `ObjectPool` storage (where Word keeps embedded objects).
+fn cfb_file_in(version: cfb::Version, streams: &[(&str, &[u8])], extra: &[(&str, &[u8])]) -> Vec<u8> {
+    let mut comp = cfb::CompoundFile::create_with_version(version, std::io::Cursor::new(Vec::new())).expect("cfb create");
+    for (name, data) in streams {
+        comp.create_stream(format!("/{name}")).expect("cfb stream").write_all(data).expect("cfb write");
+    }
+    comp.create_storage("/ObjectPool").expect("cfb storage");
+    for (name, data) in extra {
+        comp.create_stream(format!("/ObjectPool/{name}")).expect("cfb stream").write_all(data).expect("cfb write");
+    }
+    comp.into_inner().into_inner()
+}
+
+/// #3642 review: valid compound files pass the guard and open, so it refuses only the hostile
+/// ones. The repository keeps no files Word made, so these are written by the `cfb` crate in
+/// the shape of Word 97–2003 files: the WordDocument and table streams of a .doc these tests
+/// build, with the summary, Data and embedded-object streams Word adds, in 512-byte sectors
+/// (version 3, Word's own) and 4096-byte ones (version 4); and one with a Data stream of 8 MB,
+/// past what the header's 109 FAT sector slots map in 512-byte sectors (109 × 128 sectors,
+/// about 7 MB), so its FAT sectors are listed in a DIFAT chain too, which the guard walks.
+#[test]
+fn valid_doc_shaped_compound_files_pass_the_guard_and_open() {
+    let doc = struct_doc(&structured_spec("Hello world\r", 12));
+    let mut comp = cfb::CompoundFile::open(std::io::Cursor::new(doc.as_slice())).expect("cfb open");
+    // The table stream is 1Table or 0Table, as the FIB's fWhichTblStm says: kept under its name.
+    let table_name = if comp.is_stream("/1Table") { "1Table" } else { "0Table" };
+    let mut stream = |name: &str| {
+        let mut v = Vec::new();
+        std::io::Read::read_to_end(&mut comp.open_stream(name).expect("stream"), &mut v).expect("read");
+        v
+    };
+    let (word, table) = (stream("/WordDocument"), stream(&format!("/{table_name}")));
+    let summary = vec![0xFEu8; 4096];
+    let data = |n: usize| (0..n).map(|i| (i % 251) as u8).collect::<Vec<u8>>();
+    let small = data(200_000);
+    let big = data(8 << 20);
+    let ole = data(70_000);
+    let files = [
+        ("as built", doc.clone()),
+        (
+            "version 3",
+            cfb_file_in(
+                cfb::Version::V3,
+                &[("WordDocument", &word), (table_name, &table), ("Data", &small), ("\u{5}SummaryInformation", &summary)],
+                &[("_1234567890", &ole)],
+            ),
+        ),
+        ("version 4", cfb_file_in(cfb::Version::V4, &[("WordDocument", &word), (table_name, &table), ("Data", &small)], &[("_1", &ole)])),
+        ("with a DIFAT chain", cfb_file_in(cfb::Version::V3, &[("WordDocument", &word), (table_name, &table), ("Data", &big)], &[])),
+    ];
+    let difat_sectors = |f: &[u8]| f.get(0x48..0x4C).map_or(0, |b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]));
+    assert!(difat_sectors(&files[3].1) > 0, "the 8 MB file lists FAT sectors past the header's");
+    for (what, f) in &files {
+        assert_eq!(wordcraft_doc::cfb_guard::check(f), Ok(()), "{what}");
+        let doc = read(f).unwrap_or_else(|e| panic!("{what}: {e}"));
+        assert_eq!(body_texts(&doc).first().map(String::as_str), Some("Hello world"), "{what}");
+    }
+}
+
 /// #3708: a long HYPERLINK target over a long result was copied (and compared) once per result
 /// character. It is now copied once per run.
 #[test]
@@ -2433,13 +2493,35 @@ fn hyperlink_target_copies_are_charged_to_the_work_budget() {
     let result: Vec<(char, CharProps)> = (0..1000).map(|i| ('a', if i % 2 == 0 { bold.clone() } else { CharProps::default() })).collect();
     let f = super::FieldBuild { depth: 1, instr: format!("HYPERLINK \"{}\"", "u".repeat(100)), sep: Some(result) };
     let mut pb = super::ParaBuild::default();
-    let budget = std::cell::Cell::new(10_000);
+    let budget = super::Work::new(10_000);
     super::finish_field(&mut pb, f, &budget);
     assert_eq!(pb.text.len(), 1000, "all text kept");
     let linked: usize = pb.runs.iter().filter_map(|r| r.props.link.as_ref()).map(|l| l.len()).sum();
     assert!(linked <= 10_000, "linked bytes {linked}");
     assert_eq!(pb.runs.iter().filter(|r| r.props.link.is_some()).count(), 100);
-    assert_eq!(budget.get(), 0);
+    assert_eq!(budget.left.get(), 0);
+    assert_eq!(budget.dropped(), [super::Cost::LinkTarget], "the unlinked text is noted, to be logged");
+}
+
+/// #3871 review: what the work budget leaves out is noted once per kind, in a fixed order, and
+/// logged once per kind when the document has been read; nothing is noted while it lasts.
+#[test]
+fn the_work_budget_notes_each_kind_it_leaves_out_once() {
+    use super::Cost::*;
+    let work = super::Work::new(10);
+    assert!(work.charge(10, AltText));
+    assert!(work.dropped().is_empty(), "spent to the last byte, nothing left out");
+    assert!(work.charge(0, LinkTarget), "a free copy is never refused");
+    for _ in 0..3 {
+        assert!(!work.charge(1, FloatingObject));
+    }
+    assert!(!work.charge(1, AltText));
+    assert_eq!(work.dropped(), [AltText, FloatingObject]);
+    work.log();
+    assert_eq!(super::LAST_DROPPED.with(|d| d.borrow().clone()), [AltText, FloatingObject]);
+    // A document within the budget leaves nothing out.
+    read(&struct_doc(&structured_spec("Hello\r", 6))).expect("opens");
+    assert!(super::LAST_DROPPED.with(|d| d.borrow().is_empty()));
 }
 
 /// #3692: a piece's Prm grpprl (a Prc of up to 64 KB) was re-interpreted for every character.
@@ -2470,7 +2552,7 @@ fn a_large_prc_is_interpreted_once_per_formatting_change() {
 fn prm_grpprls_past_the_work_budget_are_skipped() {
     use wordcraft_doc::props::CharProps;
     let g = grpprl(&[(0x0835, &[0x01])]);
-    let work = std::cell::Cell::new(g.len() as u64 + 1);
+    let work = super::Work::new(g.len() as u64 + 1);
     let base = CharProps::default();
     let mut first = CharProps::default();
     super::apply_prm(&mut first, crate::piece::PrmRef::Grpprl(Some(&g)), &[], &base, &work);
@@ -2478,5 +2560,6 @@ fn prm_grpprls_past_the_work_budget_are_skipped() {
     let mut second = CharProps::default();
     super::apply_prm(&mut second, crate::piece::PrmRef::Grpprl(Some(&g)), &[], &base, &work);
     assert_eq!(second.bold, None);
-    assert_eq!(work.get(), 1);
+    assert_eq!(work.left.get(), 1);
+    assert_eq!(work.dropped(), [super::Cost::Formatting]);
 }

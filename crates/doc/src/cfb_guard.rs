@@ -69,8 +69,9 @@ pub fn check(bytes: &[u8]) -> Result<(), String> {
 
 /// A compound file of about 1 MB whose DIFAT chain lists one FAT sector 2048 × 127 times:
 /// without [`check`], `cfb` builds a FAT of about 130 MB for it. Regression input for the
-/// readers' tests.
-#[doc(hidden)]
+/// readers' tests: built only for tests, this crate's and (through the `test-support` feature,
+/// which they turn on as a dev-dependency) the readers', never into the app.
+#[cfg(any(test, feature = "test-support"))]
 pub fn repeating_difat_sample() -> Vec<u8> {
     const S: usize = 512;
     const CHAIN: u32 = 2048; // DIFAT sectors 1..=CHAIN, sector 0 is the "FAT"
