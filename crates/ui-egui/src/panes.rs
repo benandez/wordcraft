@@ -122,7 +122,7 @@ fn styles_pane(app: &mut WordApp, ui: &mut Ui, t: &Tokens) {
                 .title_bar(false)
                 .collapsible(false)
                 .resizable(true)
-                .min_size(FLOAT_MIN)
+                .min_size(FLOAT_MIN.min(screen.size()))
                 .frame(frame.corner_radius(6).shadow(ui.style().visuals.window_shadow));
             let rect = float_rect(app.ui.styles_pane_float, screen, home);
             // Placed where it was saved (back on screen) the first time it shows in a run; egui
