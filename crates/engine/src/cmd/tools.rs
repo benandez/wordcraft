@@ -1382,6 +1382,67 @@ fn lcs_ops<T: PartialEq>(a: &[T], b: &[T]) -> Vec<Op> {
     ops
 }
 
+/// How short an interior match can be, inside a run of edits, before it's folded into the
+/// surrounding delete/insert instead of staying its own little island of "same" text. Two short
+/// strings that happen to share a character in a different order (common with digits in dates,
+/// IDs, phone numbers) otherwise come out of `lcs_ops` as a true shortest edit script, but render
+/// as a "ransom note" of alternating single-character deletions and insertions where a reader
+/// (and Word) would expect one clean replacement.
+const NOISE_MATCH_LEN: usize = 1;
+
+/// Folds single-token matches that sit strictly inside a run of edits into the surrounding
+/// delete/insert, so a character-level diff doesn't fragment a replaced run. A matched run that
+/// opens or closes the whole sequence is the genuine common prefix/suffix `lcs_ops` already
+/// stripped before running its table, so it's left untouched regardless of length; only a short
+/// match produced by the table's own backtracking, which can only ever be interior, is a
+/// candidate.
+fn collapse_noise_matches(ops: &[Op]) -> Vec<Op> {
+    #[derive(Clone, Copy, PartialEq)]
+    enum Kind {
+        Keep,
+        Fold,
+    }
+    let mut runs: Vec<(Op, usize, Kind)> = Vec::new();
+    let mut k = 0;
+    while k < ops.len() {
+        let op = ops[k];
+        let len = ops[k..].iter().take_while(|o| **o == op).count();
+        let kind = if op == Op::Same && k != 0 && k + len != ops.len() && len <= NOISE_MATCH_LEN { Kind::Fold } else { Kind::Keep };
+        runs.push((op, len, kind));
+        k += len;
+    }
+    if !runs.iter().any(|(_, _, kind)| *kind == Kind::Fold) {
+        return ops.to_vec();
+    }
+    let mut out = Vec::with_capacity(ops.len());
+    let mut i = 0;
+    while i < runs.len() {
+        if runs[i].0 == Op::Same && runs[i].2 == Kind::Keep {
+            out.extend(std::iter::repeat_n(Op::Same, runs[i].1));
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < runs.len() && !(runs[i].0 == Op::Same && runs[i].2 == Kind::Keep) {
+            i += 1;
+        }
+        let region = &runs[start..i];
+        if region.iter().any(|(_, _, kind)| *kind == Kind::Fold) {
+            // Flatten the region: every original character first (in its own order), then every
+            // revised character (in its own order) — one clean delete, one clean insert.
+            let dels: usize = region.iter().map(|(op, len, kind)| if *kind == Kind::Fold || *op == Op::Del { *len } else { 0 }).sum();
+            let inss: usize = region.iter().map(|(op, len, kind)| if *kind == Kind::Fold || *op == Op::Ins { *len } else { 0 }).sum();
+            out.extend(std::iter::repeat_n(Op::Del, dels));
+            out.extend(std::iter::repeat_n(Op::Ins, inss));
+        } else {
+            for (op, len, _) in region {
+                out.extend(std::iter::repeat_n(*op, *len));
+            }
+        }
+    }
+    out
+}
+
 /// Words with the spaces after them ("The ", "cat "), or single characters.
 fn tokens(s: &str, characters: bool) -> Vec<String> {
     if characters {
@@ -1406,6 +1467,10 @@ fn word_diff(a: &Paragraph, b: &Paragraph, ins: u32, del: u32, opts: &CompareOpt
     let chars = opts.characters && at.chars().count().max(bt.chars().count()) <= MAX_CHAR_DIFF;
     let (ta, tb) = (tokens(&at, chars), tokens(&bt, chars));
     let ops = lcs_ops(&ta.iter().map(|t| opts.key(t)).collect::<Vec<_>>(), &tb.iter().map(|t| opts.key(t)).collect::<Vec<_>>());
+    // Only at character granularity: a matched whole word almost never happens by coincidence,
+    // but a matched single character very often does (digits, punctuation), so only there does
+    // a short interior match need folding back into its surrounding edit.
+    let ops = if chars { collapse_noise_matches(&ops) } else { ops };
     let mut p = Paragraph::new();
     p.props = b.props.clone();
     let base = a.runs.first().map(|r| r.props.clone()).unwrap_or_default();
@@ -2022,6 +2087,18 @@ mod tests {
         let p = s.doc.body[0].as_para().unwrap();
         let deleted: String = p.run_ranges().filter(|(_, c)| c.del.is_some()).map(|(r, _)| p.text[r].to_string()).collect();
         assert_eq!(deleted, "u");
+        // Two dates that happen to share digits in a different order ("01.09.2026" vs
+        // "19.10.2026") must come out as one clean replacement, not a scrambled chain of
+        // single-character deletions and insertions wherever a digit coincidentally recurs.
+        let mut s = Session::new(Document::from_text("zawarta w dniu 01.09.2026 pomiędzy:"));
+        s.run("review.compare", &json!({"text": "zawarta w dniu 19.10.2026 pomiędzy:", "level": "character"})).unwrap();
+        let p = s.doc.body[0].as_para().unwrap();
+        let deleted: String = p.run_ranges().filter(|(_, c)| c.del.is_some()).map(|(r, _)| p.text[r].to_string()).collect();
+        let inserted: String = p.run_ranges().filter(|(_, c)| c.ins.is_some()).map(|(r, _)| p.text[r].to_string()).collect();
+        assert_eq!(deleted, "01.09");
+        assert_eq!(inserted, "19.10");
+        assert_eq!(p.run_ranges().filter(|(_, c)| c.del.is_some()).count(), 1, "one clean deleted run, not several scattered ones");
+        assert_eq!(p.run_ranges().filter(|(_, c)| c.ins.is_some()).count(), 1, "one clean inserted run, not several scattered ones");
         // Formatting differences become formatting changes.
         let mut s = Session::new(Document::from_text("Same words."));
         let mut rev = Document::from_text("Same words.");
@@ -2032,6 +2109,33 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         assert_eq!(r["changes"], 1);
         assert!(s.doc.revisions.iter().any(|x| x.kind == RevisionKind::Format));
+    }
+
+    #[test]
+    fn collapse_noise_matches_merges_short_interior_runs_but_keeps_prefix_suffix() {
+        // "01.09" vs "19.10": a pure LCS finds a scrambled chain of single-character matches
+        // ('1', '.', '0') threaded through what a reader expects to be one clean replacement.
+        let ops = lcs_ops(&['0', '1', '.', '0', '9'], &['1', '9', '.', '1', '0']);
+        assert!(ops.contains(&Op::Same), "the raw LCS does find spurious matches here, or this test proves nothing");
+        assert_eq!(collapse_noise_matches(&ops), vec![Op::Del, Op::Del, Op::Del, Op::Del, Op::Del, Op::Ins, Op::Ins, Op::Ins, Op::Ins, Op::Ins]);
+        // A plain single-character replacement flanked by a real common prefix and suffix has no
+        // interior match to begin with (the DP's middle is pure delete/insert), so it's untouched.
+        let ops = lcs_ops(&['a', 'b', 'c', 'x', 'd', 'e', 'f'], &['a', 'b', 'c', 'y', 'd', 'e', 'f']);
+        assert_eq!(collapse_noise_matches(&ops), ops);
+    }
+
+    #[test]
+    fn compare_at_word_level_still_matches_a_whole_unchanged_word() {
+        // `collapse_noise_matches` only runs for character-level compares (wired up in
+        // `word_diff`): a single matched *word* between two edits is a real, meaningful match
+        // (unlike a single matched character), and must never be folded into a replacement.
+        let mut s = Session::new(Document::from_text("the cat sat"));
+        s.run("review.compare", &json!({"text": "a cat ran"})).unwrap();
+        let p = s.doc.body[0].as_para().unwrap();
+        assert!(
+            p.run_ranges().any(|(r, c)| c.del.is_none() && c.ins.is_none() && p.text[r].trim() == "cat"),
+            "the unchanged word must survive as plain text"
+        );
     }
 
     #[test]
