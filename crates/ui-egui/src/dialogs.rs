@@ -1678,10 +1678,16 @@ pub(crate) fn buttons(ui: &mut Ui, ok: &str) -> (bool, bool) {
 
 /// The Font dialog preview's size: the Size box's points between 6 and 72, else 12. `"NaN"` and
 /// `"inf"` parse as floats too, and a NaN font size trips epaint's glyph assertion (#3663).
+/// The page colour the sample sits on.
+fn sample_paper(app: &WordApp) -> wordcraft_doc::Rgb {
+    app.session.doc.settings.page_color.unwrap_or(wordcraft_doc::Rgb(255, 255, 255))
+}
+
 /// The sample's character properties: the dialog's fields as the document reads them.
 #[allow(clippy::too_many_arguments)]
 fn font_sample_props(
     app: &mut WordApp,
+    paper: wordcraft_doc::Rgb,
     font: &str,
     size: &str,
     color: &str,
@@ -1690,8 +1696,10 @@ fn font_sample_props(
     spacing: f32,
 ) -> wordcraft_doc::props::CharProps {
     use wordcraft_doc::props::{CharProps, TextColor, Underline};
-    // Automatic colour is black: the sample sits on a white page.
-    let ink = wordcraft_doc::Rgb::parse(color).unwrap_or(wordcraft_doc::Rgb(0, 0, 0));
+    // Automatic text is black, or white on a dark page.
+    let dark = u32::from(paper.0) * 299 + u32::from(paper.1) * 587 + u32::from(paper.2) * 114 < 128_000;
+    let auto = if dark { 255 } else { 0 };
+    let ink = wordcraft_doc::Rgb::parse(color).unwrap_or(wordcraft_doc::Rgb(auto, auto, auto));
     // A hidden run is dotted, as Word draws hidden text when it is shown.
     let line = if hidden {
         Underline::Dotted
@@ -1717,7 +1725,14 @@ fn font_sample_props(
 
 /// Draws the Font dialog's sample. A raised or lowered "2" follows the text
 /// when Superscript or Subscript is on.
-fn font_sample_box(app: &mut WordApp, ui: &mut Ui, props: &wordcraft_doc::props::CharProps, (sup, sub): (bool, bool), hidden: bool) {
+fn font_sample_box(
+    app: &mut WordApp,
+    ui: &mut Ui,
+    paper: wordcraft_doc::Rgb,
+    props: &wordcraft_doc::props::CharProps,
+    (sup, sub): (bool, bool),
+    hidden: bool,
+) {
     use wordcraft_doc::props::VertAlign;
     let mark = if sup {
         Some(VertAlign::Superscript)
@@ -1726,7 +1741,6 @@ fn font_sample_box(app: &mut WordApp, ui: &mut Ui, props: &wordcraft_doc::props:
     } else {
         None
     };
-    let paper = wordcraft_doc::Rgb(255, 255, 255);
     let (w, h) = (ui.available_width().clamp(120.0, 400.0), 56.0);
     let ppp = ui.ctx().pixels_per_point();
     let key = format!("fontsample:{props:?}:{mark:?}:{paper:?}:{w}:{ppp}");
@@ -1734,7 +1748,7 @@ fn font_sample_box(app: &mut WordApp, ui: &mut Ui, props: &wordcraft_doc::props:
     let tex = app.previews.get_or(ui.ctx(), &key, || crate::previews::font_sample(text, props, mark, w, h, ppp, paper));
     let (r, _) = ui.allocate_exact_size(vec2(w + 4.0, h + 2.0), egui::Sense::hover());
     let t = crate::theme::Tokens::get(ui.ctx());
-    let page = egui::Color32::WHITE;
+    let page = crate::theme::c32(paper);
     ui.painter().rect(r, 6.0, page, egui::Stroke::new(1.0, t.border), egui::StrokeKind::Inside);
     if let Some(tex) = tex {
         let full = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
@@ -1875,8 +1889,16 @@ fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             kern_at,
             ..
         } => {
-            let sample_props =
-                font_sample_props(app, font, size, color, (*bold, *italic, *underline, *strike), (*small_caps, *caps, *hidden), *spacing);
+            let sample_props = font_sample_props(
+                app,
+                sample_paper(app),
+                font,
+                size,
+                color,
+                (*bold, *italic, *underline, *strike),
+                (*small_caps, *caps, *hidden),
+                *spacing,
+            );
             egui::Grid::new("fontdlg").num_columns(2).spacing(vec2(10.0, 6.0)).show(ui, |ui| {
                 // Word's two font boxes when East Asian text is in use: the Latin text font and
                 // the Asian text font, each with its own list (type to find a font).
@@ -1959,7 +1981,7 @@ fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             // Live preview of the chosen font/size/colour/effects.
             ui.separator();
             ui.label(egui::RichText::new(tl!("Preview")).small().weak());
-            font_sample_box(app, ui, &sample_props, (*sup, *sub), *hidden);
+            font_sample_box(app, ui, sample_paper(app), &sample_props, (*sup, *sub), *hidden);
             let (ok, cancel) = buttons(ui, tl!("OK"));
             if ok {
                 apply_font(app, d);
