@@ -9,8 +9,11 @@ use egui::{Color32, ColorImage, Context, Rect, TextureHandle, TextureOptions, po
 /// Screen points covered by one texel of a thumbnail or of the strip.
 pub const CELL: f32 = 4.0;
 
-/// How much of the ribbon's own colour lies over the blur (0 to 255).
+/// How much of the ribbon's own colour lies over the blur (0 to 255), in a dark theme.
 pub const TINT_ALPHA: u8 = 214;
+
+/// The same in a light theme, where the page and the ribbon are both pale and little shows.
+pub const LIGHT_TINT_ALPHA: u8 = 125;
 
 /// A page averaged down to cells of about [`CELL`] points, over its paper colour.
 #[derive(Clone, Debug, PartialEq)]
@@ -221,7 +224,8 @@ pub fn fade_down(painter: &egui::Painter, rect: Rect, top: Color32) {
 
 /// `c` made see-through, so the blur shows under it.
 pub fn glass(c: Color32) -> Color32 {
-    Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), TINT_ALPHA)
+    let light = c.r() as u32 + c.g() as u32 + c.b() as u32 > 384;
+    Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), if light { LIGHT_TINT_ALPHA } else { TINT_ALPHA })
 }
 
 /// The strip's size in texels, once it has been made.
