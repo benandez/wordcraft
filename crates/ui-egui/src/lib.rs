@@ -2421,8 +2421,17 @@ impl WordApp {
                 chrome::title_bar(self, ui);
                 // The blur is painted after the page, into a slot kept under the ribbon.
                 let before = ui.available_rect_before_wrap();
+                ribbon_blur::set_drawing(&ctx, self.ribbon_glass());
                 glass = self.ribbon_glass().then(|| (ui.painter().add(egui::Shape::Noop), before));
+                let menu_fill = ctx.global_style().visuals.window_fill;
+                if glass.is_some() {
+                    ctx.global_style_mut(|s| s.visuals.window_fill = ribbon_blur::menu_glass(menu_fill));
+                }
                 ribbon::show(self, ui);
+                if glass.is_some() {
+                    ctx.global_style_mut(|s| s.visuals.window_fill = menu_fill);
+                }
+                ribbon_blur::set_drawing(&ctx, false);
                 if let Some((_, r)) = glass.as_mut() {
                     r.max.y = ui.available_rect_before_wrap().min.y;
                 }
@@ -2430,11 +2439,11 @@ impl WordApp {
                 panes::show(self, ui);
             }
             let fill = if screen == chrome::Screen::Focus { chrome::FOCUS_CANVAS } else { t.canvas };
-            let canvas = egui::CentralPanel::default().frame(egui::Frame::NONE.fill(fill)).show(ui, |ui| {
+            egui::CentralPanel::default().frame(egui::Frame::NONE.fill(fill)).show(ui, |ui| {
                 canvas::show(self, ui);
             });
             if let Some((slot, rect)) = glass {
-                ribbon_blur::paint(self, ui, slot, rect, canvas.response.rect.min.y);
+                ribbon_blur::paint(self, ui, slot, rect, self.canvas.view_top);
             }
             if self.focus_ribbon {
                 chrome::focus_ribbon(self, &ctx);

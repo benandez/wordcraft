@@ -7,7 +7,7 @@
 use egui::{Color32, ColorImage, Context, Rect, TextureHandle, TextureOptions, pos2, vec2};
 
 /// Screen points covered by one texel of a thumbnail or of the strip.
-pub const CELL: f32 = 8.0;
+pub const CELL: f32 = 4.0;
 
 /// How much of the ribbon's own colour lies over the blur (0 to 255).
 pub const TINT_ALPHA: u8 = 214;
@@ -96,22 +96,39 @@ pub fn compose(area: Rect, pages: &[PageView], background: Color32) -> ColorImag
             }
         }
     }
-    let mut pixels = Vec::with_capacity(w * h);
-    for y in 0..h {
-        for x in 0..w {
+    for _ in 0..PASSES {
+        box_pass(&mut raw, w, h, true);
+        box_pass(&mut raw, w, h, false);
+    }
+    let byte = |v: f32| v.round().clamp(0.0, 255.0) as u8;
+    let pixels = raw.iter().map(|c| Color32::from_rgb(byte(c[0]), byte(c[1]), byte(c[2]))).collect();
+    ColorImage::new([w, h], pixels)
+}
+
+/// Three box passes along an axis come close to a Gaussian.
+const PASSES: usize = 3;
+/// Cells each side in a box pass: wider across than down, so the blur is stretched sideways.
+const RADIUS_X: usize = 5;
+const RADIUS_Y: usize = 2;
+
+/// Average each cell with its neighbours along one axis; the edge cell repeats.
+fn box_pass(px: &mut [[f32; 3]], w: usize, h: usize, along_x: bool) {
+    let (lines, len, radius) = if along_x { (h, w, RADIUS_X) } else { (w, h, RADIUS_Y) };
+    let at = |l: usize, i: usize| if along_x { l * w + i } else { i * w + l };
+    let width = (2 * radius + 1) as f32;
+    for l in 0..lines {
+        let src: Vec<[f32; 3]> = (0..len).map(|i| px.get(at(l, i)).copied().unwrap_or([0.0; 3])).collect();
+        for i in 0..len {
             let mut sum = [0.0_f32; 3];
-            let mut n = 0.0;
-            for yy in y.saturating_sub(1)..(y + 2).min(h) {
-                for xx in x.saturating_sub(1)..(x + 2).min(w) {
-                    let c = raw.get(yy * w + xx).copied().unwrap_or(bg);
-                    (0..3).for_each(|i| sum[i] += c[i]);
-                    n += 1.0;
-                }
+            for k in 0..=2 * radius {
+                let c = src.get((i + k).saturating_sub(radius).min(len - 1)).copied().unwrap_or([0.0; 3]);
+                (0..3).for_each(|j| sum[j] += c[j]);
             }
-            pixels.push(Color32::from_rgb((sum[0] / n) as u8, (sum[1] / n) as u8, (sum[2] / n) as u8));
+            if let Some(slot) = px.get_mut(at(l, i)) {
+                *slot = [sum[0] / width, sum[1] / width, sum[2] / width];
+            }
         }
     }
-    ColorImage::new([w, h], pixels)
 }
 
 /// The strip's texture, kept between frames and rewritten only when the picture changes.
@@ -122,8 +139,8 @@ struct Strip {
 }
 
 /// Show `image` as the strip's texture and return it.
-pub fn upload(ctx: &Context, image: ColorImage) -> egui::TextureId {
-    let id = egui::Id::new("ribbon_blur_strip");
+pub fn upload(ctx: &Context, name: &str, image: ColorImage) -> egui::TextureId {
+    let id = egui::Id::new(("ribbon_blur_strip", name));
     let kept: Option<Strip> = ctx.data(|d| d.get_temp(id));
     let strip = match kept {
         Some(mut s) => {
@@ -133,7 +150,7 @@ pub fn upload(ctx: &Context, image: ColorImage) -> egui::TextureId {
             }
             s
         }
-        None => Strip { tex: ctx.load_texture("ribbon_blur", image.clone(), TextureOptions::LINEAR), image },
+        None => Strip { tex: ctx.load_texture(format!("ribbon_blur_{name}"), image.clone(), TextureOptions::LINEAR), image },
     };
     let tex_id = strip.tex.id();
     ctx.data_mut(|d| d.insert_temp(id, strip));
@@ -141,12 +158,12 @@ pub fn upload(ctx: &Context, image: ColorImage) -> egui::TextureId {
 }
 
 /// Paint the strip under the ribbon into the slot `slot` reserved before the ribbon drew.
-/// `canvas_top` is where the document view starts: the page position that the ribbon's lower
+/// `view_top` is where the document view starts: the page position that the ribbon's lower
 /// edge stands for.
-pub fn paint(app: &crate::WordApp, ui: &egui::Ui, slot: egui::layers::ShapeIdx, ribbon: Rect, canvas_top: f32) {
+pub fn paint(app: &crate::WordApp, ui: &egui::Ui, slot: egui::layers::ShapeIdx, ribbon: Rect, view_top: f32) {
     let t = crate::theme::Tokens::get(ui.ctx());
     let paper = if app.session.view.dark_mode { Color32::from_gray(wordcraft_render::DARK_PAPER) } else { Color32::WHITE };
-    let shift = vec2(0.0, ribbon.max.y - canvas_top);
+    let shift = vec2(0.0, ribbon.max.y - view_top);
     let pages: Vec<PageView> = app
         .canvas
         .page_rects
@@ -154,9 +171,36 @@ pub fn paint(app: &crate::WordApp, ui: &egui::Ui, slot: egui::layers::ShapeIdx, 
         .enumerate()
         .map(|(i, r)| PageView { rect: r.translate(shift), thumb: app.canvas.thumbs.get(&i), paper })
         .collect();
-    let id = upload(ui.ctx(), compose(ribbon, &pages, t.canvas));
+    let id = upload(ui.ctx(), "ribbon", compose(ribbon, &pages, t.canvas));
     let full = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
     ui.painter().with_clip_rect(ribbon).set(slot, egui::Shape::image(id, ribbon, full, Color32::WHITE));
+}
+
+/// Paint the strip now, over `area` of the canvas: the pages as they lie, without a shift.
+pub fn paint_band(app: &crate::WordApp, ui: &egui::Ui, area: Rect) {
+    let t = crate::theme::Tokens::get(ui.ctx());
+    let paper = if app.session.view.dark_mode { Color32::from_gray(wordcraft_render::DARK_PAPER) } else { Color32::WHITE };
+    let pages: Vec<PageView> =
+        app.canvas.page_rects.iter().enumerate().map(|(i, r)| PageView { rect: *r, thumb: app.canvas.thumbs.get(&i), paper }).collect();
+    let id = upload(ui.ctx(), "ruler", compose(area, &pages, t.canvas));
+    let full = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
+    ui.painter().image(id, area, full, Color32::WHITE);
+}
+
+/// While set, the ribbon draws over the strip: its hover and press fills stay see-through.
+pub fn set_drawing(ctx: &Context, on: bool) {
+    ctx.data_mut(|d| d.insert_temp(egui::Id::new("ribbon_blur_drawing"), on));
+}
+
+/// `fill` for a ribbon button's hover, press or check, see-through while the strip shows.
+pub fn button_fill(ctx: &Context, fill: Color32) -> Color32 {
+    let on = ctx.data(|d| d.get_temp::<bool>(egui::Id::new("ribbon_blur_drawing"))).unwrap_or(false);
+    if on { fill.gamma_multiply(0.6) } else { fill }
+}
+
+/// A menu's fill, a little see-through: the text behind it stays faint.
+pub fn menu_glass(c: Color32) -> Color32 {
+    Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 242)
 }
 
 /// `c` made see-through, so the blur shows under it.
@@ -167,7 +211,7 @@ pub fn glass(c: Color32) -> Color32 {
 /// The strip's size in texels, once it has been made.
 #[cfg(test)]
 pub fn strip_size(ctx: &Context) -> Option<[usize; 2]> {
-    let kept: Option<Strip> = ctx.data(|d| d.get_temp(egui::Id::new("ribbon_blur_strip")));
+    let kept: Option<Strip> = ctx.data(|d| d.get_temp(egui::Id::new(("ribbon_blur_strip", "ribbon"))));
     kept.map(|s| s.image.size)
 }
 
@@ -205,13 +249,13 @@ mod tests {
 
     #[test]
     fn the_strip_shows_a_page_under_it_and_the_background_beside_it() {
-        let area = Rect::from_min_size(pos2(0.0, 0.0), vec2(200.0, 80.0));
-        let page = PageView { rect: Rect::from_min_size(pos2(80.0, -50.0), vec2(100.0, 100.0)), thumb: None, paper: Color32::WHITE };
+        let area = Rect::from_min_size(pos2(0.0, 0.0), vec2(400.0, 80.0));
+        let page = PageView { rect: Rect::from_min_size(pos2(200.0, -50.0), vec2(300.0, 100.0)), thumb: None, paper: Color32::WHITE };
         let img = compose(area, &[page], Color32::from_gray(100));
         let (w, h) = (img.size[0], img.size[1]);
         assert_eq!(img.pixels[2 * w + 2], Color32::from_gray(100), "left of the page");
-        assert_eq!(img.pixels[2 * w + w / 2 + 2], Color32::WHITE, "under the page");
-        assert_eq!(img.pixels[(h - 1) * w + w / 2], Color32::from_gray(100), "below the page's end");
+        assert_eq!(img.pixels[2 * w + w - 3], Color32::WHITE, "under the page");
+        assert_eq!(img.pixels[(h - 1) * w + w - 3], Color32::from_gray(100), "below the page's end");
     }
 
     #[test]

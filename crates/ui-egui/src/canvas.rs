@@ -86,6 +86,9 @@ pub struct CanvasState {
     pub open_url: Option<String>,
     /// Screen rects of pages last frame (for the control channel: page ↔ screen coordinates).
     pub page_rects: Vec<Rect>,
+    /// Where the page viewport starts on screen, below the ruler. The blurred ribbon continues
+    /// the pages upward from here.
+    pub view_top: f32,
     /// While the vertical scrollbar is dragged: the page at the top of the window (0-based),
     /// which a tip beside the pointer names (#2551).
     pub scrollbar_page: Option<usize>,
@@ -261,6 +264,7 @@ impl Default for CanvasState {
             last_shading: "FFF2CC".into(),
             open_url: None,
             page_rects: Vec::new(),
+            view_top: 0.0,
             scrollbar_page: None,
             scale: PX_PER_PT,
             canvas_rect: None,
@@ -1224,6 +1228,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
         // Read Mode's neighbouring columns end right at the viewport's edges: keep their
         // shadows from showing there as hairlines.
         let clip = if app.session.view.read_mode { ui.clip_rect().shrink2(vec2(3.0, 0.0)) } else { ui.clip_rect() };
+        app.canvas.view_top = ui.clip_rect().min.y;
         let painter = ui.painter_at(clip);
         let ppp = ui.ctx().pixels_per_point();
         let max_tex = ui.ctx().input(|i| i.max_texture_side).min(wordcraft_render::MAX_SIDE as usize).max(1) as f32;
@@ -2789,8 +2794,14 @@ fn rulers(app: &mut WordApp, ui: &mut Ui, h: Rect, v: Rect, rects: &[Rect], layo
     let t = Tokens::get(ui.ctx());
     let p = ui.painter();
     let corner = Rect::from_min_max(pos2(v.min.x, h.min.y), pos2(v.max.x, h.max.y));
-    p.rect_filled(corner, 0.0, t.canvas);
-    p.rect_filled(h, 0.0, t.canvas);
+    // The frosted ribbon goes on down through the ruler.
+    let glass = app.ribbon_glass();
+    let tint = |c: Color32| if glass { crate::ribbon_blur::glass(c) } else { c };
+    if glass {
+        crate::ribbon_blur::paint_band(app, ui, corner.union(h));
+    }
+    p.rect_filled(corner, 0.0, tint(t.canvas));
+    p.rect_filled(h, 0.0, tint(t.canvas));
     p.rect_filled(v, 0.0, t.canvas);
     crate::ruler_tabs::selector(app, ui, corner);
     let pi = app.session.page_hint.min(layout.pages.len().saturating_sub(1));
@@ -2801,9 +2812,9 @@ fn rulers(app: &mut WordApp, ui: &mut Ui, h: Rect, v: Rect, rects: &[Rect], layo
     let hp = ui.painter_at(h);
     let x0 = pr.min.x;
     let bar = Rect::from_min_max(pos2(x0, h.min.y + 4.0), pos2(x0 + page.w * scale, h.max.y - 3.0));
-    hp.rect_filled(bar, 0.0, t.ruler_margin);
+    hp.rect_filled(bar, 0.0, tint(t.ruler_margin));
     let text = Rect::from_min_max(pos2(x0 + page.body.x * scale, bar.min.y), pos2(x0 + page.body.right() * scale, bar.max.y));
-    hp.rect_filled(text, 0.0, t.ruler);
+    hp.rect_filled(text, 0.0, tint(t.ruler));
     let rp = app.session.doc.para_at(&app.session.sel.focus).map(|para| app.session.doc.styles.resolve_para(&para.props));
     // Graduations in the File › Options unit.
     let (unit, div, step) = ruler_scale(app.session.units());
