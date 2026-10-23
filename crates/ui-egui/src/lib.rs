@@ -2778,8 +2778,9 @@ pub fn keeps_everything(name: &str) -> bool {
 /// The dialog a user-run command opens when it lacks the input it needs (scripts and agents get
 /// the command's own error or default instead): Select Recipients and Edit Recipient List without
 /// data, Insert Merge Field without a field, Find Recipient without text, the If and Skip
-/// Record If rules (or Rules with no rule at all) without a field, Table Properties without
-/// settings, Symbol and Field without a character or code, and Enclose Characters without a shape.
+/// Record If rules (or Rules with no rule at all) without a field, Finish & Merge and Print
+/// Documents without records, Table Properties without settings, Symbol and Field without a
+/// character or code, and Enclose Characters without a shape.
 fn input_dialog(id: &str, params: &Value) -> Option<&'static str> {
     let has = |k: &str| params.get(k).is_some_and(|v| !v.is_null());
     let rule = params.get("rule").and_then(Value::as_str).map(str::to_ascii_uppercase);
@@ -2794,6 +2795,9 @@ fn input_dialog(id: &str, params: &Value) -> Option<&'static str> {
         "mailings.editRecipients" if !has("rows") => Some("recipientList"),
         "mailings.insertField" if !has("field") => Some("insertMergeField"),
         "mailings.findRecipient" if !has("text") => Some("findRecipient"),
+        // Finish & Merge and Print Documents without records ask which (#3028).
+        "mailings.finish" if !["path", "records", "from", "to"].into_iter().any(has) => Some("mergeRecords"),
+        "mailings.printDocuments" if !["records", "from", "to"].into_iter().any(has) => Some("printRecords"),
         // Symbol without a character and Field without a code show their dialogs (#321).
         "insert.symbol" if !has("char") => Some("symbol"),
         "insert.field" if !has("instr") => Some("field"),
@@ -2946,6 +2950,7 @@ pub(crate) fn discards_document(id: &str, params: &Value) -> bool {
         "file.open" => params.get("path").is_some(),
         "file.recover" => params.get("restore").is_some(),
         "mailings.finish" => params.get("path").and_then(Value::as_str).is_none(),
+        "mailings.printDocuments" => true,
         _ => false,
     }
 }
@@ -7315,14 +7320,28 @@ mod tests {
         assert!(!a.has_document() && !a.quit_requested);
     }
 
-    const MAILINGS: [&str; 3] = ["mailings.envelopes", "mailings.labels", "mailings.finish"];
+    const MAILINGS: [&str; 4] = ["mailings.envelopes", "mailings.labels", "mailings.finish", "mailings.printDocuments"];
 
     /// What the user gave: Envelopes and Labels without anything open their dialogs (#407).
     fn mailing(id: &str) -> Value {
         match id {
             "mailings.envelopes" => json!({"delivery": "Ada"}),
             "mailings.labels" => json!({"text": "Ada"}),
-            _ => json!({}),
+            _ => json!({"records": "all"}),
+        }
+    }
+
+    /// #3028: Finish & Merge and Print Documents from the ribbon ask which records first; with
+    /// records given (scripts, the dialog's OK) they merge.
+    #[test]
+    fn finish_and_print_documents_ask_which_records() {
+        let mut a = app();
+        a.run("mailings.recipients", json!({"csv": "Name\nAda\nAlan"})).unwrap();
+        for (id, dialog) in [("mailings.finish", "mergeRecords"), ("mailings.printDocuments", "printRecords")] {
+            assert_eq!(a.run(id, json!({})).unwrap(), json!({"pending": dialog}));
+            assert_eq!(prompt(&a), Some(dialog));
+            assert!(matches!(&a.dialog, Some(dialogs::Dialog::MergeRecords { from, to, .. }) if from == "1" && to == "2"));
+            a.dialog = None;
         }
     }
 
@@ -7353,7 +7372,7 @@ mod tests {
         // A `path` that isn't text merges into a new document, like no path at all.
         let mut a = typed();
         a.run("mailings.recipients", json!({"csv": "Name\nAda"})).unwrap();
-        a.run("mailings.finish", json!({"path": null})).unwrap();
+        a.run("mailings.finish", json!({"path": null, "records": "all"})).unwrap();
         assert_eq!(prompt(&a), Some("saveChanges"));
     }
 

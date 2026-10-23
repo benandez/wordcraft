@@ -447,6 +447,15 @@ pub enum Dialog {
         edit: bool,
         message: String,
     },
+    /// Mailings › Finish & Merge › Edit Individual Documents… or Print Documents… (`print`):
+    /// which records to merge (0 all, 1 the previewed one, 2 the From and To range).
+    MergeRecords {
+        print: bool,
+        choice: u8,
+        from: String,
+        to: String,
+        message: String,
+    },
     /// Mailings › Find Recipient.
     FindRecipient {
         text: String,
@@ -988,6 +997,8 @@ impl Dialog {
             Dialog::SelectTable { .. } => "selectTable",
             Dialog::InsertMergeField { .. } => "insertMergeField",
             Dialog::FindRecipient { .. } => "findRecipient",
+            Dialog::MergeRecords { print: false, .. } => "mergeRecords",
+            Dialog::MergeRecords { .. } => "printRecords",
             Dialog::FieldCode { edit: false, .. } => "fieldCode",
             Dialog::FieldCode { .. } => "editFieldCode",
             Dialog::MergeRule { rule, .. } if rule == "SKIPIF" => "ruleSkipIf",
@@ -1249,6 +1260,13 @@ impl Dialog {
                 Dialog::InsertMergeField { field: fields.first().cloned().unwrap_or_default(), fields }
             }
             "findRecipient" => Dialog::FindRecipient { text: String::new(), message: String::new() },
+            "mergeRecords" | "printRecords" => Dialog::MergeRecords {
+                print: name == "printRecords",
+                choice: 0,
+                from: "1".into(),
+                to: app.session.merge.rows.len().to_string(),
+                message: String::new(),
+            },
             "fieldCode" => Dialog::FieldCode { code: String::new(), edit: false, message: String::new() },
             "editFieldCode" => {
                 let field = wordcraft_engine::cmd::fields::selected(&app.session).into_iter().next()?;
@@ -1446,6 +1464,7 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context) {
         Dialog::SelectTable { .. } => "Select Table",
         Dialog::InsertMergeField { .. } => "Insert Merge Field",
         Dialog::FindRecipient { .. } => "Find Recipient",
+        Dialog::MergeRecords { .. } => "Finish & Merge",
         Dialog::FieldCode { edit: false, .. } => "Field",
         Dialog::FieldCode { .. } => "Edit Field Code",
         Dialog::MergeRule { rule, .. } if rule == "SKIPIF" => "Skip Record If",
@@ -2978,6 +2997,46 @@ fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             }
             cancel
         }
+        Dialog::MergeRecords { print, choice, from, to, message } => {
+            ui.radio_value(choice, 0, tl!("All"));
+            ui.radio_value(choice, 1, tl!("Current record"));
+            ui.horizontal(|ui| {
+                ui.radio_value(choice, 2, tl!("From:"));
+                // Typing a number picks the range, as in Word.
+                if ui.add(egui::TextEdit::singleline(from).desired_width(60.0)).changed() {
+                    *choice = 2;
+                }
+                ui.label(tl!("To:"));
+                if ui.add(egui::TextEdit::singleline(to).desired_width(60.0)).changed() {
+                    *choice = 2;
+                }
+            });
+            if !message.is_empty() {
+                ui.label(egui::RichText::new(message.as_str()).small().weak());
+            }
+            let (ok, cancel) = buttons(ui, tl!(if *print { "Print" } else { "OK" }));
+            if ok {
+                let params = match *choice {
+                    0 => Some(json!({"records": "all"})),
+                    1 => Some(json!({"records": "current"})),
+                    _ => match (from.trim().parse::<u64>(), to.trim().parse::<u64>()) {
+                        (Ok(f), Ok(t)) => Some(json!({"from": f, "to": t})),
+                        _ => None,
+                    },
+                };
+                let id = if *print { "mailings.printDocuments" } else { "mailings.finish" };
+                // An empty range is reported here, before Save Changes asks about the document.
+                let run = params.ok_or_else(|| tl!("Enter a number.").to_string()).and_then(|p| {
+                    wordcraft_engine::cmd::mailings::merge_range(&app.session, &p).map_err(|e| e.to_string())?;
+                    app.run(id, p)
+                });
+                match run {
+                    Ok(_) => return true,
+                    Err(e) => *message = e,
+                }
+            }
+            cancel
+        }
         Dialog::MergeRule { rule, fields, field, value, then, els } => {
             let skip = rule == "SKIPIF";
             ui.label(tl!(if skip {
@@ -4384,6 +4443,52 @@ mod tests {
 
     /// #1346: a check box the selected paragraphs differ in shows as neither on nor off; a click
     /// and OK turn it on in all of them, and the other fields they differ in stay as they were.
+    /// #3028: the records dialog refuses a range with no records itself, before Save Changes asks
+    /// about the unsaved document; a good range goes on to that question.
+    #[test]
+    fn merge_records_dialog_checks_the_range_before_asking_to_save() {
+        use egui_kittest::kittest::Queryable;
+        let mut app = app_with("Dear ");
+        let _ = app.run("mailings.recipients", json!({"csv": "Name\nAda\nAlan\nGrace"}));
+        let _ = app.run("text.insert", json!({"text": "unsaved"}));
+        assert!(app.session.dirty);
+        app.dialog = Dialog::open("mergeRecords", &mut app);
+        if let Some(Dialog::MergeRecords { choice, from, to, .. }) = &mut app.dialog {
+            *choice = 2;
+            *from = "3".into();
+            *to = "2".into();
+        }
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            app,
+        );
+        for _ in 0..4 {
+            h.step();
+        }
+        h.get_by_role_and_label(egui::accesskit::Role::Button, "OK").click();
+        for _ in 0..2 {
+            h.step();
+        }
+        let Some(Dialog::MergeRecords { message, .. }) = &h.state().dialog else { panic!("the dialog stays open") };
+        assert!(message.contains("no records from 3 to 2"), "{message}");
+        if let Some(Dialog::MergeRecords { to, .. }) = &mut h.state_mut().dialog {
+            *to = "3".into();
+        }
+        for _ in 0..2 {
+            h.step();
+        }
+        h.get_by_role_and_label(egui::accesskit::Role::Button, "OK").click();
+        for _ in 0..2 {
+            h.step();
+        }
+        assert_eq!(h.state().dialog.as_ref().map(|d| d.name()), Some("saveChanges"));
+        assert!(h.state().session.doc.plain_text(wordcraft_doc::StoryRef::Body).contains("unsaved"), "nothing merged yet");
+    }
+
     #[test]
     fn paragraph_dialog_sets_a_mixed_check_box_for_all() {
         use egui_kittest::kittest::{NodeT, Queryable};

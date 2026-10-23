@@ -2764,3 +2764,41 @@ template	Letter	Scrisoare
 	pi	pi
 	Blur the page under the ribbon	Estompează pagina de sub panglică
 	On: the page scrolling up under the ribbon shows through it as a soft blur. Off: the ribbon is solid.	Activat: pagina care derulează sub panglică se vede prin ea ca o estompare fină. Dezactivat: panglica este opacă.
+	First Record	Prima înregistrare
+	Last Record	Ultima înregistrare
+	Go to Record	Salt la înregistrare
+	Edit Individual Documents…	Editare documente individuale…
+	Print Documents…	Imprimare documente…
+	Print Documents	Imprimare documente
+	Current record	Înregistrarea curentă
+	From:	De la:
+	To:	Până la:
+	Enter a number.	Introduceți un număr.
+# More reasons a ribbon control is off (#2678)
+	a drawing canvas can't be ungrouped	un panou de desen nu poate fi degrupat
+	a drawing canvas can't go inside a text box	un panou de desen nu poate intra într-o casetă de text
+	a group holding Word ink can't be ungrouped yet	un grup cu cerneală Word nu poate fi încă degrupat
+	charts and diagrams can't be moved or resized yet	diagramele și graficele nu pot fi încă mutate sau redimensionate
+	drop caps can't go in a table	o inițială decorativă nu poate intra într-un tabel
+	leave the equation first	ieșiți mai întâi din ecuație
+	no equation at the caret	nu există nicio ecuație la cursor
+	not editing an equation	nu editați o ecuație
+	only in Outline view	doar în vizualizarea Schiță
+	select a chart first	selectați mai întâi o diagramă
+	select a connector first	selectați mai întâi un conector
+	select a drawing canvas first	selectați mai întâi un panou de desen
+	select a floating picture or shape first	selectați mai întâi o imagine sau o formă flotantă
+	select a group first	selectați mai întâi un grup
+	select a picture first	selectați mai întâi o imagine
+	select a shape first	selectați mai întâi o formă
+	select a SmartArt graphic first	selectați mai întâi un grafic SmartArt
+	select a text box first	selectați mai întâi o casetă de text
+	select a text box linked to another first	selectați mai întâi o casetă de text legată de alta
+	the Clipboard pane is empty	panoul Clipboard este gol
+	the document is protected	documentul este protejat
+	there is nothing to undo	nu există nimic de anulat
+	the Spike is empty	spike-ul este gol
+	this chart was made in another program: WordCraft shows it but can't edit it	această diagramă a fost creată în alt program: WordCraft o afișează, dar nu o poate edita
+	this SmartArt was made in another program: WordCraft shows it but can't edit it	acest SmartArt a fost creat în alt program: WordCraft îl afișează, dar nu îl poate edita
+	this text box is already linked: break the link first	această casetă de text este deja legată: întrerupeți mai întâi legătura
+	Open a document first	Deschideți mai întâi un document
