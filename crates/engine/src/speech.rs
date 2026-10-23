@@ -75,7 +75,8 @@ impl Utterance {
 }
 
 /// The sentences from `from` (to `to`, if given) in `from`'s story, in reading order.
-/// With `skip_citations`, citation and bibliography fields are left out.
+/// With `skip_citations`, citation and bibliography fields are left out. At most
+/// [`MAX_SENTENCES`]; when that cuts the text short a warning is logged, so the stop is not silent.
 pub fn sentences(doc: &Document, from: &Pos, to: Option<&Pos>, skip_citations: bool) -> Vec<Utterance> {
     let story = from.story;
     // Spans to leave out: whole range fields, both markers included.
@@ -135,6 +136,9 @@ pub fn sentences(doc: &Document, from: &Pos, to: Option<&Pos>, skip_citations: b
         let text_chars: Vec<char> = text.chars().collect();
         for (a, b) in split_sentences(&text) {
             if out.len() >= MAX_SENTENCES {
+                log::warn!(
+                    "Read Aloud: the queue holds at most {MAX_SENTENCES} sentences; the rest of the text is not read (start again from where it stops)"
+                );
                 return out;
             }
             let spoken = tidy(&text_chars.get(a..b).unwrap_or(&[]).iter().collect::<String>());
