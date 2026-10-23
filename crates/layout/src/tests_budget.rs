@@ -158,6 +158,20 @@ fn a_picture_cropped_many_ways_is_decoded_once() {
 }
 
 #[test]
+fn pictures_cropped_in_turn_are_each_decoded_once() {
+    // Crops alternating between two pictures don't decode either again: enough of them would
+    // otherwise spend the budget on pictures that fit in it.
+    let (a, b) = (disc_png(64), disc_png(32));
+    let mut alphas = contour::Alphas::default();
+    for i in 0..300 {
+        let f = i as f32 / 1000.0;
+        assert!(alphas.outline(&a, [f, 0.0, 0.0, 0.0]).is_ok_and(|o| o.is_some()), "crop {i} of a");
+        assert!(alphas.outline(&b, [0.0, f, 0.0, 0.0]).is_ok_and(|o| o.is_some()), "crop {i} of b");
+    }
+    assert_eq!(alphas.decoded, 64 * 64 + 32 * 32, "one decode per picture");
+}
+
+#[test]
 fn decoding_pictures_stops_at_the_layouts_budget() {
     let (a, b) = (disc_png(64), disc_png(32));
     let mut alphas = contour::Alphas::default();

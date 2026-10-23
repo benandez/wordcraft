@@ -5,7 +5,7 @@
 //! A [`Contour`] is built once per placed object; each line then asks it which stretches of
 //! the line's band it takes ([`Contour::occupied`]), a walk over its edges.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
@@ -194,11 +194,12 @@ impl Alpha {
 pub(crate) struct OverBudget;
 
 /// Pictures' transparency decoded during one layout. A picture shown with many crops (each an
-/// outline of its own) is decoded once, and decoding stops at [`MAX_DECODED_PIXELS`].
+/// outline of its own) is decoded once, however its crops interleave with other pictures', and
+/// decoding stops at [`MAX_DECODED_PIXELS`] (which also bounds what is kept).
 #[derive(Default)]
 pub(crate) struct Alphas {
-    /// The picture decoded last: its bytes (address and length) and transparency (`None`: none).
-    last: Option<((usize, usize), Option<Arc<Alpha>>)>,
+    /// Pictures decoded so far, by their bytes (address and length): their transparency (`None`: none).
+    seen: HashMap<(usize, usize), Option<Arc<Alpha>>>,
     /// Pictures refused for the budget (bytes' address and length), not looked at again.
     refused: HashSet<(usize, usize)>,
     /// Pixels decoded so far.
@@ -212,15 +213,15 @@ impl Alphas {
     /// is their outline.
     pub(crate) fn outline(&mut self, bytes: &[u8], crop: [f32; 4]) -> Result<Option<Vec<(f32, f32)>>, OverBudget> {
         let key = (bytes.as_ptr() as usize, bytes.len());
-        let alpha = match &self.last {
-            Some((k, alpha)) if *k == key => alpha.clone(),
-            _ if self.refused.contains(&key) => return Err(OverBudget),
-            _ => {
+        let alpha = match self.seen.get(&key) {
+            Some(alpha) => alpha.clone(),
+            None if self.refused.contains(&key) => return Err(OverBudget),
+            None => {
                 let alpha = decode_alpha(bytes, &mut self.decoded).inspect_err(|_| {
                     self.refused.insert(key);
                 })?;
                 let alpha = alpha.map(Arc::new);
-                self.last = Some((key, alpha.clone()));
+                self.seen.insert(key, alpha.clone());
                 alpha
             }
         };
