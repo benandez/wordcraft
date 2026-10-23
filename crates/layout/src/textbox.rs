@@ -210,8 +210,10 @@ struct Cut {
 
 /// Most line lengths (and text directions) a chain's story is laid out at. Each lays the whole
 /// story out again and is kept while the chain is split, so a chain of boxes that each differ in
-/// width would multiply its story's layout work and memory; boxes needing another one take the
-/// nearest already laid out. Far above a real chain's few box sizes.
+/// width would multiply its story's layout work and memory. Past 16, a box whose length isn't
+/// among them takes the nearest narrower one laid out in its text direction, so its lines still
+/// fit across it (they stop short of its far edge), else the narrowest, whose lines are longer
+/// than the box. Far above a real chain's few box sizes.
 pub(crate) const MAX_FLOW_WIDTHS: usize = 16;
 
 /// Line lengths are told apart to a twentieth of a point (a twip): resized boxes a hair apart

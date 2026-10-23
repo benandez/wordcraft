@@ -199,6 +199,12 @@ pub(crate) struct OverBudget;
 #[derive(Default)]
 pub(crate) struct Alphas {
     /// Pictures decoded so far, by their bytes (address and length): their transparency (`None`: none).
+    ///
+    /// The address tells pictures apart only while their bytes can't be freed and the address
+    /// reused for other bytes of the same length: an `Alphas` lives for one layout pass (in its
+    /// `Ctx`), and the document whose media hold the bytes is borrowed for the whole pass, so no
+    /// picture's bytes are freed while it's kept. Kept any longer, it would need to hold on to
+    /// the bytes, as [`crate::LayoutCache`]'s outlines do.
     seen: HashMap<(usize, usize), Option<Arc<Alpha>>>,
     /// Pictures refused for the budget (bytes' address and length), not looked at again.
     refused: HashSet<(usize, usize)>,

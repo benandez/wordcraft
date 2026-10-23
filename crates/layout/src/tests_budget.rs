@@ -267,7 +267,7 @@ fn opaque_pictures_take_none_of_the_decoding_budget() {
 #[test]
 fn a_picture_refused_for_the_budget_is_not_cached_across_layouts() {
     // One layout ran out of budget before this picture; the next has a budget of its own.
-    let disc = disc_png(64);
+    let disc = Arc::new(disc_png(64));
     let mut outlines = HashMap::new();
     let key = ("p".to_string(), 1, 2, [0; 4]);
     let mut spent = contour::Alphas::default();
@@ -276,5 +276,21 @@ fn a_picture_refused_for_the_budget_is_not_cached_across_layouts() {
     assert!(outlines.is_empty(), "the refusal isn't kept");
     let mut fresh = contour::Alphas::default();
     assert!(picture_outline(&mut outlines, &mut fresh, key.clone(), &disc, [0.0; 4]).is_some());
-    assert!(outlines.get(&key).is_some_and(|o| o.is_some()), "the outline is kept");
+    assert!(outlines.get(&key).is_some_and(|(_, o)| o.is_some()), "the outline is kept");
+}
+
+/// The outline cache outlives the documents it is used with and tells pictures apart by their
+/// bytes' address: each entry keeps that allocation (a weak reference, not the bytes' owner), so
+/// it can't be freed and the address given to another picture's bytes while the entry is kept.
+#[test]
+fn a_kept_outline_holds_on_to_its_pictures_allocation() {
+    let disc = Arc::new(disc_png(64));
+    let mut outlines = HashMap::new();
+    let key = ("p".to_string(), Arc::as_ptr(&disc) as usize, disc.len(), [0; 4]);
+    assert!(picture_outline(&mut outlines, &mut contour::Alphas::default(), key.clone(), &disc, [0.0; 4]).is_some());
+    let Some((weak, _)) = outlines.get(&key) else { panic!("the outline is kept") };
+    assert!(std::ptr::eq(weak.as_ptr(), Arc::as_ptr(&disc)), "the entry refers to its own picture's bytes");
+    assert_eq!((Arc::strong_count(&disc), Arc::weak_count(&disc)), (1, 1), "a weak reference: the document still owns the bytes");
+    drop(disc);
+    assert!(weak.upgrade().is_none(), "the bytes are freed with the document; only their allocation is kept");
 }

@@ -539,7 +539,9 @@ pub struct LayoutCache {
     /// Narrowest and widest content of paragraphs measured for table autofit ([`Ctx::para_measured`]).
     measures: HashMap<Key, (f32, f32)>,
     /// Outlines of pictures' opaque pixels (Tight and Through wrapping), by media key, the
-    /// media's bytes (address and length) and crop.
+    /// media's bytes (address and length) and crop. Kept from one layout to the next, so each
+    /// entry holds a weak reference to its bytes: their allocation isn't freed while the entry is
+    /// kept, so no other picture's bytes can come to have its address ([`Outlines`]).
     outlines: Outlines,
     env: u64,
     used: HashSet<Key>,
@@ -796,8 +798,12 @@ fn with_pin<T>(ctx: &mut Ctx, id: u32, sect: &SectionProps, number: u32, f: impl
     (out, behind, front)
 }
 
-/// Picture outlines by media name, bytes (address and length) and crop ([`LayoutCache`]).
-type Outlines = HashMap<(String, usize, usize, [u32; 4]), Option<Arc<Vec<(f32, f32)>>>>;
+/// Picture outlines by media name, bytes (address and length) and crop ([`LayoutCache`]), each
+/// with a weak reference to those bytes. The cache outlives the documents it is used with, and
+/// an address names the same bytes only while their allocation lives: the weak reference keeps
+/// it (not the bytes in it), so a picture loaded later can't be given a freed picture's address
+/// and length and be taken for it.
+type Outlines = HashMap<(String, usize, usize, [u32; 4]), (std::sync::Weak<Vec<u8>>, Option<Arc<Vec<(f32, f32)>>>)>;
 
 /// Picture `bytes`'s outline within `crop`, kept in `outlines` under `key`. One refused for this
 /// layout's decoding budget wraps as its rectangle and isn't kept: a later layout may decode it.
@@ -805,17 +811,17 @@ fn picture_outline(
     outlines: &mut Outlines,
     alphas: &mut contour::Alphas,
     key: (String, usize, usize, [u32; 4]),
-    bytes: &[u8],
+    bytes: &Arc<Vec<u8>>,
     crop: [f32; 4],
 ) -> Option<Arc<Vec<(f32, f32)>>> {
-    if let Some(o) = outlines.get(&key) {
+    if let Some((_, o)) = outlines.get(&key) {
         return o.clone();
     }
     let outline = alphas.outline(bytes, crop).ok()?.map(Arc::new);
     if outlines.len() >= 256 {
         outlines.clear();
     }
-    outlines.insert(key, outline.clone());
+    outlines.insert(key, (Arc::downgrade(bytes), outline.clone()));
     outline
 }
 
