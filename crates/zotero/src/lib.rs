@@ -38,8 +38,8 @@ pub enum ZoteroError {
     /// Zotero sent something that isn't the protocol.
     #[error("unexpected data from Zotero: {0}")]
     Protocol(String),
-    /// What answered on Zotero's port may not be Zotero (another user's program, or another
-    /// computer); it gets no access to the document.
+    /// What answered on Zotero's port may not be Zotero (another computer, on any system; on
+    /// Linux only, another user's program); it gets no access to the document.
     #[error("WordCraft won't let this program edit the document: {0}")]
     Refused(String),
 }

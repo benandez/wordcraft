@@ -1,11 +1,16 @@
 //! Who answered on Zotero's port. Zotero's protocol has no handshake that proves the other end
-//! is Zotero, and whatever answers gets to read and rewrite the open document. So WordCraft
-//! only connects to this computer (a loopback address), and on Linux checks that the program
-//! listening there runs as the same user, from the kernel's socket table (`/proc/net/tcp`):
-//! another account on a shared machine that took the port while Zotero wasn't running is
-//! refused. A listener the table doesn't show (WSL2 mirrored networking with Zotero on Windows,
-//! a local proxy, a sandbox) leaves only the loopback rule, as on other systems, which have no
-//! such table to read without OS calls this crate doesn't make (see `docs/zotero.md`).
+//! is Zotero, and whatever answers gets to read and rewrite the open document. Two checks:
+//!
+//! - **Every system:** WordCraft only connects to this computer (a loopback address).
+//! - **Linux only:** the program listening there must not run as another user, from the
+//!   kernel's socket table (`/proc/net/tcp`): another account on a shared machine that took the
+//!   port while Zotero wasn't running is refused. A listener the table doesn't show (WSL2
+//!   mirrored networking with Zotero on Windows, a local proxy, a sandbox) leaves only the
+//!   loopback rule.
+//!
+//! On Windows, macOS and the BSDs there is **no same-user check**: the loopback rule is the
+//! only one, so any local account's listener on the port is taken for Zotero. Those systems have
+//! no such table to read without OS calls this crate doesn't make (see `docs/zotero.md`, #3831).
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream};
 
@@ -49,7 +54,8 @@ fn owner_check(local: SocketAddr, peer: SocketAddr) -> Result<(), ZoteroError> {
     same_owner(&table, local, peer, me)
 }
 
-/// No socket table to read here: the loopback rule alone decides.
+/// Windows, macOS, the BSDs: no same-user check (no socket table to read without OS calls this
+/// crate doesn't make, #3831); the loopback rule alone decides.
 #[cfg(not(any(target_os = "linux", target_os = "android")))]
 fn owner_check(_local: SocketAddr, _peer: SocketAddr) -> Result<(), ZoteroError> {
     Ok(())
