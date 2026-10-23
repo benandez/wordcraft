@@ -540,6 +540,24 @@ pub fn read_regular_file(_path: &std::path::Path, _limit: u64) -> Option<Vec<u8>
     None
 }
 
+/// The bytes of the regular file at `path` when it holds at most `limit` of them; `None` for
+/// anything else. A file whose opened handle reports more than `limit` bytes is refused before
+/// anything is read; the read stays bounded for a file that grows after the check. Public for the
+/// app (a copied picture file, Paste Special).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn read_regular_file_within(path: &std::path::Path, limit: u64) -> Option<Vec<u8>> {
+    let (file, meta) = open_regular_file(path).ok()?;
+    if meta.len() > limit {
+        return None;
+    }
+    read_bounded(file, &meta, limit).ok().filter(|b| b.len() as u64 <= limit)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn read_regular_file_within(_path: &std::path::Path, _limit: u64) -> Option<Vec<u8>> {
+    None
+}
+
 /// The regular file at `path`, opened once, with the opened handle's metadata. The path is
 /// checked before opening (a named pipe blocks in `open` until a writer appears) and the handle
 /// after (the path may have been swapped in between); anything but a regular file is "not a file".

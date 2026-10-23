@@ -141,9 +141,10 @@ pub(crate) fn clipboard_png(app: &WordApp) -> Option<Vec<u8>> {
 }
 
 /// The bytes of the regular file at `path` when it holds at most `limit` of them; `None` for
-/// anything else, such as a device like `/dev/zero` that never ends (#3692).
+/// anything else, such as a device like `/dev/zero` that never ends (#3692). A file that says it
+/// is larger is refused before any of it is read.
 fn read_picture_file(path: &Path, limit: u64) -> Option<Vec<u8>> {
-    wordcraft_engine::io::read_regular_file(path, limit).filter(|b| b.len() as u64 <= limit)
+    wordcraft_engine::io::read_regular_file_within(path, limit)
 }
 
 /// Paste text naming copied picture files: insert the pictures when the clipboard holds those
