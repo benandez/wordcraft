@@ -194,6 +194,7 @@ impl Bridge {
         }
     }
 
+    /// Answer one call by its method name; [`Bridge::handle`] wraps it so a panic becomes an error.
     fn dispatch(&mut self, s: &mut Session, host: &mut dyn Host, c: &Call) -> R {
         match c.method.as_str() {
             "Application_getActiveDocument" => {

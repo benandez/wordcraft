@@ -29,6 +29,7 @@ pub(crate) fn check(stream: &TcpStream) -> Result<(), ZoteroError> {
     owner_check(local, peer)
 }
 
+/// Refuse a listener at `peer` that the kernel's socket tables say belongs to another user.
 #[cfg(any(target_os = "linux", target_os = "android"))]
 fn owner_check(local: SocketAddr, peer: SocketAddr) -> Result<(), ZoteroError> {
     use std::io::Read;
@@ -48,6 +49,7 @@ fn owner_check(local: SocketAddr, peer: SocketAddr) -> Result<(), ZoteroError> {
     same_owner(&table, local, peer, me)
 }
 
+/// No socket table to read here: the loopback rule alone decides.
 #[cfg(not(any(target_os = "linux", target_os = "android")))]
 fn owner_check(_local: SocketAddr, _peer: SocketAddr) -> Result<(), ZoteroError> {
     Ok(())
@@ -124,12 +126,14 @@ mod tests {
         format!("{ip}:{:04X}", a.port())
     }
 
+    /// A socket table row for the connection from `l` to `r`, owned by `uid`.
     fn row(l: SocketAddr, r: SocketAddr, uid: u32) -> String {
         format!("   0: {} {} 01 00000000:00000000 00:00000000 00000000  {uid:>4}        0 12345 1 0000000000000000 20 4 30 10 -1\n", hex(l), hex(r))
     }
 
     const HEADER: &str = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n";
 
+    /// Our side and Zotero's listening side of a loopback connection.
     fn addrs() -> (SocketAddr, SocketAddr) {
         ("127.0.0.1:41234".parse().unwrap(), "127.0.0.1:23116".parse().unwrap())
     }
