@@ -109,7 +109,8 @@ fn many_distinct_media_add_in_linear_time() {
     assert_eq!(d.add_media(first, "png"), "image1.png");
     d.media.insert("direct.png".into(), Arc::new(vec![9, 9]));
     assert_eq!(d.add_media(vec![9, 9], "png"), "direct.png");
-    assert!(t.elapsed().as_secs_f32() < 2.0, "{:?}", t.elapsed());
+    // About half a second on a loaded machine; the old scan took over two minutes.
+    assert!(t.elapsed().as_secs_f32() < 10.0, "{:?}", t.elapsed());
     // The lookup cache isn't part of the document.
     let mut e = d.clone();
     e.media_index = MediaIndex::default();
@@ -535,7 +536,8 @@ fn object_walks_are_linear_in_the_paragraph() {
     let first_end = 3 * n as usize * w;
     let p = d.past_field_ends(&Pos::body(0, first_end));
     assert_eq!(p.off, first_end + w);
-    assert!(t.elapsed().as_secs_f32() < 2.0, "{:?}", t.elapsed());
+    // Under 0.3 s on a loaded machine; the old walks took minutes (360 s for the first test).
+    assert!(t.elapsed().as_secs_f32() < 10.0, "{:?}", t.elapsed());
 
     let ends: Vec<InlineObject> = (0..n).map(|_| InlineObject::FieldEnd).collect();
     d.body = vec![Arc::new(Block::Para(para_of_objects(ends)))];
@@ -547,12 +549,13 @@ fn object_walks_are_linear_in_the_paragraph() {
     d.body = vec![Arc::new(Block::Para(para_of_objects(starts)))];
     let end = Pos::body(0, n as usize * w);
     assert_eq!(d.typing_pos(&end), end);
-    assert!(t.elapsed().as_secs_f32() < 2.0, "{:?}", t.elapsed());
+    assert!(t.elapsed().as_secs_f32() < 10.0, "{:?}", t.elapsed());
 }
 
 #[test]
 fn deleting_across_many_lone_control_markers_is_not_quadratic() {
-    let n = 1_500;
+    // A millisecond now; the old delete took 18 s at 1,500 markers and 114 s at 3,000.
+    let n = 3_000;
     let starts: Vec<InlineObject> = (0..n).map(|_| InlineObject::ControlStart { control: Box::default() }).collect();
     let mut d = Document::from_text("before\n\nafter");
     d.body[1] = Arc::new(Block::Para(para_of_objects(starts)));
@@ -560,7 +563,7 @@ fn deleting_across_many_lone_control_markers_is_not_quadratic() {
     let at = d.delete_range(&Pos::body(0, 3), &Pos::body(2, 2)).unwrap();
     assert_eq!(at, Pos::body(0, 3));
     assert_eq!(d.plain_text(StoryRef::Body), "befter");
-    assert!(t.elapsed().as_secs_f32() < 2.0, "{:?}", t.elapsed());
+    assert!(t.elapsed().as_secs_f32() < 10.0, "{:?}", t.elapsed());
 }
 
 #[test]
