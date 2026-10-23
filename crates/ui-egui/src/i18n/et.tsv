@@ -2401,3 +2401,50 @@
 	More tabs	Veel vahekaarte
 # #3013: Insert Table of Figures
 	Include label and number	Lisa silt ja number
+	First Record	Esimene kirje
+	Last Record	Viimane kirje
+	Go to Record	Mine kirjele
+	Edit Individual Documents…	Redigeeri üksikdokumente…
+	Print Documents…	Prindi dokumendid…
+	Print Documents	Prindi dokumendid
+	Current record	Praegune kirje
+	From:	Alates:
+	To:	Kuni:
+	Enter a number.	Sisesta arv.
+# Why a ribbon control is off (#2678)
+	a drawing canvas can't be ungrouped	joonistuslõuendi rühmitust ei saa tühistada
+	a drawing canvas can't go inside a text box	joonistuslõuendit ei saa panna tekstivälja sisse
+	charts and diagrams can't be moved or resized yet	diagramme ja skeeme ei saa veel teisaldada ega nende suurust muuta
+	no equation at the caret	kursori juures pole võrrandit
+	not editing an equation	võrrandit ei redigeerita
+	nothing is selected	midagi pole valitud
+	only in Outline view	ainult liigendusvaates
+	select a SmartArt graphic first	valige esmalt SmartArt-pilt
+	select a chart first	valige esmalt diagramm
+	select a connector first	valige esmalt ühendusjoon
+	select a drawing canvas first	valige esmalt joonistuslõuend
+	select a floating picture or shape first	valige esmalt vabalt paigutatud pilt või kujund
+	select a group first	valige esmalt rühm
+	select a picture first	valige esmalt pilt
+	select a picture or shape first	valige esmalt pilt või kujund
+	select a shape first	valige esmalt kujund
+	select a text box first	valige esmalt tekstiväli
+	select a text box linked to another first	valige esmalt teisega lingitud tekstiväli
+	select recipients first	valige esmalt adressaadid
+	select two or more pictures or shapes first (Shift+click)	valige esmalt kaks või enam pilti või kujundit (Shift+klõps)
+	text boxes can't go inside a text box	tekstivälju ei saa panna tekstivälja sisse
+	the Clipboard pane is empty	lõikelaua paan on tühi
+	the cursor isn't in a table	kursor pole tabelis
+	there is nothing to undo	pole midagi tagasi võtta
+	this SmartArt was made in another program: WordCraft shows it but can't edit it	see SmartArt on loodud teises programmis: WordCraft kuvab seda, kuid ei saa seda redigeerida
+	this chart was made in another program: WordCraft shows it but can't edit it	see diagramm on loodud teises programmis: WordCraft kuvab seda, kuid ei saa seda redigeerida
+	this text box is already linked: break the link first	see tekstiväli on juba lingitud: katkestage esmalt link
+	leave the equation first	lahkuge esmalt valemist
+	the Spike is empty	koguja on tühi
+# More reasons a ribbon control is off (#2678)
+	a group holding Word ink can't be ungrouped yet	Wordi tindiga rühma ei saa veel lahutada
+	drop caps can't go in a table	tabelisse ei saa lisada hiidtähte
+	the document is protected	dokument on kaitstud
+	the paragraph is empty	lõik on tühi
+	the paragraph starts with a space	lõik algab tühikuga
+	Open a document first	Avage kõigepealt dokument

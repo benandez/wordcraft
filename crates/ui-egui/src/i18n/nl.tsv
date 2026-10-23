@@ -2669,3 +2669,41 @@ preview	Title	Titel
 	Full Screen View	Full Screen View
 	Personal Templates	Personal Templates
 	Underline Color	Underline Color
+	First Record	Eerste record
+	Last Record	Laatste record
+	Go to Record	Ga naar record
+	Edit Individual Documents…	Afzonderlijke documenten bewerken…
+	Print Documents…	Documenten afdrukken…
+	Print Documents	Documenten afdrukken
+	Current record	Huidig record
+	From:	Van:
+	To:	Tot:
+	Enter a number.	Voer een getal in.
+# More reasons a ribbon control is off (#2678)
+	a drawing canvas can't be ungrouped	de groepering van een tekenvlak kan niet worden opgeheven
+	a drawing canvas can't go inside a text box	een tekenvlak kan niet in een tekstvak
+	a group holding Word ink can't be ungrouped yet	een groep met Word-inkt kan nog niet worden opgeheven
+	charts and diagrams can't be moved or resized yet	grafieken en diagrammen kunnen nog niet worden verplaatst of van grootte veranderd
+	drop caps can't go in a table	een initiaal kan niet in een tabel
+	leave the equation first	verlaat eerst de vergelijking
+	no equation at the caret	geen vergelijking bij de cursor
+	not editing an equation	u bewerkt geen vergelijking
+	only in Outline view	alleen in de weergave Overzicht
+	select a chart first	selecteer eerst een grafiek
+	select a connector first	selecteer eerst een verbindingslijn
+	select a drawing canvas first	selecteer eerst een tekenvlak
+	select a floating picture or shape first	selecteer eerst een zwevende afbeelding of vorm
+	select a group first	selecteer eerst een groep
+	select a picture first	selecteer eerst een afbeelding
+	select a shape first	selecteer eerst een vorm
+	select a SmartArt graphic first	selecteer eerst een SmartArt-afbeelding
+	select a text box first	selecteer eerst een tekstvak
+	select a text box linked to another first	selecteer eerst een tekstvak dat aan een ander is gekoppeld
+	the Clipboard pane is empty	het deelvenster Klembord is leeg
+	the document is protected	het document is beveiligd
+	there is nothing to undo	er is niets om ongedaan te maken
+	the Spike is empty	de verzamelbak is leeg
+	this chart was made in another program: WordCraft shows it but can't edit it	deze grafiek is gemaakt in een ander programma: WordCraft toont hem, maar kan hem niet bewerken
+	this SmartArt was made in another program: WordCraft shows it but can't edit it	deze SmartArt is gemaakt in een ander programma: WordCraft toont hem, maar kan hem niet bewerken
+	this text box is already linked: break the link first	dit tekstvak is al gekoppeld: verbreek eerst de koppeling
+	Open a document first	Open eerst een document

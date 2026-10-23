@@ -2763,3 +2763,41 @@ preview	Title	Naslov
 	{names} and {n} more	{names} and {n} more
 	{name} options	{name} options
 	{width} × {height} pixels	{width} × {height} pixels
+	First Record	Prvi zapis
+	Last Record	Zadnji zapis
+	Go to Record	Pojdi na zapis
+	Edit Individual Documents…	Uredi posamezne dokumente…
+	Print Documents…	Natisni dokumente…
+	Print Documents	Natisni dokumente
+	Current record	Trenutni zapis
+	From:	Od:
+	To:	Do:
+	Enter a number.	Vnesite število.
+# More reasons a ribbon control is off (#2678)
+	a drawing canvas can't be ungrouped	risalnega platna ni mogoče razdružiti
+	a drawing canvas can't go inside a text box	risalnega platna ni mogoče postaviti v besedilno polje
+	a group holding Word ink can't be ungrouped yet	skupine s Wordovim črnilom še ni mogoče razdružiti
+	charts and diagrams can't be moved or resized yet	grafikonov in diagramov še ni mogoče premikati ali spreminjati njihove velikosti
+	drop caps can't go in a table	začetnice ni mogoče postaviti v tabelo
+	leave the equation first	najprej zapustite enačbo
+	no equation at the caret	pri kazalcu ni enačbe
+	not editing an equation	enačbe ne urejate
+	only in Outline view	samo v pogledu orisa
+	select a chart first	najprej izberite grafikon
+	select a connector first	najprej izberite povezovalnik
+	select a drawing canvas first	najprej izberite risalno platno
+	select a floating picture or shape first	najprej izberite plavajočo sliko ali obliko
+	select a group first	najprej izberite skupino
+	select a picture first	najprej izberite sliko
+	select a shape first	najprej izberite obliko
+	select a SmartArt graphic first	najprej izberite grafiko SmartArt
+	select a text box first	najprej izberite besedilno polje
+	select a text box linked to another first	najprej izberite besedilno polje, povezano z drugim
+	the Clipboard pane is empty	podokno Odložišče je prazno
+	the document is protected	dokument je zaščiten
+	there is nothing to undo	ni ničesar za razveljaviti
+	the Spike is empty	Spike je prazen
+	this chart was made in another program: WordCraft shows it but can't edit it	ta grafikon je bil ustvarjen v drugem programu: WordCraft ga prikaže, vendar ga ne more urejati
+	this SmartArt was made in another program: WordCraft shows it but can't edit it	ta SmartArt je bil ustvarjen v drugem programu: WordCraft ga prikaže, vendar ga ne more urejati
+	this text box is already linked: break the link first	to besedilno polje je že povezano: najprej prekinite povezavo
+	Open a document first	Najprej odprite dokument

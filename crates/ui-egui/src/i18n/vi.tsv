@@ -2814,3 +2814,42 @@ template	Letter	Thư
 	More tabs	Các tab khác
 # #3013: Insert Table of Figures
 	Include label and number	Bao gồm nhãn và số
+	First Record	Bản ghi đầu tiên
+	Last Record	Bản ghi cuối cùng
+	Go to Record	Đi tới bản ghi
+	Edit Individual Documents…	Sửa từng tài liệu…
+	Print Documents…	In tài liệu…
+	Print Documents	In tài liệu
+	Current record	Bản ghi hiện tại
+	From:	Từ:
+	To:	Đến:
+	Enter a number.	Nhập một số.
+# Why a ribbon control is off (#2678)
+	a drawing canvas can't be ungrouped	không thể bỏ nhóm khung vẽ
+	a drawing canvas can't go inside a text box	không thể đặt khung vẽ vào trong hộp văn bản
+	charts and diagrams can't be moved or resized yet	chưa thể di chuyển hoặc đổi kích thước biểu đồ và sơ đồ
+	no equation at the caret	không có phương trình tại con trỏ
+	not editing an equation	không đang sửa phương trình nào
+	only in Outline view	chỉ trong dạng xem Dàn ý
+	select a SmartArt graphic first	hãy chọn một đồ họa SmartArt trước
+	select a chart first	hãy chọn một biểu đồ trước
+	select a connector first	hãy chọn một đường nối trước
+	select a drawing canvas first	hãy chọn một khung vẽ trước
+	select a floating picture or shape first	hãy chọn một ảnh hoặc hình nổi trước
+	select a group first	hãy chọn một nhóm trước
+	select a picture first	hãy chọn một ảnh trước
+	select a shape first	hãy chọn một hình trước
+	select a text box first	hãy chọn một hộp văn bản trước
+	select a text box linked to another first	hãy chọn một hộp văn bản đã liên kết với hộp khác trước
+	the Clipboard pane is empty	ngăn Bảng tạm đang trống
+	there is nothing to undo	không có gì để hoàn tác
+	this SmartArt was made in another program: WordCraft shows it but can't edit it	SmartArt này được tạo trong chương trình khác: WordCraft hiển thị được nhưng không sửa được
+	this chart was made in another program: WordCraft shows it but can't edit it	biểu đồ này được tạo trong chương trình khác: WordCraft hiển thị được nhưng không sửa được
+	this text box is already linked: break the link first	hộp văn bản này đã được liên kết: hãy ngắt liên kết trước
+	leave the equation first	hãy thoát khỏi phương trình trước
+	the Spike is empty	bộ gom đang trống
+# More reasons a ribbon control is off (#2678)
+	a group holding Word ink can't be ungrouped yet	chưa thể tách nhóm chứa mực Word
+	drop caps can't go in a table	không thể đặt chữ cái lớn đầu đoạn trong bảng
+	the document is protected	tài liệu đang được bảo vệ
+	Open a document first	Hãy mở một tài liệu trước

@@ -2599,3 +2599,49 @@ preview	Title	Titel
 	Full Screen View	Full Screen View
 	Personal Templates	Personal Templates
 	Underline Color	Underline Color
+	First Record	Første post
+	Last Record	Sidste post
+	Go to Record	Gå til post
+	Edit Individual Documents…	Rediger enkelte dokumenter…
+	Print Documents…	Udskriv dokumenter…
+	Print Documents	Udskriv dokumenter
+	Current record	Aktuel post
+	From:	Fra:
+	To:	Til:
+	Enter a number.	Angiv et tal.
+# More reasons a ribbon control is off (#2678)
+	a drawing canvas can't be ungrouped	grupperingen af et tegnelærred kan ikke ophæves
+	a drawing canvas can't go inside a text box	et tegnelærred kan ikke placeres i et tekstfelt
+	a group holding Word ink can't be ungrouped yet	en gruppe med Word-blæk kan endnu ikke opdeles
+	charts and diagrams can't be moved or resized yet	diagrammer og grafer kan endnu ikke flyttes eller have ændret størrelse
+	drop caps can't go in a table	et initial kan ikke placeres i en tabel
+	leave the equation first	forlad først formlen
+	no equation at the caret	der er ingen formel ved markøren
+	not editing an equation	du redigerer ikke en formel
+	nothing is selected	intet er markeret
+	only in Outline view	kun i oversigtsvisning
+	select a chart first	markér først et diagram
+	select a connector first	markér først en forbindelse
+	select a drawing canvas first	markér først et tegnelærred
+	select a floating picture or shape first	markér først et flydende billede eller en flydende figur
+	select a group first	markér først en gruppe
+	select a picture first	markér først et billede
+	select a picture or shape first	markér først et billede eller en figur
+	select a shape first	markér først en figur
+	select a SmartArt graphic first	markér først en SmartArt-grafik
+	select a text box first	markér først et tekstfelt
+	select a text box linked to another first	markér først et tekstfelt, der er sammenkædet med et andet
+	select recipients first	vælg først modtagere
+	select two or more pictures or shapes first (Shift+click)	markér først to eller flere billeder eller figurer (Skift+klik)
+	text boxes can't go inside a text box	tekstfelter kan ikke placeres i et tekstfelt
+	the Clipboard pane is empty	udklipsholderruden er tom
+	the cursor isn't in a table	markøren står ikke i en tabel
+	the document is protected	dokumentet er beskyttet
+	the paragraph is empty	afsnittet er tomt
+	the paragraph starts with a space	afsnittet starter med et mellemrum
+	there is nothing to undo	der er intet at fortryde
+	the Spike is empty	klippekartoteket er tomt
+	this chart was made in another program: WordCraft shows it but can't edit it	dette diagram er lavet i et andet program: WordCraft viser det, men kan ikke redigere det
+	this SmartArt was made in another program: WordCraft shows it but can't edit it	denne SmartArt er lavet i et andet program: WordCraft viser den, men kan ikke redigere den
+	this text box is already linked: break the link first	dette tekstfelt er allerede sammenkædet: fjern først sammenkædningen
+	Open a document first	Åbn først et dokument
