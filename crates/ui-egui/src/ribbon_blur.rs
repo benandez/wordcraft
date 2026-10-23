@@ -206,6 +206,19 @@ pub fn menu_glass(c: Color32, dark: bool) -> Color32 {
     Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), 242)
 }
 
+/// Paint `rect` fading down from `top` opaque to the see-through ribbon fill at its foot.
+pub fn fade_down(painter: &egui::Painter, rect: Rect, top: Color32) {
+    let foot = glass(top);
+    let mut mesh = egui::Mesh::default();
+    let uv = egui::epaint::WHITE_UV;
+    let corners = [(rect.left_top(), top), (rect.right_top(), top), (rect.right_bottom(), foot), (rect.left_bottom(), foot)];
+    for (pos, color) in corners {
+        mesh.vertices.push(egui::epaint::Vertex { pos, uv, color });
+    }
+    mesh.indices.extend([0, 1, 2, 0, 2, 3]);
+    painter.add(egui::Shape::mesh(mesh));
+}
+
 /// `c` made see-through, so the blur shows under it.
 pub fn glass(c: Color32) -> Color32 {
     Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), TINT_ALPHA)

@@ -2416,11 +2416,11 @@ impl WordApp {
             if screen != chrome::Screen::Normal {
                 chrome::screen_bar(self, ui, screen);
             } else {
-                chrome::title_bar(self, ui);
-                // The blur is painted after the page, into a slot kept under the ribbon.
+                // The blur is painted after the page, into a slot kept under the title bar and ribbon.
                 let before = ui.available_rect_before_wrap();
-                ribbon_blur::set_drawing(&ctx, self.ribbon_glass());
                 glass = self.ribbon_glass().then(|| (ui.painter().add(egui::Shape::Noop), before));
+                chrome::title_bar(self, ui);
+                ribbon_blur::set_drawing(&ctx, self.ribbon_glass());
                 let menu_fill = ctx.global_style().visuals.window_fill;
                 if glass.is_some() {
                     ctx.global_style_mut(|s| s.visuals.window_fill = ribbon_blur::menu_glass(menu_fill, s.visuals.dark_mode));

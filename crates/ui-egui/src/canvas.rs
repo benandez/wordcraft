@@ -1256,9 +1256,14 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
             // The page a drag took an object off: render it this frame whatever the budget, or the
             // raster with the object still on it shows for a frame.
             let forced = hidden.as_ref().is_some_and(|(page, _)| *page == i);
+            // A page the blurred ribbon would show draws at once, whatever the budget.
+            let blur_needs = app.ribbon_glass()
+                && !app.canvas.thumbs.contains_key(&i)
+                && sr.max.y > ui.clip_rect().min.y - 200.0
+                && sr.min.y < ui.clip_rect().min.y;
             // Render before placing the page: a page re-rendered in this frame (a zoom step, an
             // edit) then sits on the pixel grid in this frame too, rather than a frame later.
-            if visible && !tiled && !fresh && (forced || rendered < 2 || !app.canvas.textures.contains_key(&i) && rendered < 4) {
+            if visible && !tiled && !fresh && (forced || blur_needs || rendered < 2 || !app.canvas.textures.contains_key(&i) && rendered < 4) {
                 let mut opts = page_render_options(app, dim_body);
                 // Only on the page it is on: the `Pos` can't match an object of another page.
                 opts.display.hide_object = hidden.as_ref().filter(|(page, _)| *page == i).map(|(_, p)| p.clone());
