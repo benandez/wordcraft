@@ -553,8 +553,20 @@ fn write_unique(dir: &Path, name: &str, bytes: &[u8]) -> std::io::Result<PathBuf
     let name = unique_name(name, |n| dir.join(n).exists());
     let path = dir.join(&name);
     let tmp = dir.join(format!(".{name}.part"));
-    std::fs::write(&tmp, bytes)?;
-    if let Err(e) = std::fs::rename(&tmp, &path) {
+    // Created afresh, never opened through what is there: a link planted at the temporary name
+    // would otherwise carry the write to a file outside the folder. A leftover from a crash (or
+    // such a link) is unlinked, not followed, and the create tried once more.
+    let create = || std::fs::OpenOptions::new().write(true).create_new(true).open(&tmp);
+    let mut file = match create() {
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            std::fs::remove_file(&tmp)?;
+            create()?
+        }
+        r => r?,
+    };
+    let written = std::io::Write::write_all(&mut file, bytes);
+    drop(file);
+    if let Err(e) = written.and_then(|()| std::fs::rename(&tmp, &path)) {
         let _ = std::fs::remove_file(&tmp);
         return Err(e);
     }
@@ -949,5 +961,29 @@ pub(crate) mod tests {
         assert_eq!(stored_name("", &ttf), "font.ttf");
         assert_eq!(stored_name("-rf.otf", b"OTTO"), "font-rf.otf");
         assert_eq!(unique_name("a.ttf", |n| n == "a.ttf" || n == "a-2.ttf"), "a-3.ttf");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_planted_at_the_temporary_name_is_not_written_through() {
+        // #3703 review: the temporary file is created afresh, so a planted link can't carry the
+        // font bytes to a file outside the folder.
+        let root = std::env::temp_dir().join(format!("wordcraft-font-part-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let dir = root.join("fonts");
+        std::fs::create_dir_all(&dir).unwrap();
+        let outside = root.join("outside.txt");
+        std::fs::write(&outside, b"keep me").unwrap();
+        std::os::unix::fs::symlink(&outside, dir.join(".a.ttf.part")).unwrap();
+        let path = write_unique(&dir, "a.ttf", b"font bytes").unwrap();
+        assert_eq!(std::fs::read(&outside).unwrap(), b"keep me");
+        assert_eq!(path, dir.join("a.ttf"));
+        assert_eq!(std::fs::read(&path).unwrap(), b"font bytes");
+        assert!(!std::fs::symlink_metadata(&path).unwrap().file_type().is_symlink());
+        assert!(std::fs::symlink_metadata(dir.join(".a.ttf.part")).is_err(), "the temporary name is gone");
+        // A leftover from a crash doesn't block the next add either.
+        std::fs::write(dir.join(".b.ttf.part"), b"half a font").unwrap();
+        assert_eq!(std::fs::read(write_unique(&dir, "b.ttf", b"whole").unwrap()).unwrap(), b"whole");
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
