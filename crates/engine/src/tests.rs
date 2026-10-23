@@ -5036,6 +5036,45 @@ fn numeral_mode_sets_gets_and_rejects_junk() {
     assert_eq!(text(&s), "Year 2024");
 }
 
+/// The Numeral setting also applies to print and PDF output, not just the screen layout.
+#[test]
+fn export_layout_follows_the_numeral_setting() {
+    use wordcraft_layout::Placed;
+    fn glyph_ids(s: &Session) -> Vec<u32> {
+        let mut out = Vec::new();
+        for page in &s.export_layout().pages {
+            for it in &page.items {
+                if let Placed::Lines { para, .. } = it {
+                    out.extend(para.glyphs.iter().map(|g| g.gid));
+                }
+            }
+        }
+        out
+    }
+    let mut s = s();
+    s.doc = wordcraft_doc::Document::from_text("Year 2024");
+    let western = glyph_ids(&s);
+    assert!(!western.is_empty());
+    run(&mut s, "view.numeral", json!({"value": "hindi"}));
+    assert_ne!(glyph_ids(&s), western, "Hindi digits reach the printed layout");
+}
+
+/// File › Export PDF, Save As PDF and page images take the Numeral setting too.
+#[test]
+fn pdf_and_png_copies_follow_the_numeral_setting() {
+    let mut s = s();
+    s.doc = wordcraft_doc::Document::from_text("Year 2024");
+    // A fixed creation date, so the PDF bytes depend only on the layout.
+    s.doc.core.created = "2024-01-01T00:00:00Z".into();
+    let copy = |s: &Session, name: &str| crate::io::save_bytes_opts(name, &s.doc, &cmd::file::export_options(s, &json!({}))).unwrap();
+    let (pdf, png) = (copy(&s, "x.pdf"), copy(&s, "x.png"));
+    assert_eq!(copy(&s, "x.pdf"), pdf);
+    run(&mut s, "view.numeral", json!({"value": "hindi"}));
+    assert_eq!(cmd::file::export_options(&s, &json!({})).numeral, wordcraft_layout::NumeralMode::Hindi);
+    assert_ne!(copy(&s, "x.pdf"), pdf, "Hindi digits reach the PDF");
+    assert_ne!(copy(&s, "x.png"), png, "Hindi digits reach the page image");
+}
+
 /// Issue #67: View › Zoom steps. Zoom In/Out leave a fit mode and step 10% from the current zoom
 /// (the UI keeps `view.zoom` equal to the shown zoom while a fit mode is on), and never get stuck
 /// short of the 10%–500% limits.

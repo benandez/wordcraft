@@ -737,13 +737,13 @@
 	Double Integral	Integrală dublă
 	Double Integral with Limits	Integrală dublă cu limite
 	Double Integral with Stacked Limits	Integrală dublă cu limite suprapuse
-	Double Left Arrow with Text Above	Săgeată dublă stânga cu text deasupra
-	Double Left Arrow with Text Below	Săgeată dublă stânga cu text dedesubt
+	Double Left Arrow with Text Above	Săgeată dublă spre stânga cu text deasupra
+	Double Left Arrow with Text Below	Săgeată dublă spre stânga cu text dedesubt
 	Double Left Right Arrow with Text Above	Săgeată dublă stânga-dreapta cu text deasupra
 	Double Left Right Arrow with Text Below	Săgeată dublă stânga-dreapta cu text dedesubt
 	Double Opening Quote	Ghilimele duble de deschidere
-	Double Right Arrow with Text Above	Săgeată dublă dreapta cu text deasupra
-	Double Right Arrow with Text Below	Săgeată dublă dreapta cu text dedesubt
+	Double Right Arrow with Text Above	Săgeată dublă spre dreapta cu text deasupra
+	Double Right Arrow with Text Below	Săgeată dublă spre dreapta cu text dedesubt
 	Double Spacing	Spațiere dublă
 	Double Square Brackets	Paranteze drepte duble
 	Double Strikethrough	Tăiere dublă
@@ -1263,17 +1263,17 @@
 	Leave the equation (Esc)	Părăsește ecuația (Esc)
 	Leave the label out of the caption	Omiteți eticheta din legendă
 	Left	Stânga
-	Left Arrow with Text Above	Săgeată stânga cu text deasupra
-	Left Arrow with Text Below	Săgeată stânga cu text dedesubt
-	Left Border	Bordură stânga
-	Left Bracket Twice	Paranteză stânga dublă
-	Left Margin	Margine stânga
+	Left Arrow with Text Above	Săgeată spre stânga cu text deasupra
+	Left Arrow with Text Below	Săgeată spre stânga cu text dedesubt
+	Left Border	Bordură stângă
+	Left Bracket Twice	Paranteză de deschidere dublată
+	Left Margin	Margine stângă
 	Left Only	Doar stânga
 	Left Right Arrow Above	Săgeată stânga-dreapta deasupra
 	Left Right Arrow with Text Above	Săgeată stânga-dreapta cu text deasupra
 	Left Right Arrow with Text Below	Săgeată stânga-dreapta cu text dedesubt
 	Left Subscript-Superscript	Indice și exponent la stânga
-	Left border	Bordură stânga
+	Left border	Bordură stângă
 	Left indent	Indent la stânga
 	Left-to-Right Text Direction	Direcție text de la stânga la dreapta
 	Left-to-right	De la stânga la dreapta
@@ -1956,13 +1956,13 @@
 	Rich Text Format (RTF)	Rich Text Format (RTF)
 	Right	Dreapta
 	Right (vertical)	Dreapta (vertical)
-	Right Arrow with Text Above	Săgeată dreapta cu text deasupra
-	Right Arrow with Text Below	Săgeată dreapta cu text dedesubt
-	Right Border	Bordură dreapta
-	Right Bracket Twice	Paranteză dreapta dublă
-	Right Margin	Margine dreapta
+	Right Arrow with Text Above	Săgeată spre dreapta cu text deasupra
+	Right Arrow with Text Below	Săgeată spre dreapta cu text dedesubt
+	Right Border	Bordură dreaptă
+	Right Bracket Twice	Paranteză de închidere dublată
+	Right Margin	Margine dreaptă
 	Right Only	Doar dreapta
-	Right border	Bordură dreapta
+	Right border	Bordură dreaptă
 	Right indent	Indent la dreapta
 	Right-to-Left Section	Secțiune de la dreapta la stânga
 	Right-to-Left Table	Tabel de la dreapta la stânga
@@ -2153,15 +2153,15 @@
 	Single	Simplu
 	Single Brackets	Paranteze drepte simple
 	Single Closing Quote	Ghilimea simplă de închidere
-	Single Left Angle	Unghi stânga simplu
-	Single Left Bar	Bară stânga simplă
-	Single Left Brace	Acoladă stânga simplă
-	Single Left Bracket	Paranteză dreaptă stânga simplă
-	Single Left Parenthesis	Paranteză rotundă stânga simplă
+	Single Left Angle	Paranteză unghiulară stângă simplă
+	Single Left Bar	Bară stângă simplă
+	Single Left Brace	Acoladă stângă simplă
+	Single Left Bracket	Paranteză pătrată stângă simplă
+	Single Left Parenthesis	Paranteză rotundă stângă simplă
 	Single Opening Quote	Ghilimea simplă de deschidere
-	Single Right Brace	Acoladă dreapta simplă
-	Single Right Bracket	Paranteză dreaptă dreapta simplă
-	Single Right Parenthesis	Paranteză rotundă dreapta simplă
+	Single Right Brace	Acoladă dreaptă simplă
+	Single Right Bracket	Paranteză pătrată dreaptă simplă
+	Single Right Parenthesis	Paranteză rotundă dreaptă simplă
 	Single Spacing	Spațiere simplă
 	Single label	Etichetă unică
 	Site name	Numele site-ului
@@ -2689,76 +2689,76 @@
 preview	Title	Titlu
 template	Letter	Scrisoare
 
-# English text until translated (keys the other catalogs have)
-	Add gradient stop	Add gradient stop
-	Angle	Angle
-	Center Glow	Center Glow
-	Continue from previous section	Continue from previous section
-	Dark Variations	Dark Variations
-	Deep	Deep
-	Direction	Direction
-	Dot-dot-dash	Dot-dot-dash
-	Editing endnote	Editing endnote
-	Editing footnote	Editing footnote
-	English (Australia)	English (Australia)
-	English (Canada)	English (Canada)
-	English (India)	English (India)
-	English (Ireland)	English (Ireland)
-	English (New Zealand)	English (New Zealand)
-	English (South Africa)	English (South Africa)
-	File locations	File locations
-	File › New lists the .dotx and .dotm templates here under Personal; Save as Word Template starts here.	File › New lists the .dotx and .dotm templates here under Personal; Save as Word Template starts here.
-	Format Shape	Format Shape
-	Format Shape Pane	Format Shape Pane
-	Format Shape…	Format Shape…
-	From Bottom Left Corner	From Bottom Left Corner
-	From Bottom Right Corner	From Bottom Right Corner
-	From Center	From Center
-	From Top Left Corner	From Top Left Corner
-	From Top Right Corner	From Top Right Corner
-	Full Screen View	Full Screen View
-	Gradient	Gradient
-	Gradient fill	Gradient fill
-	Gradient stops	Gradient stops
-	Include label and number	Include label and number
-	Light Variations	Light Variations
-	Linear Diagonal - Bottom Left to Top Right	Linear Diagonal - Bottom Left to Top Right
-	Linear Diagonal - Bottom Right to Top Left	Linear Diagonal - Bottom Right to Top Left
-	Linear Diagonal - Top Left to Bottom Right	Linear Diagonal - Top Left to Bottom Right
-	Linear Diagonal - Top Right to Bottom Left	Linear Diagonal - Top Right to Bottom Left
-	Linear Down	Linear Down
-	Linear Left	Linear Left
-	Linear Right	Linear Right
-	Linear Up	Linear Up
-	Lit from Bottom	Lit from Bottom
-	Lit from Top	Lit from Top
-	More Gradients…	More Gradients…
-	More Underlines…	More Underlines…
-	More tabs	More tabs
-	No Gradient	No Gradient
-	No fill	No fill
-	Not set	Not set
-	Old menu keys: Alt, {keys}. Keep typing, or press Esc to cancel.	Old menu keys: Alt, {keys}. Keep typing, or press Esc to cancel.
-	Page Number Format	Page Number Format
-	Page numbering	Page numbering
-	Path	Path
-	Personal	Personal
-	Personal Templates	Personal Templates
-	Preset gradients	Preset gradients
-	Print job submitted: spooled {count} sheet(s)	Print job submitted: spooled {count} sheet(s)
+# Newer strings: full screen, legacy menu keys, English dialects, personal templates, shape gradients, page numbering, underlines
+	Add gradient stop	Adăugare punct de degrade
+	Angle	Unghi
+	Center Glow	Strălucire centrală
+	Continue from previous section	Continuare din secțiunea anterioară
+	Dark Variations	Variante întunecate
+	Deep	Adânc
+	Direction	Direcție
+	Dot-dot-dash	Punct-punct-linie
+	Editing endnote	Editare notă de final
+	Editing footnote	Editare notă de subsol
+	English (Australia)	Engleză (Australia)
+	English (Canada)	Engleză (Canada)
+	English (India)	Engleză (India)
+	English (Ireland)	Engleză (Irlanda)
+	English (New Zealand)	Engleză (Noua Zeelandă)
+	English (South Africa)	Engleză (Africa de Sud)
+	File locations	Locații fișiere
+	File › New lists the .dotx and .dotm templates here under Personal; Save as Word Template starts here.	Fișier › Nou afișează șabloanele .dotx și .dotm din acest folder la Personale; Salvare ca șablon Word pornește de aici.
+	Format Shape	Formatare formă
+	Format Shape Pane	Panou Formatare formă
+	Format Shape…	Formatare formă…
+	From Bottom Left Corner	Din colțul din stânga jos
+	From Bottom Right Corner	Din colțul din dreapta jos
+	From Center	Din centru
+	From Top Left Corner	Din colțul din stânga sus
+	From Top Right Corner	Din colțul din dreapta sus
+	Full Screen View	Vizualizare ecran complet
+	Gradient	Degrade
+	Gradient fill	Umplere în degrade
+	Gradient stops	Puncte de degrade
+	Include label and number	Includere etichetă și număr
+	Light Variations	Variante luminoase
+	Linear Diagonal - Bottom Left to Top Right	Liniar diagonal - din stânga jos spre dreapta sus
+	Linear Diagonal - Bottom Right to Top Left	Liniar diagonal - din dreapta jos spre stânga sus
+	Linear Diagonal - Top Left to Bottom Right	Liniar diagonal - din stânga sus spre dreapta jos
+	Linear Diagonal - Top Right to Bottom Left	Liniar diagonal - din dreapta sus spre stânga jos
+	Linear Down	Liniar în jos
+	Linear Left	Liniar spre stânga
+	Linear Right	Liniar spre dreapta
+	Linear Up	Liniar în sus
+	Lit from Bottom	Luminat de jos
+	Lit from Top	Luminat de sus
+	More Gradients…	Mai multe degradeuri…
+	More Underlines…	Mai multe sublinieri…
+	More tabs	Mai multe file
+	No Gradient	Fără degrade
+	No fill	Fără umplere
+	Not set	Nesetat
+	Old menu keys: Alt, {keys}. Keep typing, or press Esc to cancel.	Taste de meniu vechi: Alt, {keys}. Continuați să tastați sau apăsați Esc pentru a anula.
+	Page Number Format	Format număr de pagină
+	Page numbering	Numerotare pagini
+	Path	Traseu
+	Personal	Personale
+	Personal Templates	Șabloane personale
+	Preset gradients	Degradeuri presetate
+	Print job submitted: spooled {count} sheet(s)	Lucrarea de imprimare a fost trimisă: {count} coli în coada de imprimare
 	Radial	Radial
-	Rectangular	Rectangular
-	Remove gradient stop	Remove gradient stop
-	Rotate with shape	Rotate with shape
-	Save as Word Template…	Save as Word Template…
-	Saves a .dotx template in your templates folder. It shows up in File › New under Personal.	Saves a .dotx template in your templates folder. It shows up in File › New under Personal.
-	Select a shape, text box or drawing canvas to format its fill.	Select a shape, text box or drawing canvas to format its fill.
-	Show the ribbon	Show the ribbon
-	Soft	Soft
-	Solid fill	Solid fill
-	Templates you save in your templates folder show up here.	Templates you save in your templates folder show up here.
-	Underline Color	Underline Color
-	User templates:	User templates:
+	Rectangular	Dreptunghiular
+	Remove gradient stop	Eliminare punct de degrade
+	Rotate with shape	Rotire odată cu forma
+	Save as Word Template…	Salvare ca șablon Word…
+	Saves a .dotx template in your templates folder. It shows up in File › New under Personal.	Salvează un șablon .dotx în folderul de șabloane. Apare în Fișier › Nou, la Personale.
+	Select a shape, text box or drawing canvas to format its fill.	Selectați o formă, o casetă de text sau un canvas de desen pentru a-i formata umplerea.
+	Show the ribbon	Afișare panglică
+	Soft	Moale
+	Solid fill	Umplere uniformă
+	Templates you save in your templates folder show up here.	Șabloanele salvate în folderul de șabloane apar aici.
+	Underline Color	Culoare subliniere
+	User templates:	Șabloane utilizator:
 	cm	cm
 	mm	mm
 	pi	pi

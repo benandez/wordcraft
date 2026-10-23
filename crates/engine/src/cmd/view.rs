@@ -141,8 +141,8 @@ pub fn specs() -> Vec<CommandSpec> {
             .pure(),
         CommandSpec::new("view.state", "View State", "View", |s, _| serde_json::to_value(&s.view).map_err(|e| CmdError::Failed(e.to_string())))
             .pure(),
-        // Word › File › Options › Advanced › Numeral: how digits look on screen (display
-        // only; the document text keeps the typed codepoints).
+        // Word › File › Options › Advanced › Numeral: how digits look on screen, in print, PDFs
+        // and page images (display only; the document text keeps the typed codepoints).
         CommandSpec::new("view.numeral", "Numerals", "File › Options › Advanced", |s, v| match v.get("value") {
             None => Ok(json!({"value": s.view.numeral})),
             Some(Value::String(name)) => {

@@ -364,10 +364,16 @@ fn save_as(s: &mut Session, v: &Value) -> CmdResult {
 }
 
 /// How a copy is written: Print Markup from the command's `markup`, else the File › Print
-/// setting (`file.printMarkup`); comments as Track Changes Options show them.
+/// setting (`file.printMarkup`); comments as Track Changes Options show them; digits as the
+/// Numeral setting shows them on screen.
 pub fn export_options(s: &Session, v: &Value) -> crate::io::ExportOptions {
     let markup = p::bool(v, "markup").unwrap_or(s.prefs.print_markup);
-    crate::io::ExportOptions { markup, comments: markup && s.prefs.markup.comments, word2003: p::str(v, "format") == Some(FORMAT_WORD_2003) }
+    crate::io::ExportOptions {
+        markup,
+        comments: markup && s.prefs.markup.comments,
+        word2003: p::str(v, "format") == Some(FORMAT_WORD_2003),
+        numeral: s.view.numeral.resolve(crate::session::system_locale()),
+    }
 }
 
 fn export_png(s: &mut Session, v: &Value) -> CmdResult {
