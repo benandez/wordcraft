@@ -2339,14 +2339,17 @@ fn cluster_ends_match_the_next_larger_cluster_in_linear_time() {
     for cl in [vec![], vec![0], vec![0, 0, 3, 3, 5], vec![5, 3, 3, 0], vec![2, 0, 4, 1, 1, 6, 3], vec![0, 7, 2, 2, 9, 1]] {
         assert_eq!(cluster_ends(&cl, 10), brute(&cl, 10), "{cl:?}");
     }
-    // One base letter and 200 000 combining marks in its cluster, then one more letter.
-    let mut cl = vec![0; 200_001];
-    cl.push(400_002);
+    // One base letter and a million combining marks in its cluster, then one more letter.
+    // Milliseconds; the rescan (`brute`) took 2.9 s at 50,000 and grows with the square, so
+    // about 20 minutes here.
+    let n = 1_000_000;
+    let mut cl = vec![0; n + 1];
+    cl.push(2 * n + 2);
     let start = std::time::Instant::now();
-    let ends = cluster_ends(&cl, 400_004);
-    assert!(start.elapsed() < std::time::Duration::from_secs(1), "{:?}", start.elapsed());
-    assert!(ends[..200_001].iter().all(|e| *e == 400_002));
-    assert_eq!(ends.last(), Some(&400_004));
+    let ends = cluster_ends(&cl, 2 * n + 4);
+    assert!(start.elapsed() < std::time::Duration::from_secs(10), "{:?}", start.elapsed());
+    assert!(ends[..=n].iter().all(|e| *e == 2 * n + 2));
+    assert_eq!(ends.last(), Some(&(2 * n + 4)));
 }
 
 /// A line in a cell cut off at its edge is drawn with that cell's clip, found by path in an index
@@ -2378,11 +2381,13 @@ fn a_line_finds_its_clipped_cell_by_path() {
     assert_eq!(found(StoryRef::Part(7), &[0, 0, 0, 2]), Some(vec![0]));
     assert_eq!(found(StoryRef::Body, &[0, 0, 0, 2]), None, "another story");
 
-    // 20 000 clipped cells and as many lines: a lookup each, not a pass over the cells each.
-    let big = Page { items: (0..20_000).map(|r| cell(StoryRef::Body, vec![0], r, 0, true)).collect(), ..Default::default() };
+    // 100 000 clipped cells and as many lines: a lookup each, not a pass over the cells each
+    // (10^10 steps, minutes; the lookups take well under a second on a loaded machine).
+    let n = 100_000;
+    let big = Page { items: (0..n).map(|r| cell(StoryRef::Body, vec![0], r, 0, true)).collect(), ..Default::default() };
     let start = std::time::Instant::now();
     let clips = clipped_cells(&big);
-    let hits = (0..20_000u32).filter(|r| clip_cell(&clips, StoryRef::Body, &[0, *r, 0, 0]).is_some()).count();
-    assert_eq!(hits, 20_000);
-    assert!(start.elapsed() < std::time::Duration::from_secs(1), "{:?}", start.elapsed());
+    let hits = (0..n as u32).filter(|r| clip_cell(&clips, StoryRef::Body, &[0, *r, 0, 0]).is_some()).count();
+    assert_eq!(hits, n);
+    assert!(start.elapsed() < std::time::Duration::from_secs(10), "{:?}", start.elapsed());
 }

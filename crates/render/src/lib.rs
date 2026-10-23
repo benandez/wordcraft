@@ -2312,7 +2312,8 @@ mod tests {
         let l = layout(&d, &mut LayoutCache::new(), &LayoutOptions::default());
         let start = std::time::Instant::now();
         let img = render_page(&d, &l.pages[0], 1.0, &RenderOptions::default());
-        assert!(start.elapsed() < std::time::Duration::from_secs(2), "{:?}", start.elapsed());
+        // About 20 ms without the huge glyphs; drawing them ran past 4 minutes without finishing.
+        assert!(start.elapsed() < std::time::Duration::from_secs(10), "{:?}", start.elapsed());
         assert_eq!(img.width, 612);
         // Leaving them out is logged (once a run, so it may have been by another test already).
         assert!(OVERSIZED_GLYPHS_NOTED.load(std::sync::atomic::Ordering::Relaxed), "the left-out glyphs are logged");
@@ -2453,7 +2454,8 @@ mod tests {
             let img = render_items(&Document::new(), &[line(dash.clone())], 0.0, 0.0, 100.0, 40.0, 1.0, &RenderOptions::default());
             assert!(img.pixel(50, 20)[3] > 200, "{dash:?} draws solid");
         }
-        assert!(start.elapsed() < std::time::Duration::from_secs(2), "{:?}", start.elapsed());
+        // Milliseconds drawn solid; drawn as dashes they ran past 4 minutes without finishing.
+        assert!(start.elapsed() < std::time::Duration::from_secs(10), "{:?}", start.elapsed());
         let dashed = render_items(&Document::new(), &[line(vec![10.0, 10.0])], 0.0, 0.0, 100.0, 40.0, 1.0, &RenderOptions::default());
         assert!(dashed.pixel(15, 20)[3] > 200 && dashed.pixel(25, 20)[3] == 0, "a normal pattern dashes");
         assert!(safe_dashes([3.0, 1.0], 1000.0).len() == 2);
