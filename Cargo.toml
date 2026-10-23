@@ -91,11 +91,16 @@ todo = "warn"
 too_many_arguments = "allow"
 type_complexity = "allow"
 
+# Line tables keep file and line in panics and backtraces; full debug info
+# for every test binary and dependency would multiply the target dir size.
+# The test profile inherits both settings.
 [profile.dev.package."*"]
 opt-level = 2
+debug = false
 
 [profile.dev]
 opt-level = 1
+debug = "line-tables-only"
 
 [profile.release]
 opt-level = 3

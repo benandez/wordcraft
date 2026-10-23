@@ -1028,7 +1028,7 @@ fn prev_token(before: &str) -> String {
 }
 
 /// Turkish, Azerbaijani (and Crimean Tatar) map `i`/`İ` and `ı`/`I` as pairs (#1923).
-fn is_turkic(lang: Option<&str>) -> bool {
+pub(crate) fn is_turkic(lang: Option<&str>) -> bool {
     if wordcraft_proof::ProofLang::from_tag(lang) == wordcraft_proof::ProofLang::Tr {
         return true; // tr, tur, any region, same normalisation as proofing
     }
@@ -1038,7 +1038,7 @@ fn is_turkic(lang: Option<&str>) -> bool {
 }
 
 /// A letter in capitals: `i` → `İ` in Turkic languages, otherwise the Unicode default.
-fn upper_char(c: char, turkic: bool) -> String {
+pub(crate) fn upper_char(c: char, turkic: bool) -> String {
     if turkic && c == 'i' {
         return "\u{130}".to_string();
     }
@@ -1047,7 +1047,7 @@ fn upper_char(c: char, turkic: bool) -> String {
 
 /// A letter in lowercase: `I` → `ı` in Turkic languages. `İ` is always the single letter `i`,
 /// never `i` plus a combining dot.
-fn lower_char(c: char, turkic: bool) -> String {
+pub(crate) fn lower_char(c: char, turkic: bool) -> String {
     match c {
         'I' if turkic => "\u{131}".to_string(),
         '\u{130}' => "i".to_string(),
