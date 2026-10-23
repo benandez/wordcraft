@@ -2370,6 +2370,8 @@ mod tests {
         assert_eq!(db.add_font(collection_of(&font, 1_000_000)), MAX_FILE_FACES);
         // A font the user adds is refused instead.
         assert!(matches!(db.install_font("v.ttf", &variable_font(300)), Err(user::UserFontError::Unusable(e)) if e.contains("more than 256")));
-        assert!(started.elapsed() < std::time::Duration::from_secs(2), "{:?}", started.elapsed());
+        // The face counts above are what tell the old code (a face per member) apart; the time
+        // (under 0.1 s on a loaded machine) only backs up "read once", with room for a busy CI.
+        assert!(started.elapsed() < std::time::Duration::from_secs(10), "{:?}", started.elapsed());
     }
 }
