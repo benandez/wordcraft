@@ -41,6 +41,24 @@ impl Math {
     pub fn is_empty(&self) -> bool {
         self.nodes.is_empty()
     }
+
+    /// Rough heap bytes a clone copies: every node, its argument lists and its run text.
+    /// Iterative, so it costs at most the size of the structure.
+    pub(crate) fn heap_bytes(&self) -> usize {
+        let mut n = self.omml.len();
+        let mut todo: Vec<&MNode> = self.nodes.iter().collect();
+        while let Some(node) = todo.pop() {
+            n = n.saturating_add(std::mem::size_of::<MNode>());
+            if let MNode::Run(r) = node {
+                n = n.saturating_add(r.text.len()).saturating_add(r.font.as_ref().map_or(0, String::len));
+            }
+            each_arg(node, &mut |a| {
+                n = n.saturating_add(std::mem::size_of::<Arg>());
+                todo.extend(a);
+            });
+        }
+        n
+    }
 }
 
 /// Display equation justification (`m:oMathParaPr/m:jc`).

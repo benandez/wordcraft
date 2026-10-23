@@ -210,10 +210,76 @@ fn block_cost(b: &Block) -> (usize, bool) {
             .len()
             .saturating_mul(std::mem::size_of::<Run>())
             .saturating_add(p.objects.len().saturating_mul(std::mem::size_of::<InlineObject>()));
-        cost = cost.saturating_add(p.text.len()).saturating_add(items);
+        let objects = p.objects.iter().fold(0usize, |n, o| n.saturating_add(object_cost(o)));
+        cost = cost.saturating_add(p.text.len()).saturating_add(items).saturating_add(objects);
         boxes |= box_ids(p).next().is_some();
     });
     (cost, boxes)
+}
+
+/// Rough heap bytes a clone of `o` copies beyond its own storage: its strings and lists, and its
+/// group members however deep. What it shares through `Arc` (pictures' embedded objects, charts,
+/// freeforms, wrap polygons, gradients) is not copied, so not counted.
+fn object_cost(o: &InlineObject) -> usize {
+    let float = |f: &crate::para::Float| f.alt.text.len().saturating_add(f.alt.title.len());
+    let mut cost = 0usize;
+    let mut todo = vec![o];
+    while let Some(o) = todo.pop() {
+        let add = match o {
+            InlineObject::Image { media, alt, float: f, .. } => media.len().saturating_add(alt.len()).saturating_add(float(f)),
+            InlineObject::Graphic { alt, float: f, .. } => alt.len().saturating_add(float(f)),
+            InlineObject::Shape { float: f, extra, .. } => {
+                let warp = extra.warp.as_ref().map_or(0, |w| {
+                    let adj = w.adj.iter().map(|(name, _)| std::mem::size_of::<(String, i64)>().saturating_add(name.len()));
+                    adj.fold(w.preset.len(), usize::saturating_add)
+                });
+                float(f).saturating_add(warp)
+            }
+            InlineObject::Group { float: f, children, .. } => {
+                todo.extend(children.iter().map(|c| &c.obj));
+                children.len().saturating_mul(std::mem::size_of::<crate::para::GroupChild>()).saturating_add(float(f))
+            }
+            InlineObject::Field { instr, result, form, .. } => instr.len().saturating_add(result.len()).saturating_add(form.len()),
+            InlineObject::FieldStart { instr, .. } => instr.len(),
+            InlineObject::ControlStart { control } => std::mem::size_of::<crate::control::ContentControl>().saturating_add(serialized_len(control)),
+            InlineObject::NoteRef { custom, .. } => custom.len(),
+            InlineObject::BookmarkStart { name } | InlineObject::BookmarkEnd { name } => name.len(),
+            InlineObject::PermStart { group, editor, .. } => group.len().saturating_add(editor.len()),
+            InlineObject::Equation { linear, math, .. } => linear.len().saturating_add(math.heap_bytes()),
+            InlineObject::Ruby { base, ruby, lang, props, .. } => {
+                [base.len(), ruby.len(), lang.len(), std::mem::size_of::<CharProps>(), serialized_len(props)]
+                    .into_iter()
+                    .fold(0, usize::saturating_add)
+            }
+            InlineObject::Opaque { format, xml, text } => format.len().saturating_add(xml.len()).saturating_add(text.len()),
+            InlineObject::FieldEnd
+            | InlineObject::ControlEnd
+            | InlineObject::CommentStart { .. }
+            | InlineObject::CommentEnd { .. }
+            | InlineObject::PermEnd { .. }
+            | InlineObject::PositionalTab { .. } => 0,
+        };
+        cost = cost.saturating_add(add);
+    }
+    cost
+}
+
+/// Length of `v` written as JSON: at least the bytes of every string and list it owns. For the
+/// nested formatting and control types, which share nothing through `Arc`.
+fn serialized_len<T: Serialize>(v: &T) -> usize {
+    struct Count(usize);
+    impl std::io::Write for Count {
+        fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+            self.0 = self.0.saturating_add(b.len());
+            Ok(b.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut n = Count(0);
+    let _ = serde_json::to_writer(&mut n, v);
+    n.0
 }
 
 /// Call `f` on every paragraph of a block, in document order, however deep its tables nest. The
@@ -809,7 +875,8 @@ impl Document {
     /// text boxes are shared with the source (copy-on-write), the others copied. A box showing a
     /// story it is inside, or past the paste's budget, gets none (CWE-400).
     fn adopt_text_box(&mut self, old: u32, parts: &BTreeMap<u32, Part>, depth: usize, budget: &mut BoxBudget) -> Option<u32> {
-        if depth >= MAX_BOX_DEPTH || budget.stories == 0 || budget.active.contains(&old) {
+        // A spent byte budget stops before costing the story again (that walks its payloads).
+        if depth >= MAX_BOX_DEPTH || budget.stories == 0 || budget.bytes == 0 || budget.active.contains(&old) {
             return None;
         }
         let src = parts.get(&old).or_else(|| self.parts.get(&old).filter(|p| p.kind == PartKind::TextBox))?;
@@ -1302,6 +1369,40 @@ mod tests {
         // The boxes past the cap keep no story rather than a shared one.
         let got = boxes_in(&d, &Path::top(0));
         assert_eq!(got.iter().flatten().count(), added);
+    }
+
+    #[test]
+    fn pasted_box_copies_count_the_objects_they_copy() {
+        // #3614 review: a story holding a text box and a 1 MiB kept-for-round-trip object costs
+        // the object's XML too, not only its slot: 64 copies used to copy 64 MiB of it.
+        let mut p = Paragraph::with_text("x", CharProps::default());
+        p.insert_object(0, box_shape(Some(999)), &CharProps::default()).unwrap();
+        let opaque = InlineObject::Opaque { format: "docx".into(), xml: "x".repeat(1 << 20), text: String::new() };
+        p.insert_object(0, opaque, &CharProps::default()).unwrap();
+        let f = fan_out(vec![para_block(p)], 64);
+        let mut d = doc(&["x"]);
+        let before = d.parts.len();
+        d.insert_fragment(&Pos::body(0, 1), &f).unwrap();
+        let added = d.parts.len() - before;
+        let xml = |o: &InlineObject| if let InlineObject::Opaque { xml, .. } = o { xml.len() } else { 0 };
+        let copied: usize =
+            d.parts.values().flat_map(|p| p.blocks.iter()).map(|b| if let Block::Para(p) = &**b { p.objects.iter().map(xml).sum() } else { 0 }).sum();
+        assert!((1..64).contains(&added), "{added}");
+        assert!(copied <= MAX_PASTED_BOX_BYTES, "{copied}");
+        // Nested group members and equations count too.
+        let member = |obj| crate::para::GroupChild { x: 0.0, y: 0.0, obj };
+        let deep = InlineObject::Opaque { format: String::new(), xml: "y".repeat(5000), text: String::new() };
+        let inner =
+            InlineObject::Group { w: 1.0, h: 1.0, float: Default::default(), ch_w: 1.0, ch_h: 1.0, children: vec![member(deep)], canvas: None };
+        let outer =
+            InlineObject::Group { w: 1.0, h: 1.0, float: Default::default(), ch_w: 1.0, ch_h: 1.0, children: vec![member(inner)], canvas: None };
+        assert!(object_cost(&outer) >= 5000);
+        let eq = InlineObject::Equation {
+            linear: String::new(),
+            display: false,
+            math: crate::math::Math { nodes: crate::math::parse_linear(&"z".repeat(5000)), ..Default::default() },
+        };
+        assert!(object_cost(&eq) >= 5000);
     }
 
     #[test]
