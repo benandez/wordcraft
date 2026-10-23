@@ -2795,3 +2795,42 @@ preview	Title	Tytuł
 	This document has no bookmarks.	This document has no bookmarks.
 	Type a page number, or +2 / -1.	Type a page number, or +2 / -1.
 	Wait for the print job to finish submitting before closing.	Wait for the print job to finish submitting before closing.
+	First Record	Pierwszy rekord
+	Last Record	Ostatni rekord
+	Go to Record	Przejdź do rekordu
+	Edit Individual Documents…	Edytuj poszczególne dokumenty…
+	Print Documents…	Drukuj dokumenty…
+	Print Documents	Drukuj dokumenty
+	Current record	Bieżący rekord
+	From:	Od:
+	To:	Do:
+	Enter a number.	Wpisz liczbę.
+# Why a ribbon control is off (#2678)
+	a drawing canvas can't be ungrouped	kanwy rysunku nie można rozgrupować
+	a drawing canvas can't go inside a text box	kanwy rysunku nie można umieścić w polu tekstowym
+	charts and diagrams can't be moved or resized yet	wykresów i diagramów nie można jeszcze przenosić ani zmieniać ich rozmiaru
+	no equation at the caret	przy kursorze nie ma równania
+	not editing an equation	żadne równanie nie jest edytowane
+	only in Outline view	tylko w widoku Konspekt
+	select a SmartArt graphic first	najpierw zaznacz grafikę SmartArt
+	select a chart first	najpierw zaznacz wykres
+	select a connector first	najpierw zaznacz łącznik
+	select a drawing canvas first	najpierw zaznacz kanwę rysunku
+	select a floating picture or shape first	najpierw zaznacz pływający obraz lub kształt
+	select a group first	najpierw zaznacz grupę
+	select a picture first	najpierw zaznacz obraz
+	select a shape first	najpierw zaznacz kształt
+	select a text box first	najpierw zaznacz pole tekstowe
+	select a text box linked to another first	najpierw zaznacz pole tekstowe połączone z innym
+	the Clipboard pane is empty	okienko Schowek jest puste
+	there is nothing to undo	nie ma nic do cofnięcia
+	this SmartArt was made in another program: WordCraft shows it but can't edit it	ta grafika SmartArt została utworzona w innym programie: WordCraft ją wyświetla, ale nie może jej edytować
+	this chart was made in another program: WordCraft shows it but can't edit it	ten wykres został utworzony w innym programie: WordCraft go wyświetla, ale nie może go edytować
+	this text box is already linked: break the link first	to pole tekstowe jest już połączone: najpierw przerwij połączenie
+	leave the equation first	najpierw opuść równanie
+	the Spike is empty	zbieracz jest pusty
+# More reasons a ribbon control is off (#2678)
+	a group holding Word ink can't be ungrouped yet	grupy z atramentem programu Word nie można jeszcze rozgrupować
+	drop caps can't go in a table	inicjału nie można umieścić w tabeli
+	the document is protected	dokument jest chroniony
+	Open a document first	Najpierw otwórz dokument

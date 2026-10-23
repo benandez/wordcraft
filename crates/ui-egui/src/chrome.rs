@@ -537,7 +537,10 @@ pub fn status_bar(app: &mut WordApp, ui: &mut Ui) {
             ui.horizontal_centered(|ui| {
                 ui.spacing_mut().item_spacing = vec2(14.0, 0.0);
                 let l = app.session.layout();
-                let page = if app.session.selects_whole_story() {
+                let page = if let Some(p) = app.canvas.viewed_page {
+                    // The page in view (#3880), as the scrollbar's tip names it.
+                    p.min(l.pages.len().saturating_sub(1)) + 1
+                } else if app.session.selects_whole_story() {
                     app.session.page_hint.min(l.pages.len().saturating_sub(1)) + 1
                 } else {
                     l.caret_on(&app.session.sel.focus, app.session.page_hint).map(|c| c.page + 1).unwrap_or(1)
