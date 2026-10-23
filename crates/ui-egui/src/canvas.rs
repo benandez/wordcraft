@@ -920,6 +920,8 @@ fn drawing_grid_step(spacing: f32, scale: f32) -> f32 {
     step
 }
 
+/// Draw the document canvas in the space `ui` has left, one frame: the pages, caret, selection
+/// and rulers, with the mouse editing and the pointer shape over them.
 pub fn show(app: &mut WordApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     let full = ui.available_rect_before_wrap();
@@ -1832,7 +1834,15 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
         let in_bar = app.session.sel.focus.story == StoryRef::Body
             && (app.canvas.unit_drag.as_ref().is_some_and(|d| d.unit == "line")
                 || latest.and_then(|p| page_at(&rects, &layout, geo.scale, p)).is_some_and(|(pg, x, y)| layout.selection_bar_at(pg, x, y).is_some()));
-        let fallback = if in_bar { egui::CursorIcon::Default } else { egui::CursorIcon::Text };
+        // An armed Format Painter shows over the text, as Word's brush does; egui has no brush,
+        // so the copy pointer stands in (#3453). The selection bar keeps its arrow.
+        let fallback = if in_bar {
+            egui::CursorIcon::Default
+        } else if app.session.painter.is_some() {
+            egui::CursorIcon::Copy
+        } else {
+            egui::CursorIcon::Text
+        };
         ui.ctx().set_cursor_icon(over_object.unwrap_or(fallback));
     }
     crate::table_resize::cursor(app, ui, &resp, &layout, &rects, geo.scale);
@@ -3129,7 +3139,8 @@ pub(crate) fn margin_drag(edge: MarginEdge, at: f32, s: &wordcraft_doc::section:
 
 /// A draggable margin edge on a ruler: `to_pt` turns the pointer into points from the page's
 /// left (or top) edge, and `mirrored` is an even page of a mirrored layout ([`margin_drag`]). A
-/// whole drag is one undo step, through `layout.margins`.
+/// whole drag is one undo step, through `layout.margins`. The view stays put: following the caret
+/// mid-drag would move the page under the pointer and the margin with it.
 fn margin_handle(
     app: &mut WordApp,
     ui: &Ui,
@@ -3150,7 +3161,7 @@ fn margin_handle(
         if !r.drag_started() {
             app.session.join_next_undo();
         }
-        let _ = app.run("layout.margins", json!({ stored.param(): v }));
+        let _ = app.run_keep_view("layout.margins", json!({ stored.param(): v }));
     }
 }
 
@@ -3969,6 +3980,58 @@ mod tests {
         assert_eq!(margin_drag(MarginEdge::Top, 50.0, &sect, true), (MarginEdge::Top, dragged_margin(MarginEdge::Top, 50.0, &sect)));
     }
 
+    /// Dragging a margin edge on the vertical ruler leaves the view where it is. Each step of the
+    /// drag runs `layout.margins`, which brought the caret back into view: with the caret off
+    /// screen (the bottom margin is far from the text at the top) the page slid under the pointer
+    /// mid-drag, and the margin ran far past it (a drag of about 1 cm set it about 6 cm larger).
+    #[test]
+    fn dragging_the_bottom_margin_on_the_ruler_keeps_the_view_and_follows_the_pointer() {
+        let text = vec!["A line of text."; 20].join("\n");
+        let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text(&text)), Default::default());
+        a.run("view.ruler", json!({"value": true})).unwrap();
+        a.run("caret.docStart", json!({})).unwrap();
+        let mut h: H = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).with_step_dt(0.25).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            a,
+        );
+        h.run_steps(6);
+        let body = h.state_mut().session.layout().pages[0].body;
+        let area = h.state().canvas.canvas_rect.expect("the canvas is shown");
+        // Scroll the first page's bottom margin to the middle of the window: the caret, at the
+        // top of the page, is off screen.
+        let bottom = screen(&mut h, 0.0, body.bottom()).y;
+        h.state_mut().canvas.scroll_request = Some(vec2(0.0, bottom - area.center().y));
+        h.run_steps(4);
+        assert!(screen(&mut h, 0.0, body.y).y < area.min.y, "the caret's line is above the view");
+        let offset = h.state().canvas.scroll_offset;
+        let sect = wordcraft_engine::cmd::page::sect(&h.state().session);
+        let depth = h.state().session.undo_depth();
+
+        // The bottom margin's edge on the vertical ruler, dragged up 36 points in a few moves.
+        let x = area.min.x - RULER / 2.0;
+        let start = pos2(x, screen(&mut h, 0.0, body.bottom()).y);
+        let end = pos2(x, screen(&mut h, 0.0, body.bottom() - 36.0).y);
+        h.event(egui::Event::PointerMoved(start));
+        h.run_steps(2);
+        h.event(egui::Event::PointerButton { pos: start, button: egui::PointerButton::Primary, pressed: true, modifiers: Default::default() });
+        h.step();
+        for k in 1..=5 {
+            h.event(egui::Event::PointerMoved(start + (end - start) * (k as f32 / 5.0)));
+            h.step();
+            assert_eq!(h.state().canvas.scroll_offset, offset, "the view moved during the drag (step {k})");
+        }
+        h.event(egui::Event::PointerButton { pos: end, button: egui::PointerButton::Primary, pressed: false, modifiers: Default::default() });
+        h.run_steps(3);
+        assert_eq!(h.state().canvas.scroll_offset, offset, "the view moved after the drag");
+        let after = wordcraft_engine::cmd::page::sect(&h.state().session);
+        assert!((after.margin_bottom - (sect.margin_bottom + 36.0)).abs() <= 4.5, "{} → {}", sect.margin_bottom, after.margin_bottom);
+        assert_eq!(h.state().session.undo_depth(), depth + 1, "one undo step for the drag");
+    }
+
     /// Show revisions in balloons: a document whose only revision is a deletion gets the markup
     /// area for its balloon; the other modes have nothing to show there, and neither does the view
     /// while the Comments pane is open.
@@ -4320,6 +4383,46 @@ mod tests {
         h.event(Event::PointerMoved(at));
         h.step();
         assert_eq!(h.output().platform_output.cursor_icon, egui::CursorIcon::Default);
+    }
+
+    /// #3453: while the Format Painter is armed the pointer over the text says so, and it goes
+    /// back once the painter is off. The selection bar keeps its arrow while it is armed.
+    #[test]
+    fn an_armed_format_painter_changes_the_pointer() {
+        let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
+        a.run("text.insert", json!({"text": "Paint this formatting"})).unwrap();
+        a.run("view.commentsPane", json!({"value": false})).unwrap();
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).with_step_dt(1.0 / 60.0).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            a,
+        );
+        for _ in 0..6 {
+            h.step();
+        }
+        let c = h.state_mut().session.layout().caret(&Pos::body(0, 6)).expect("caret");
+        let over_text = page_to_screen(h.state_mut(), c.page, c.x, c.top + c.height / 2.0).expect("on screen");
+        let over_bar = page_to_screen(h.state_mut(), c.page, 30.0, c.top + c.height / 2.0).expect("on screen");
+        let pointer_after = |h: &mut egui_kittest::Harness<'_, WordApp>, cmd: Option<&str>| {
+            if let Some(cmd) = cmd {
+                h.state_mut().run(cmd, json!({})).unwrap();
+            }
+            h.event(egui::Event::PointerMoved(over_text));
+            h.step();
+            h.output().platform_output.cursor_icon
+        };
+        // Where the I-beam is drawn (Windows, #1746) the system pointer over the text is hidden.
+        let ibeam = if h.state().canvas.drawn_ibeam { egui::CursorIcon::None } else { egui::CursorIcon::Text };
+        assert_eq!(pointer_after(&mut h, None), ibeam, "no painter yet");
+        assert_eq!(pointer_after(&mut h, Some("edit.formatPainter")), egui::CursorIcon::Copy, "armed");
+        assert_eq!(pointer_after(&mut h, Some("edit.formatPainter")), ibeam, "turned off");
+        h.state_mut().run("edit.formatPainter", json!({})).unwrap();
+        h.event(egui::Event::PointerMoved(over_bar));
+        h.step();
+        assert_eq!(h.output().platform_output.cursor_icon, egui::CursorIcon::Default, "the selection bar keeps its arrow");
     }
 
     /// #1085: a selected balloon's buttons work (pressing them is not a click on the page that

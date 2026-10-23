@@ -1922,7 +1922,10 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
     pl.hyph_after = hyphenation_points(&text, to_para, &pl, auto, env.doc.settings.hyphenate_caps, &runs);
     // A paragraph whose text and mark are all a deletion the layout leaves out (a deleted
     // paragraph in the final text, or moved-away text marked Hidden) is gone: it takes no room.
-    let gone = env.hide_deleted.hides(doc, mark_rc.del) && (p.text.is_empty() || left.first() == Some(&(0..p.text.len())));
+    // So is one whose mark is hidden and whose text is empty or hidden too: Word shows nothing of
+    // it, not even its list number, though the number is counted (#3982).
+    let mark_left_out = env.hide_deleted.hides(doc, mark_rc.del) || (mark_rc.hidden && !env.show_hidden);
+    let gone = mark_left_out && (p.text.is_empty() || left.first() == Some(&(0..p.text.len())));
     pl.left_out = left;
     for k in pl.hyph_after.clone() {
         if let Some(c) = pl.clusters.get_mut(k as usize) {

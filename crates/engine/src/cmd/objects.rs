@@ -1564,6 +1564,11 @@ fn group(s: &mut Session, _: &Value) -> CmdResult {
     if shown.is_empty() {
         return Err(CmdError::Failed("nothing to group".into()));
     }
+    // `shown` already has the members of any picked group merged in, so this counts the
+    // flattened members. Readers stop at the cap and would drop the rest.
+    if shown.len() > wordcraft_doc::para::MAX_GROUP_CHILDREN {
+        return Err(CmdError::Disabled(format!("too many objects to group (at most {})", wordcraft_doc::para::MAX_GROUP_CHILDREN)));
+    }
     let (w, h) = ((x1 - x0).clamp(1.0, MAX_OFFSET), (y1 - y0).clamp(1.0, MAX_OFFSET));
     // Each member keeps its turn: the group itself starts unturned.
     let children: Vec<GroupChild> = shown
@@ -2242,6 +2247,50 @@ mod tests {
         // Undo goes back step by step.
         s.run("edit.undo", &json!({})).unwrap();
         assert_eq!(all_objects(&s).len(), 2);
+    }
+
+    /// Select the objects at `at` in the list of all objects (the first as the selection, the rest added).
+    fn pick_objects(s: &mut Session, at: &[usize]) {
+        let list = all_objects(s);
+        let first = &list[at[0]].0;
+        s.sel = Selection { anchor: first.clone(), focus: Pos { off: first.off + wordcraft_doc::para::OBJ.len_utf8(), ..first.clone() } };
+        s.also_selected = at[1..].iter().map(|i| list[*i].0.clone()).collect();
+    }
+
+    #[test]
+    fn group_refuses_more_than_the_child_cap() {
+        let cap = wordcraft_doc::para::MAX_GROUP_CHILDREN;
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        s.run("document.setText", &json!({"text": "one"})).unwrap();
+        s.sel = Selection::caret(s.doc.start_of(StoryRef::Body));
+        for _ in 0..=cap {
+            s.run("insert.shape", &json!({"kind": "rectangle", "width": 10, "height": 10})).unwrap();
+            s.run("arrange.bounds", &json!({"page": 0, "x": 100, "y": 100})).unwrap();
+            s.run("select.collapse", &json!({"end": true})).unwrap();
+        }
+        let n = all_objects(&s).len();
+        assert_eq!(n, cap + 1);
+
+        // Flat: every shape picked.
+        pick_objects(&mut s, &(0..n).collect::<Vec<_>>());
+        assert_eq!(picked_objects(&s).len(), n);
+        let before = s.doc.clone();
+        assert!(s.run("arrange.group", &json!({})).is_err());
+        assert_eq!(s.doc, before);
+
+        // Nested: a group of cap - 1 and a group of 2; grouping those two would hold cap + 1 members.
+        pick_objects(&mut s, &(0..cap - 1).collect::<Vec<_>>());
+        s.run("arrange.group", &json!({})).unwrap();
+        let rest = all_objects(&s).len();
+        assert_eq!(rest, 3);
+        pick_objects(&mut s, &[1, 2]);
+        s.run("arrange.group", &json!({})).unwrap();
+        assert_eq!(all_objects(&s).len(), 2);
+        pick_objects(&mut s, &[0, 1]);
+        assert_eq!(picked_objects(&s).len(), 2);
+        let before = s.doc.clone();
+        assert!(s.run("arrange.group", &json!({})).is_err());
+        assert_eq!(s.doc, before);
     }
 
     /// Page 1 as exported (`file.exportPng` at scale 1), its pixels.

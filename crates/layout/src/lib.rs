@@ -4393,7 +4393,7 @@ fn place_table(ctx: &mut Ctx, pb: &mut PageBuilder, t: &wordcraft_doc::Table, bl
     {
         let room = pb.bottom - pb.y - tl.rows.iter().take(first).map(|r| r.height).sum::<f32>();
         let splittable = !t.rows.get(first).is_some_and(|r| r.props.cant_split);
-        if row.height > room + 0.01 && (short_of_min(first, room) || !(splittable && table::split_row(row, room).is_some())) {
+        if row.height + row.edge > room + 0.01 && (short_of_min(first, room) || !(splittable && table::split_row(row, room).is_some())) {
             pb.advance(block, body_top);
         }
     }
@@ -4430,7 +4430,8 @@ fn place_table(ctx: &mut Ctx, pb: &mut PageBuilder, t: &wordcraft_doc::Table, bl
                     let page_height = pb.bottom - body_top - repeated_height;
                     height <= page_height + 0.01 && !row_can_start(next, laid, pb.bottom - pb.y - height, page_height)
                 });
-            if pb.y + cur.height <= pb.bottom + 0.01 && !defer_kept {
+            // A row another row follows needs room for the border below it too (measured in Word).
+            if pb.y + cur.height + cur.edge <= pb.bottom + 0.01 && !defer_kept {
                 break;
             }
             // An at-least row with less room than its minimum moves on whole, unless nothing
