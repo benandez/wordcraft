@@ -158,6 +158,12 @@ Imported Word 97–2003 `.doc`/`.dot` files now ask for a supported DOCX target 
 - 2026-10-15: Find opens Navigation on Results; editing the query restores Results after manual Headings/Pages navigation. Typed and selected-text searches retain document contents (#2096).
 
 | Date | What landed |
+| 2026-10-22 | Compare results opened as new or revised untitled documents start without the previous document's version snapshots. A comparison or mailing result rejected by protection keeps the snapshots and save target with the original document. |
+| 2026-10-20 | The Document Inspector's removals are refused while the document tracks changes: they delete straight from the document, so the text would go with no revision to show for it and the revision trail would be broken behind the user's back |
+| 2026-10-20 | A version snapshot belongs to the document it was taken from: the snapshots went with the document, so a restore can only ever bring back a version of the document that is open |
+| 2026-10-22 | Restrict Editing: the CLI's `--author` uses the same protection check as `file.setAuthor`, and File › Options disables the User name field while the document is protected. |
+| 2026-10-20 | Restrict Editing, three more gaps closed: the protection of a protected document only changes through the explicit stop (`review.restrict {"stop": true}`; the "none" mode is the shorthand and doesn't stop it), the session author used for new tracked changes and comments can't change through `file.setAuthor` while the document is protected (the CLI's `--author` uses the same protection check), and the post-check compares the document's settings, metadata, custom properties, list definitions, bibliography sources and the comments' resolved flags as well as its text and formatting |
+| 2026-10-20 | Restrict Editing holds for the file commands too: the privacy options, the properties and the inspector's removals are refused on a protected document, and restoring a stored version keeps the protection and its password instead of the snapshot's stale ones |
 | 2026-10-19 | Insert Table of Figures opens its dialog (#3013): pick the caption label (Figure, Table, Equation or your own), with or without label and number, page numbers and leader, so a document can have a list of figures and a list of tables. The list is a `TOC \c`/`\a` field (ECMA-376 §17.16.5.68); a Word table of figures with its switches in any order updates too, and Update Table keeps each list's label and leader. |
 | 2026-10-19 | Right-clicking text or pressing Shift+F10 offers the existing two-row formatting mini toolbar above the context-menu commands. Formatting keeps the selection and popup; menu commands, Escape and outside clicks dismiss it. This is the mini-toolbar portion of #2959; paste choices are in PR #2599. |
 | 2026-10-20 | The move and resize handles of a table show while the caret is in it, not only under the pointer, as in Word (#2428) |
@@ -573,6 +579,11 @@ Footer page-table height and body wrapping are corrected. Other pagination gaps 
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-22 | minor | Compare's new and revised untitled results clear the previous document's version snapshots; a rejected protected comparison or mailing result preserves the snapshots and file identity. |
+| 2026-10-20 | minor | The Document Inspector's removals are refused while the document tracks changes (they delete straight from the document, so the text would go with no revision to show for it and the revision trail would be broken behind the user's back), and a version snapshot belongs to the document it was taken from |
+| 2026-10-22 | minor | The CLI author flag and the Options user name field cannot change the session name after protection starts (#3279 follow-up). |
+| 2026-10-20 | minor | Restrict Editing, three more gaps closed: the protection of a protected document only changes through the explicit stop, the session author can't change through `file.setAuthor` under protection, and the post-check compares the settings and the metadata as well as the text and the formatting |
+| 2026-10-20 | minor | Restrict Editing: a file command that changes the open document is checked like any other — the privacy options, the properties and the inspector's removals are refused on a protected document, and restoring a stored version no longer lifts the protection or drops its password |
 | 2026-10-22 | trivial | Progress log: a click in the footer while editing the header moves there |
 | 2026-10-18 | trivial | Explicit New/Open is not interrupted by startup recovery discovery; older copies stay available and Recover follows the interface theme. |
 | 2026-10-17 | trivial | Progress log: Home › Underline drop-down (#2738) |
