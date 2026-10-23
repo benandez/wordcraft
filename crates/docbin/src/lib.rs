@@ -602,12 +602,6 @@ struct FieldBuild {
     sep: Option<Vec<(char, CharProps)>>,
 }
 
-/// Emit a finished field: HYPERLINK keeps its result text as a linked run; every other
-/// field becomes one inline object with its cached result.
-///
-/// The target is copied once per run of equally formatted result text, not per character,
-/// and each copy is charged to `work` ([`MAX_WORK`]); once that is spent the rest of the
-/// result is kept as plain text (#3708).
 /// Bytes a clone of `obj` copies: the object itself plus a picture's alt text, a group with all
 /// its members (#3710).
 fn object_cost(obj: &InlineObject) -> u64 {
@@ -619,6 +613,12 @@ fn object_cost(obj: &InlineObject) -> u64 {
     }
 }
 
+/// Emit a finished field: HYPERLINK keeps its result text as a linked run; every other
+/// field becomes one inline object with its cached result.
+///
+/// The target is copied once per run of equally formatted result text, not per character,
+/// and each copy is charged to `work` ([`MAX_WORK`]); once that is spent the rest of the
+/// result is kept as plain text (#3708).
 fn finish_field(pb: &mut ParaBuild, f: FieldBuild, work: &std::cell::Cell<u64>) {
     let instr = f.instr.trim().to_string();
     let result = f.sep.unwrap_or_default();
