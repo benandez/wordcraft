@@ -372,7 +372,9 @@ fn a_group_named_by_many_anchors_is_built_once() {
     let spec = StructSpec { text, extra_pairs: vec![(40, plc(&cps, &spas)), (50, art)], ..structured_spec(text, ccp) };
     let t = std::time::Instant::now();
     let doc = read(&struct_doc(&spec)).expect("opens");
-    assert!(t.elapsed().as_millis() < 1000, "opened in {:?}", t.elapsed());
+    // About 10 ms on a loaded machine, so 10 s is a backstop; the old code (a copy per entry,
+    // 6-8 s here) is caught by the group count below, one group per anchor ([1000; 3]).
+    assert!(t.elapsed().as_secs() < 10, "opened in {:?}", t.elapsed());
     let p0 = doc.body.first().and_then(|b| b.as_para()).expect("para");
     let groups: Vec<usize> =
         p0.objects.iter().filter_map(|o| if let InlineObject::Group { children, .. } = o { Some(children.len()) } else { None }).collect();

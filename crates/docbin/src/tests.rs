@@ -2398,10 +2398,9 @@ fn paragraph_borders_read_from_both_forms() {
 #[test]
 fn a_difat_repeating_one_fat_sector_is_refused_before_cfb_builds_the_fat() {
     let f = wordcraft_doc::cfb_guard::repeating_difat_sample();
-    let t = std::time::Instant::now();
+    // The precheck's own error is the proof that it ran before cfb (no clock to skew).
     assert!(matches!(read(&f), Err(super::DocbinError::Container(e)) if e.contains("FAT sectors in a file of")));
     assert!(!super::is_encrypted(&f));
-    assert!(t.elapsed().as_secs() < 2, "refused in {:?}", t.elapsed());
     // A file cfb wrote itself passes.
     assert!(wordcraft_doc::cfb_guard::check(&cfb_file(&[("WordDocument", &[0u8; 4096])])).is_ok());
 }
@@ -2474,14 +2473,18 @@ fn a_long_hyperlink_over_a_long_result_is_one_linked_run() {
     let target = "x".repeat(n);
     let text: &'static str = Box::leak(format!("\u{13}HYPERLINK \"http://{target}\"\u{14}{}\u{15}\r", "y".repeat(n)).into_boxed_str());
     let spec = structured_spec(text, text.chars().count() as u32);
-    let t = std::time::Instant::now();
     let doc = read(&struct_doc(&spec)).expect("opens");
-    // Copying the target per character took ~2.5 s here; once per run takes milliseconds.
-    assert!(t.elapsed().as_millis() < 1000, "opened in {:?}", t.elapsed());
     let p0 = doc.body.first().and_then(|b| b.as_para()).expect("para");
     let linked: Vec<_> = p0.runs.iter().filter(|r| r.props.link.is_some()).collect();
     assert_eq!(linked.len(), 1);
     assert_eq!(linked.first().map(|r| r.len), Some(n));
+    // One copy of the target for the one run, not one per character (~2.5 s here): counted by
+    // what the copies charge to the work budget, which a busy machine can't skew.
+    let result = vec![('y', wordcraft_doc::props::CharProps::default()); n];
+    let f = super::FieldBuild { depth: 1, instr: format!("HYPERLINK \"http://{target}\""), sep: Some(result) };
+    let work = super::Work::new(u64::MAX);
+    super::finish_field(&mut super::ParaBuild::default(), f, &work);
+    assert_eq!(u64::MAX - work.left.get(), ("http://".len() + n) as u64, "one copy of the target");
 }
 
 /// #3708: a result whose formatting changes every character pays for a target copy per run
@@ -2540,7 +2543,8 @@ fn a_large_prc_is_interpreted_once_per_formatting_change() {
     let bytes = rich_doc_with(&spec, &RichExtra { prcs: vec![prc], prm: 0x0001, ..Default::default() });
     let t = std::time::Instant::now();
     let doc = read(&bytes).expect("opens");
-    assert!(t.elapsed().as_millis() < 1000, "opened in {:?}", t.elapsed());
+    // About 60 ms on a loaded machine; interpreting the Prc per character took 88 s.
+    assert!(t.elapsed().as_secs() < 10, "opened in {:?}", t.elapsed());
     let p = para0(&doc);
     assert_eq!(p.runs.len(), 1);
     assert_eq!(p.runs.first().and_then(|r| r.props.bold), Some(true));
