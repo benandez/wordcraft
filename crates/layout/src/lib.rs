@@ -22,6 +22,7 @@ mod table;
 mod textbox;
 mod vertical;
 pub mod wordart;
+mod work;
 
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -2944,6 +2945,7 @@ impl<'a> HfLinks<'a> {
     /// laid out on `si`'s pages.
     fn defining_width(&self, footer: bool, si: usize, id: Option<u32>) -> Option<f32> {
         let id = id?;
+        work::steps(1);
         let linked = if footer { &self.feet } else { &self.heads };
         let own = self.sections.get(si)?.1;
         if linked.own.get(si).is_some_and(|h| [h.default, h.first, h.even].contains(&Some(id))) {
@@ -2972,6 +2974,7 @@ impl Linked {
         let mut namers: HashMap<u32, Vec<usize>> = HashMap::new();
         let mut prev = HeaderSet::default();
         for (si, o) in own.iter().enumerate() {
+            work::steps(1);
             prev = HeaderSet { default: o.default.or(prev.default), first: o.first.or(prev.first), even: o.even.or(prev.even) };
             linked.push(prev);
             for id in [o.default, o.first, o.even].into_iter().flatten() {

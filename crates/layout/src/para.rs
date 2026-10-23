@@ -3030,6 +3030,7 @@ impl ParaLayout {
             return self.x_of_bidi(l, off, from);
         }
         for k in *from..l.c1 {
+            crate::work::steps(1);
             let c = self.clusters.get(k)?;
             if off <= c.start || off < c.end {
                 *from = k;
@@ -3089,7 +3090,10 @@ impl ParaLayout {
     /// it has the higher level), which keeps the caret at that run's trailing edge, so each
     /// visual boundary of the common mixed cases has its own offset.
     fn x_of_bidi(&self, l: &Line, off: usize, from: &mut usize) -> Option<f32> {
-        let k = (*from..l.c1).find(|&k| self.clusters.get(k).is_some_and(|c| off < c.end || off <= c.start));
+        let k = (*from..l.c1).find(|&k| {
+            crate::work::steps(1);
+            self.clusters.get(k).is_some_and(|c| off < c.end || off <= c.start)
+        });
         *from = k.unwrap_or(l.c1);
         let Some(k) = k else { return Some(l.end_x()) };
         let c = self.clusters.get(k)?;

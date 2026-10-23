@@ -639,6 +639,7 @@ impl Ctx {
             while let Some(g) = shaped.get(j)
                 && g.cluster < cb
             {
+                crate::work::steps(1);
                 gx += g.x_advance as f32 * k;
                 j += 1;
             }
@@ -2378,14 +2379,10 @@ mod tests {
     /// glyphs from the first.
     #[test]
     fn a_long_text_run_lays_out_in_linear_time() {
-        use crate::tests::{SCALE, cost_ratio};
+        use crate::tests_linear::assert_linear_steps;
         use wordcraft_doc::math::*;
         let eq = |n: usize| Math { nodes: vec![MNode::Run(MRun { nor: true, ..MRun::new("a".repeat(n)) })], ..Default::default() };
-        let (small, big) = (eq(400), eq(SCALE * 400));
-        // Each timed 16 times over, so the timings are long against the clock's tick.
-        let lay_16 = |m: &Math| (0..16).for_each(|_| drop(std::hint::black_box(lay_in(m, "", false, 1e6, &MathProps::default()))));
-        let (t1, tk, ratio) = cost_ratio(SCALE, || lay_16(&small), || lay_16(&big));
-        eprintln!("t(n) {t1:.4} s, t(8n) {tk:.4} s, ratio {ratio:.1}");
-        assert!(ratio < 24.0, "8x the text took {ratio:.1}x the time ({t1:.4} s → {tk:.4} s): not linear");
+        let lay = |m: &Math| drop(std::hint::black_box(lay_in(m, "", false, 1e6, &MathProps::default())));
+        assert_linear_steps("math text run", 400, eq, lay);
     }
 }

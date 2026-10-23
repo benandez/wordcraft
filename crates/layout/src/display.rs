@@ -636,6 +636,7 @@ fn clipped_cells(items: &[Placed]) -> Clips {
         _ => None,
     });
     for (i, (story, prefix, rect)) in cells.enumerate() {
+        crate::work::steps(1);
         clips.entry(story).or_default().entry(prefix).or_insert((i, rect));
     }
     clips
@@ -645,7 +646,13 @@ fn clipped_cells(items: &[Placed]) -> Clips {
 /// the cells holding the line are looked up, not every clipped cell on the page.
 fn cell_clip(clips: &Clips, story: StoryRef, path: &[u32]) -> Option<Rect> {
     let cells = clips.get(&story)?;
-    (0..=path.len()).filter_map(|n| cells.get(path.get(..n)?)).min_by_key(|(i, _)| *i).map(|(_, r)| *r)
+    (0..=path.len())
+        .filter_map(|n| {
+            crate::work::steps(1);
+            cells.get(path.get(..n)?)
+        })
+        .min_by_key(|(i, _)| *i)
+        .map(|(_, r)| *r)
 }
 
 /// The text boxes among `items` whose text is warped (Text Effects › Transform, drawn bent): their
@@ -1819,6 +1826,7 @@ fn text_glyphs(doc: &Document, r: Rect, it: &GraphicItem, alpha: f32, k: f32) ->
 pub(crate) fn author_order<'a>(authors: impl Iterator<Item = &'a str>) -> HashMap<&'a str, u32> {
     let mut seen = HashMap::new();
     for a in authors {
+        crate::work::steps(1);
         let n = u32::try_from(seen.len()).unwrap_or(u32::MAX);
         seen.entry(a).or_insert(n);
     }
