@@ -235,6 +235,10 @@ fn decode_pixmap_within(bytes: &[u8], budget: u64) -> Option<Pixmap> {
         (w, h, u64::from(d.color_type().bytes_per_pixel()))
     };
     if !wordcraft_geom::decode_peak_fits(hw, hh, native, budget) {
+        // Logged once a picture: its refusal is cached with it (`pixmap_for`).
+        log::warn!(
+            "a {hw}×{hh} picture of {native} bytes a pixel needs more than {budget} bytes to decode: it is not drawn (in the text, a grey box takes its place)"
+        );
         return None;
     }
     let img = reader()?.decode().ok()?.into_rgba8();
@@ -409,6 +413,7 @@ fn draw_vector_text(ctx: &mut RenderContext, t: &wordcraft_metafile::Text, tf: A
     ctx.set_paint(rgba_color(t.color));
     let db = FontDb::global();
     let canvas = kurbo::Rect::new(0.0, 0.0, f64::from(ctx.width()), f64::from(ctx.height()));
+    let mut oversized = 0usize;
     for (g, (x, y)) in shaped.iter().zip(&lay.glyphs) {
         let o = db.outline(&face, g.gid);
         let m = tf * Affine::translate((*x, *y)) * Affine::scale(k);
@@ -416,16 +421,38 @@ fn draw_vector_text(ctx: &mut RenderContext, t: &wordcraft_metafile::Text, tf: A
         // have its outline flattened into millions of segments for nothing, so it is left out.
         let b = m.transform_rect_bbox(o.bounding_box());
         let sane = [b.x0, b.y0, b.x1, b.y1].iter().all(|v| v.is_finite()) && b.width() <= MAX_GLYPH_PIXELS && b.height() <= MAX_GLYPH_PIXELS;
-        if !sane || !b.overlaps(canvas) {
+        if !sane {
+            oversized = oversized.saturating_add(1);
+            continue;
+        }
+        if !b.overlaps(canvas) {
             continue;
         }
         ctx.set_transform(m);
         ctx.fill_path(&o);
     }
+    note_oversized_glyphs(&OVERSIZED_GLYPHS_NOTED, oversized);
 }
 
 /// Largest metafile glyph drawn, in device pixels per side (four times the widest canvas).
 const MAX_GLYPH_PIXELS: f64 = 65_536.0;
+
+/// Whether metafile glyphs left out for their size have been logged ([`note_oversized_glyphs`]).
+static OVERSIZED_GLYPHS_NOTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Logs that `n` glyphs of a metafile text run were left out for being larger than
+/// [`MAX_GLYPH_PIXELS`] (or of no finite size), the first time any are this run (`noted`): a
+/// page is drawn again on every repaint, so a warning each time would flood the log. True when
+/// this call logged it.
+fn note_oversized_glyphs(noted: &std::sync::atomic::AtomicBool, n: usize) -> bool {
+    if n == 0 || noted.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        return false;
+    }
+    log::warn!(
+        "a picture's text has {n} letter(s) larger than {MAX_GLYPH_PIXELS} pixels drawn, left out (logged once a run; later ones are left out too)"
+    );
+    true
+}
 
 /// One device pixel in page points under `view` (its mean axis scale); 1 for a degenerate transform.
 fn device_pixel(view: Affine) -> f64 {
@@ -2287,6 +2314,19 @@ mod tests {
         let img = render_page(&d, &l.pages[0], 1.0, &RenderOptions::default());
         assert!(start.elapsed() < std::time::Duration::from_secs(2), "{:?}", start.elapsed());
         assert_eq!(img.width, 612);
+        // Leaving them out is logged (once a run, so it may have been by another test already).
+        assert!(OVERSIZED_GLYPHS_NOTED.load(std::sync::atomic::Ordering::Relaxed), "the left-out glyphs are logged");
+    }
+
+    /// Glyphs left out for their size are logged the first time only: a page is drawn on every
+    /// repaint. A run with none left out logs nothing and doesn't use up the warning.
+    #[test]
+    fn oversized_glyphs_are_logged_once_a_run() {
+        let noted = std::sync::atomic::AtomicBool::new(false);
+        assert!(!note_oversized_glyphs(&noted, 0), "nothing left out, nothing logged");
+        assert!(!noted.load(std::sync::atomic::Ordering::Relaxed));
+        assert!(note_oversized_glyphs(&noted, 4), "the first glyphs left out are logged");
+        assert!(!note_oversized_glyphs(&noted, 2), "later ones aren't");
     }
 
     #[test]
