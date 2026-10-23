@@ -1743,8 +1743,8 @@ fn font_sample_box(
     };
     let (w, h) = (ui.available_width().clamp(120.0, 400.0), 56.0);
     let ppp = ui.ctx().pixels_per_point();
-    let key = format!("fontsample:{props:?}:{mark:?}:{paper:?}:{w}:{ppp}");
     let text = tl!("AaBbYyZz");
+    let key = format!("fontsample:{text}:{props:?}:{mark:?}:{paper:?}:{w}:{ppp}");
     let tex = app.previews.get_or(ui.ctx(), &key, || crate::previews::font_sample(text, props, mark, w, h, ppp, paper));
     let (r, _) = ui.allocate_exact_size(vec2(w + 4.0, h + 2.0), egui::Sense::hover());
     let t = crate::theme::Tokens::get(ui.ctx());
