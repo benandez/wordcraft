@@ -2766,3 +2766,5 @@ preview	Title	Ukázka
 	More tabs	Další karty
 # #3013: Insert Table of Figures
 	Include label and number	Zahrnout popisek a číslo
+	Blur the page under the ribbon	Rozmazat stránku pod pásem karet
+	On: the page scrolling up under the ribbon shows through it as a soft blur. Off: the ribbon is solid.	Zapnuto: stránka posouvaná pod pásem karet pod ním prosvítá jako jemné rozmazání. Vypnuto: pás karet je plný.

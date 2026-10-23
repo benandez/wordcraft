@@ -2774,3 +2774,5 @@ preview	Title	Naslov
 	More tabs	Više kartica
 # #3013: Insert Table of Figures
 	Include label and number	Uključi oznaku i broj
+	Blur the page under the ribbon	Zamuti stranicu ispod vrpce
+	On: the page scrolling up under the ribbon shows through it as a soft blur. Off: the ribbon is solid.	Uključeno: stranica koja se pomiče ispod vrpce vidi se kroz nju kao mekano zamućenje. Isključeno: vrpca je puna.

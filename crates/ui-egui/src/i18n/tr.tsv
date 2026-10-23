@@ -2772,3 +2772,5 @@ preview	Title	Örnek
 	More tabs	Diğer sekmeler
 # #3013: Insert Table of Figures
 	Include label and number	Etiketi ve numarayı ekle
+	Blur the page under the ribbon	Şeridin altındaki sayfayı bulanıklaştır
+	On: the page scrolling up under the ribbon shows through it as a soft blur. Off: the ribbon is solid.	Açık: şeridin altında kayan sayfa, yumuşak bir bulanıklıkla şeridin içinden görünür. Kapalı: şerit düz renklidir.

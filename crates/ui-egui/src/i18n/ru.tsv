@@ -2773,3 +2773,5 @@ preview	Title	Пример
 	More tabs	Другие вкладки
 # #3013: Insert Table of Figures
 	Include label and number	Включить подпись и номер
+	Blur the page under the ribbon	Размывать страницу под лентой
+	On: the page scrolling up under the ribbon shows through it as a soft blur. Off: the ribbon is solid.	Вкл.: страница, прокручиваемая под лентой, просвечивает сквозь неё мягким размытием. Выкл.: лента сплошная.

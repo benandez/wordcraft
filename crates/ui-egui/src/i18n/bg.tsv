@@ -2764,3 +2764,5 @@
 	More tabs	Още раздели
 # #3013: Insert Table of Figures
 	Include label and number	Включване на етикета и номера
+	Blur the page under the ribbon	Замъгляване на страницата под лентата
+	On: the page scrolling up under the ribbon shows through it as a soft blur. Off: the ribbon is solid.	Включено: страницата, превъртана под лентата, прозира през нея като меко замъгляване. Изключено: лентата е плътна.

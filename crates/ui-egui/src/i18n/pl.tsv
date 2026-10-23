@@ -2795,3 +2795,5 @@ preview	Title	Tytuł
 	This document has no bookmarks.	This document has no bookmarks.
 	Type a page number, or +2 / -1.	Type a page number, or +2 / -1.
 	Wait for the print job to finish submitting before closing.	Wait for the print job to finish submitting before closing.
+	Blur the page under the ribbon	Rozmyj stronę pod wstążką
+	On: the page scrolling up under the ribbon shows through it as a soft blur. Off: the ribbon is solid.	Włączone: strona przewijana pod wstążką prześwituje przez nią jako delikatne rozmycie. Wyłączone: wstążka jest nieprzezroczysta.

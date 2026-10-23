@@ -2763,3 +2763,5 @@ preview	Title	Naslov
 	{names} and {n} more	{names} and {n} more
 	{name} options	{name} options
 	{width} × {height} pixels	{width} × {height} pixels
+	Blur the page under the ribbon	Zamegli stran pod trakom
+	On: the page scrolling up under the ribbon shows through it as a soft blur. Off: the ribbon is solid.	Vklopljeno: stran, ki se pomika pod trakom, se vidi skozi njega kot mehka zamegljenost. Izklopljeno: trak je poln.

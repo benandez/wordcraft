@@ -2762,3 +2762,5 @@ template	Letter	Scrisoare
 	cm	cm
 	mm	mm
 	pi	pi
+	Blur the page under the ribbon	Estompează pagina de sub panglică
+	On: the page scrolling up under the ribbon shows through it as a soft blur. Off: the ribbon is solid.	Activat: pagina care derulează sub panglică se vede prin ea ca o estompare fină. Dezactivat: panglica este opacă.

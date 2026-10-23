@@ -2799,3 +2799,5 @@ template	Letter	Lettera
 	More tabs	Altre schede
 # #3013: Insert Table of Figures
 	Include label and number	Includi etichetta e numero
+	Blur the page under the ribbon	Sfoca la pagina sotto la barra multifunzione
+	On: the page scrolling up under the ribbon shows through it as a soft blur. Off: the ribbon is solid.	Attivato: la pagina che scorre sotto la barra multifunzione traspare come una sfocatura morbida. Disattivato: la barra è piena.

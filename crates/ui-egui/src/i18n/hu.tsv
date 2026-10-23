@@ -2770,3 +2770,5 @@
 	More tabs	További lapok
 # #3013: Insert Table of Figures
 	Include label and number	Címkével és számmal
+	Blur the page under the ribbon	A lap elmosása a menüszalag alatt
+	On: the page scrolling up under the ribbon shows through it as a soft blur. Off: the ribbon is solid.	Be: a menüszalag alatt görgetett lap lágy elmosódással átlátszik rajta. Ki: a menüszalag tömör.

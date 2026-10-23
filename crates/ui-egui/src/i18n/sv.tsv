@@ -2802,3 +2802,5 @@ template	Letter	Brev
 	More tabs	Fler flikar
 # #3013: Insert Table of Figures
 	Include label and number	Ta med etikett och nummer
+	Blur the page under the ribbon	Gör sidan under verktygspanelen suddig
+	On: the page scrolling up under the ribbon shows through it as a soft blur. Off: the ribbon is solid.	På: sidan som rullar upp under verktygspanelen syns genom den som en mjuk oskärpa. Av: verktygspanelen är solid.
