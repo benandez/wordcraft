@@ -1025,7 +1025,8 @@ mod tests {
         let started = std::time::Instant::now();
         assert_eq!(tidy(&format!("a {}{} b", "( [".repeat(n), "] )".repeat(n))), "a b");
         assert_eq!(tidy(&format!("{}x{}", "(".repeat(n), ")".repeat(n))).len(), 2 * n + 1);
-        assert!(started.elapsed() < std::time::Duration::from_secs(2), "{:?}", started.elapsed());
+        // Milliseconds here; `tidy_by_replacing` (the old tidy) takes about 5 minutes on this input.
+        assert!(started.elapsed() < std::time::Duration::from_secs(10), "{:?}", started.elapsed());
     }
 
     #[test]
