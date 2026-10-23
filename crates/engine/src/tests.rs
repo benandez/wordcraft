@@ -3424,6 +3424,106 @@ fn text_box_insert_puts_the_caret_inside() {
 }
 
 #[test]
+fn font_commands_on_a_selected_text_box_format_all_its_text() {
+    // Word: with a text box selected as an object (its frame, not text in it), the Font group
+    // formats all the box's text. Select All doesn't reach a floating box's text, so this is how
+    // its font is changed (and the only way when the box sits behind text, where a click goes to
+    // the text over it).
+    let mut s = s();
+    run(&mut s, "text.insert", json!({"text": "Before "}));
+    let id = run(&mut s, "insert.textBox", json!({"text": "Box words"}))["story"].as_u64().unwrap() as u32;
+    let boxed = StoryRef::Part(id);
+    run(&mut s, "text.newParagraph", json!({}));
+    run(&mut s, "text.insert", json!({"text": "second"}));
+    run(&mut s, "select.range", json!({"anchor": Pos::body(0, "Before ".len()), "focus": Pos::body(0, "Before \u{FFFC}".len())}));
+    run(&mut s, "format.font", json!({"name": "TH Sarabun New"}));
+    run(&mut s, "format.size", json!({"size": 18}));
+    run(&mut s, "format.bold", json!({}));
+    let paths = s.doc.para_paths(boxed);
+    assert_eq!(paths.len(), 2);
+    for path in &paths {
+        for (_, c) in s.doc.para(boxed, path).unwrap().run_ranges() {
+            assert_eq!(c.font.as_deref(), Some("TH Sarabun New"));
+            assert_eq!(c.font_cs.as_deref(), Some("TH Sarabun New"));
+            assert_eq!(c.size, Some(18.0));
+            assert_eq!(c.bold, Some(true));
+        }
+    }
+    // The body text around the box is left as it was, and the box stays selected.
+    let body = s.doc.para(StoryRef::Body, &wordcraft_doc::Path::top(0)).unwrap();
+    assert!(body.run_ranges().all(|(_, c)| c.font.is_none() && c.bold.is_none()));
+    assert!(crate::cmd::objects::object_selection(&s).is_some());
+    // Bold reads the box's text, so pressing it again takes it off.
+    run(&mut s, "format.bold", json!({}));
+    assert!(s.doc.para(boxed, &paths[0]).unwrap().run_ranges().all(|(_, c)| c.bold == Some(false)));
+    // One undo step per command.
+    run(&mut s, "edit.undo", json!({}));
+    assert!(s.doc.para(boxed, &paths[0]).unwrap().run_ranges().all(|(_, c)| c.bold == Some(true)));
+}
+
+#[test]
+fn case_and_clearing_commands_on_a_selected_text_box_work_on_its_text() {
+    // Word, with a text box selected as an object: Change Case, Clear All Formatting and Reset
+    // Character Formatting work on the box's text and leave the body text around it alone.
+    let boxed = |s: &mut Session| {
+        run(s, "text.insert", json!({"text": "Before "}));
+        run(s, "format.bold", json!({"value": true}));
+        run(s, "text.insert", json!({"text": "body"}));
+        run(s, "caret.set", json!({"pos": Pos::body(0, "Before ".len())}));
+        let id = run(s, "insert.textBox", json!({"text": "box text"}))["story"].as_u64().unwrap() as u32;
+        run(s, "select.all", json!({}));
+        run(s, "format.italic", json!({"value": true}));
+        run(s, "select.range", json!({"anchor": Pos::body(0, "Before ".len()), "focus": Pos::body(0, "Before \u{FFFC}".len())}));
+        StoryRef::Part(id)
+    };
+    let body_bold = |s: &Session| s.doc.para(StoryRef::Body, &wordcraft_doc::Path::top(0)).unwrap().run_ranges().any(|(_, c)| c.bold == Some(true));
+
+    let mut cased = s();
+    let id = boxed(&mut cased);
+    run(&mut cased, "format.changeCase", json!({"mode": "upper"}));
+    assert_eq!(cased.doc.plain_text(id), "BOX TEXT");
+    assert_eq!(cased.doc.para(StoryRef::Body, &wordcraft_doc::Path::top(0)).map(|p| p.text.as_str()), Some("Before \u{FFFC}body"));
+    assert!(crate::cmd::objects::object_selection(&cased).is_some(), "the box stays selected");
+
+    for cmd in ["format.clear", "format.resetChar"] {
+        let mut cleared = s();
+        let id = boxed(&mut cleared);
+        run(&mut cleared, cmd, json!({}));
+        let p = cleared.doc.para(id, &wordcraft_doc::Path::top(0)).unwrap();
+        assert!(p.run_ranges().all(|(_, c)| c.italic.is_none()), "{cmd} clears the box's text");
+        assert!(body_bold(&cleared), "{cmd} leaves the body text's formatting");
+        assert!(crate::cmd::objects::object_selection(&cleared).is_some(), "the box stays selected");
+    }
+
+    // An empty box: Bold reads (and sets) its paragraph mark, not the anchor's run around it.
+    let mut empty = s();
+    run(&mut empty, "format.bold", json!({"value": true}));
+    run(&mut empty, "text.insert", json!({"text": "Bold body "}));
+    let id = run(&mut empty, "insert.textBox", json!({}))["story"].as_u64().unwrap() as u32;
+    let anchor = empty.doc.text_box_anchor(id).unwrap();
+    run(&mut empty, "select.range", json!({"anchor": Pos { off: anchor.off - "\u{FFFC}".len(), ..anchor.clone() }, "focus": anchor}));
+    run(&mut empty, "format.bold", json!({}));
+    let mark = &empty.doc.para(StoryRef::Part(id), &wordcraft_doc::Path::top(0)).unwrap().mark;
+    assert_eq!(mark.bold, Some(true), "the empty box wasn't bold, so Bold turns it on");
+}
+
+#[test]
+fn a_selected_text_box_shows_its_own_paragraph_style() {
+    // Word, with a text box selected as an object, shows the style of the box's text, not of the
+    // body paragraph the box is anchored in, as it does for its font.
+    let mut s = s();
+    run(&mut s, "text.insert", json!({"text": "Body "}));
+    let id = run(&mut s, "insert.textBox", json!({"text": "Title"}))["story"].as_u64().unwrap() as u32;
+    run(&mut s, "para.style", json!({"style": "Heading 1"}));
+    let inside = run(&mut s, "format.state", json!({}));
+    let anchor = s.doc.text_box_anchor(id).unwrap();
+    run(&mut s, "select.range", json!({"anchor": Pos { off: anchor.off - "\u{FFFC}".len(), ..anchor.clone() }, "focus": anchor}));
+    let selected = run(&mut s, "format.state", json!({}));
+    assert_ne!(inside["style"], json!("Normal"), "the box's paragraph has a style of its own: {inside}");
+    assert_eq!((&selected["style"], &selected["styleName"]), (&inside["style"], &inside["styleName"]));
+}
+
+#[test]
 fn commands_after_the_largest_ids_take_free_ones() {
     // A file can carry any ids, 0 and u32::MAX included: comments, notes, boxes and lists the
     // commands add take free ids, without overflowing or replacing what has the id they wrap to.
