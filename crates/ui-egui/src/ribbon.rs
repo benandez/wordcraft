@@ -2048,16 +2048,42 @@ fn mailings(app: &mut WordApp, ui: &mut Ui) {
         big(ui, app, "preview", "Preview\nResults", "mailings.preview", json!({}), false);
         stack(ui, |ui| {
             crate::widgets::row(ui, |ui| {
+                small(ui, app, "first", None, "First Record", "mailings.first", json!({}), false);
                 small(ui, app, "previous", None, "Previous Record", "mailings.previous", json!({}), false);
+                record_box(ui, app);
                 small(ui, app, "next", None, "Next Record", "mailings.next", json!({}), false);
+                small(ui, app, "last", None, "Last Record", "mailings.last", json!({}), false);
             });
             small(ui, app, "find", Some("Find Recipient"), "Find Recipient", "mailings.findRecipient", json!({}), false);
             small(ui, app, "checkErrors", Some("Check for Errors"), "Check for Errors", "mailings.checkErrors", json!({}), false);
         });
     });
     group(ui, "Finish", None, app, |ui, app| {
-        big(ui, app, "finish", "Finish &\nMerge", "mailings.finish", json!({}), false);
+        menu_button(ui, app, "finish", Some("Finish &\nMerge"), "Finish & Merge", true, "mailings.finish", |ui, app| {
+            mi(ui, app, "Edit Individual Documents…", "mailings.finish", json!({}));
+            mi(ui, app, "Print Documents…", "mailings.printDocuments", json!({}));
+        });
     });
+}
+
+/// Preview Results' record number: shows the previewed record; a number typed and Enter go there.
+fn record_box(ui: &mut Ui, app: &mut WordApp) {
+    let on = !app.session.merge.rows.is_empty();
+    let shown = if on { (app.session.merge.record + 1).to_string() } else { String::new() };
+    // The draft lives in temp memory while typing (frame-local text would lose keystrokes).
+    let key = egui::Id::new("merge_record_box");
+    let mut text = ui.data(|d| d.get_temp::<String>(key)).unwrap_or_else(|| shown.clone());
+    let r = ui.add_enabled(on, egui::TextEdit::singleline(&mut text).desired_width(36.0).horizontal_align(egui::Align::Center));
+    let r = r.on_hover_text(tl!("Go to Record"));
+    if r.changed() {
+        ui.data_mut(|d| d.insert_temp(key, text.clone()));
+    }
+    if r.lost_focus() {
+        ui.data_mut(|d| d.remove::<String>(key));
+        if ui.input(|i| i.key_pressed(egui::Key::Enter)) && text.trim() != shown {
+            let _ = app.run("mailings.goToRecord", json!({"record": text.trim()}));
+        }
+    }
 }
 
 /// Zotero (`docs/zotero.md`): the Zotero desktop app does the work in its own window.

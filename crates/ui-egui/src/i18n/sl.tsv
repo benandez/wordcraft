@@ -2763,6 +2763,16 @@ preview	Title	Naslov
 	{names} and {n} more	{names} and {n} more
 	{name} options	{name} options
 	{width} × {height} pixels	{width} × {height} pixels
+	First Record	Prvi zapis
+	Last Record	Zadnji zapis
+	Go to Record	Pojdi na zapis
+	Edit Individual Documents…	Uredi posamezne dokumente…
+	Print Documents…	Natisni dokumente…
+	Print Documents	Natisni dokumente
+	Current record	Trenutni zapis
+	From:	Od:
+	To:	Do:
+	Enter a number.	Vnesite število.
 # Styles pane position (#1756)
 	Styles Pane Position	Položaj podokna Slogi
 	Dock Left	Zasidraj levo
