@@ -978,9 +978,10 @@ fn ods_read(xml: &[u8], want: Option<usize>) -> Result<(Vec<String>, Vec<Vec<Str
                         return;
                     }
                     // Blank cells before this one, then the value as often as it repeats, as far
-                    // as the columns allow.
-                    let blanks = (*pending).min(MAX_COLS.saturating_sub(cells.len()) as u64) as usize;
-                    let times = c.repeat.min(MAX_COLS.saturating_sub(cells.len().saturating_add(blanks)) as u64) as usize;
+                    // as the columns and the grid's cells left (all `Grid::push` keeps) allow.
+                    let room = MAX_COLS.min(MAX_CELLS.saturating_sub(grid.cells));
+                    let blanks = (*pending).min(room.saturating_sub(cells.len()) as u64) as usize;
+                    let times = c.repeat.min(room.saturating_sub(cells.len().saturating_add(blanks)) as u64) as usize;
                     // The row's text has to fit what is left of the budget to be kept at all
                     // (`Grid::push`): one that can't is refused now, before the copies are made.
                     *bytes = bytes.saturating_add(text.len().saturating_mul(times));
@@ -1269,5 +1270,21 @@ mod tests {
         ));
         let (_, rows) = read_rows(&book, Pick::Index(0)).unwrap();
         assert_eq!(rows, vec![vec!["next".to_string()]]);
+    }
+
+    #[test]
+    fn ods_repeated_text_is_budgeted_for_the_cells_the_grid_keeps() {
+        // One cell left in the grid: of a long value repeated a thousand times only the first
+        // copy is kept, and it fits the text budget, so the row isn't refused for the others.
+        let wide = "€".repeat(MAX_CELL_CHARS);
+        let full = MAX_CELLS / MAX_COLS - 1;
+        let book = ods(&format!(
+            r#"<table:table-row table:number-rows-repeated="{full}"><table:table-cell office:value-type="string" office:string-value="x" table:number-columns-repeated="{MAX_COLS}"/></table:table-row><table:table-row><table:table-cell office:value-type="string" office:string-value="x" table:number-columns-repeated="{}"/></table:table-row><table:table-row><table:table-cell office:value-type="string" office:string-value="{wide}" table:number-columns-repeated="1000"/></table:table-row>"#,
+            MAX_COLS - 1
+        ));
+        let (_, rows) = read_rows(&book, Pick::Index(0)).unwrap();
+        assert_eq!(rows.len(), full + 2);
+        assert_eq!(rows.last(), Some(&vec![wide]));
+        assert_eq!(rows.iter().map(Vec::len).sum::<usize>(), MAX_CELLS);
     }
 }
