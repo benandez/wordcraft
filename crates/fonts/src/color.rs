@@ -127,10 +127,10 @@ impl FontFace {
         if let Some(cg) = ColorGlyphCollection::new(&f).get(glyph) {
             let palette: Vec<[u8; 4]> =
                 ColorPalettes::new(&f).get(0).map(|p| p.colors().iter().map(|c| [c.red, c.green, c.blue, c.alpha]).collect()).unwrap_or_default();
-            let mut rec = Recorder::new(&palette, |g: GlyphId| {
-                let mut p = self.glyph_outline(g.to_u32());
+            let mut rec = Recorder::new(&palette, |g: GlyphId, room: usize| {
+                let mut p = self.glyph_outline_capped(g.to_u32(), room)?;
                 p.apply_affine(Affine::FLIP_Y);
-                p
+                Some(p)
             });
             if cg.paint(self.location(), &mut rec).is_ok()
                 && let Some(ops) = rec.finish()
@@ -193,7 +193,7 @@ pub fn ops_bytes(ops: &[ColorOp]) -> usize {
 /// A [`ColorPainter`] that records the paint calls as [`ColorOp`]s, resolving palette colours and
 /// clip glyphs. Stops recording (and [`Recorder::finish`] gives None) past [`MAX_OPS`] or
 /// [`MAX_PAYLOAD`].
-pub struct Recorder<'a, F: Fn(GlyphId) -> BezPath> {
+pub struct Recorder<'a, F: Fn(GlyphId, usize) -> Option<BezPath>> {
     palette: &'a [[u8; 4]],
     outline: F,
     ops: Vec<ColorOp>,
@@ -201,9 +201,9 @@ pub struct Recorder<'a, F: Fn(GlyphId) -> BezPath> {
     overflow: bool,
 }
 
-impl<'a, F: Fn(GlyphId) -> BezPath> Recorder<'a, F> {
+impl<'a, F: Fn(GlyphId, usize) -> Option<BezPath>> Recorder<'a, F> {
     /// A recorder with palette `palette` (straight RGBA) and clip outlines (font units, y up) from
-    /// `outline`.
+    /// `outline`, which is given the path elements left in the budget and gives None past them.
     pub fn new(palette: &'a [[u8; 4]], outline: F) -> Self {
         Recorder { palette, outline, ops: vec![], payload: 0, overflow: false }
     }
@@ -267,7 +267,7 @@ fn pt(p: skrifa::raw::types::Point<f32>) -> Point {
     Point::new(p.x as f64, p.y as f64)
 }
 
-impl<F: Fn(GlyphId) -> BezPath> ColorPainter for Recorder<'_, F> {
+impl<F: Fn(GlyphId, usize) -> Option<BezPath>> ColorPainter for Recorder<'_, F> {
     fn push_transform(&mut self, t: Transform) {
         self.push(ColorOp::PushTransform(Affine::new([t.xx, t.yx, t.xy, t.yy, t.dx, t.dy].map(|v| v as f64))));
     }
@@ -278,7 +278,11 @@ impl<F: Fn(GlyphId) -> BezPath> ColorPainter for Recorder<'_, F> {
         if self.overflow {
             return;
         }
-        let p = (self.outline)(glyph_id);
+        // Built within what is left of the budget: a huge outline is refused while it is drawn.
+        let Some(p) = (self.outline)(glyph_id, MAX_PAYLOAD.saturating_sub(self.payload)) else {
+            self.overflow = true;
+            return;
+        };
         if self.charge(p.elements().len()) {
             self.push(ColorOp::PushClip(p));
         }
@@ -326,8 +330,8 @@ impl<F: Fn(GlyphId) -> BezPath> ColorPainter for Recorder<'_, F> {
 mod tests {
     use super::*;
 
-    fn square(_: GlyphId) -> BezPath {
-        kurbo::Shape::to_path(&Rect::new(0.0, 0.0, 10.0, 10.0), 0.1)
+    fn square(_: GlyphId, room: usize) -> Option<BezPath> {
+        Some(kurbo::Shape::to_path(&Rect::new(0.0, 0.0, 10.0, 10.0), 0.1)).filter(|p| p.elements().len() <= room)
     }
 
     #[test]
@@ -384,9 +388,9 @@ mod tests {
         let fills = MAX_PAYLOAD / stops.len() + 1;
         assert!(fills < MAX_OPS);
         let outlines = std::cell::Cell::new(0);
-        let count = |g| {
+        let count = |g, room| {
             outlines.set(outlines.get() + 1);
-            square(g)
+            square(g, room)
         };
         let mut r = Recorder::new(&[], count);
         for _ in 0..fills {
@@ -402,6 +406,23 @@ mod tests {
         r.fill(Brush::LinearGradient { p0: Default::default(), p1: Default::default(), color_stops: &stops, extend: Extend::Pad });
         let ops = r.finish().unwrap();
         assert!(ops_bytes(&ops) >= stops.len() * std::mem::size_of::<Stop>());
+    }
+
+    #[test]
+    fn a_clip_outline_is_drawn_within_the_payload_left() {
+        // #3716 review: the outline is told the room left, so an oversized one is never built whole.
+        let stops = vec![ColorStop { offset: 0.5, palette_index: 0, alpha: 1.0 }; MAX_PAYLOAD - 3];
+        let rooms = std::cell::RefCell::new(vec![]);
+        let seen = |g, room| {
+            rooms.borrow_mut().push(room);
+            square(g, room)
+        };
+        let mut r = Recorder::new(&[], seen);
+        r.fill(Brush::LinearGradient { p0: Default::default(), p1: Default::default(), color_stops: &stops, extend: Extend::Pad });
+        r.push_clip_glyph(GlyphId::new(1));
+        r.pop_clip();
+        assert_eq!(*rooms.borrow(), [3]);
+        assert!(r.finish().is_none(), "a square needs more than the 3 elements left");
     }
 
     fn bitmap(origin: skrifa::bitmap::Origin, data: skrifa::bitmap::BitmapData<'_>) -> skrifa::bitmap::BitmapGlyph<'_> {

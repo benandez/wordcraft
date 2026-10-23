@@ -217,7 +217,16 @@ impl FontFace {
     /// Glyph `gid`'s outline in font units, y-down (flipped), uncached: for faces the database
     /// doesn't keep (font list previews); others go through [`FontDb::outline`]'s cache.
     pub fn glyph_outline(&self, gid: u32) -> BezPath {
-        let mut pen = FlipPen(BezPath::new());
+        self.draw_outline(gid, usize::MAX).path
+    }
+    /// [`FontFace::glyph_outline`], or None when the outline has more than `max_elements` path
+    /// elements: drawing stops copying them at the limit, so a huge glyph is never built whole.
+    pub fn glyph_outline_capped(&self, gid: u32, max_elements: usize) -> Option<BezPath> {
+        let pen = self.draw_outline(gid, max_elements);
+        (!pen.over).then_some(pen.path)
+    }
+    fn draw_outline(&self, gid: u32, max_elements: usize) -> FlipPen {
+        let mut pen = FlipPen { path: BezPath::new(), room: max_elements, over: false };
         if let Some(f) = self.skrifa()
             && let Some(g) = f.outline_glyphs().get(GlyphId::new(gid))
         {
@@ -233,10 +242,10 @@ impl FontFace {
             }
             if let Err(e) = drawn {
                 log::warn!("Cannot draw glyph {gid} in {:?}: {e}", self.family);
-                return BezPath::new();
+                pen.path = BezPath::new();
             }
         }
-        pen.0
+        pen
     }
     /// The face's TrueType interpreter, for the fonts that need one to assemble their contours and
     /// whose zones are within the limits ([`MAX_HINT_TWILIGHT`]).
@@ -1973,23 +1982,55 @@ impl FontDb {
     }
 }
 
-struct FlipPen(BezPath);
+/// Collects an outline flipped to y-down, keeping at most `room` path elements (`over` once it
+/// had to drop one).
+struct FlipPen {
+    path: BezPath,
+    room: usize,
+    over: bool,
+}
+
+impl FlipPen {
+    /// Take one element's room; false (and `over`) when there is none left.
+    fn take(&mut self) -> bool {
+        match self.room.checked_sub(1) {
+            Some(room) if !self.over => {
+                self.room = room;
+                true
+            }
+            _ => {
+                self.over = true;
+                false
+            }
+        }
+    }
+}
 
 impl OutlinePen for FlipPen {
     fn move_to(&mut self, x: f32, y: f32) {
-        self.0.move_to((x as f64, -y as f64));
+        if self.take() {
+            self.path.move_to((x as f64, -y as f64));
+        }
     }
     fn line_to(&mut self, x: f32, y: f32) {
-        self.0.line_to((x as f64, -y as f64));
+        if self.take() {
+            self.path.line_to((x as f64, -y as f64));
+        }
     }
     fn quad_to(&mut self, cx0: f32, cy0: f32, x: f32, y: f32) {
-        self.0.quad_to((cx0 as f64, -cy0 as f64), (x as f64, -y as f64));
+        if self.take() {
+            self.path.quad_to((cx0 as f64, -cy0 as f64), (x as f64, -y as f64));
+        }
     }
     fn curve_to(&mut self, cx0: f32, cy0: f32, cx1: f32, cy1: f32, x: f32, y: f32) {
-        self.0.curve_to((cx0 as f64, -cy0 as f64), (cx1 as f64, -cy1 as f64), (x as f64, -y as f64));
+        if self.take() {
+            self.path.curve_to((cx0 as f64, -cy0 as f64), (cx1 as f64, -cy1 as f64), (x as f64, -y as f64));
+        }
     }
     fn close(&mut self) {
-        self.0.close_path();
+        if self.take() {
+            self.path.close_path();
+        }
     }
 }
 
@@ -2048,6 +2089,21 @@ mod tests {
         for d in ["/usr/share/fonts", "/run/host/fonts", "/run/host/local-fonts", "/run/host/user-fonts", "/run/host/user-fonts-legacy"] {
             assert!(dirs.contains(&std::path::PathBuf::from(d)), "{d} missing from {dirs:?}");
         }
+    }
+
+    #[test]
+    fn a_capped_outline_is_refused_while_it_is_drawn() {
+        // #3716 review: a colour glyph's clip outline stops growing at the payload left.
+        let db = FontDb::with_font_dirs(Vec::new());
+        db.set_system_fallback(false);
+        let face = db.face(FALLBACK_FAMILY, "Regular");
+        let gid = face.glyph_for('g');
+        let whole = face.glyph_outline(gid);
+        let n = whole.elements().len();
+        assert!(n > 4, "{n}");
+        assert_eq!(face.glyph_outline_capped(gid, n).as_ref().map(BezPath::elements), Some(whole.elements()));
+        assert!(face.glyph_outline_capped(gid, n - 1).is_none());
+        assert!(face.glyph_outline_capped(gid, 0).is_none());
     }
 
     #[test]
