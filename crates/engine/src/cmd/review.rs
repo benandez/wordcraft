@@ -1683,6 +1683,21 @@ mod tests {
         assert!(s.run("review.changes", &json!({})).unwrap().as_array().unwrap().is_empty());
     }
 
+    /// Clearing formatting in the Style Inspector keeps pending formatting revisions.
+    #[test]
+    fn inspector_clear_keeps_formatting_changes() {
+        let mut s = formatted_while_tracking();
+        s.run("review.trackChanges", &json!({"value": false})).unwrap();
+        s.run("styles.inspectorClear", &json!({"level": "paragraphFormatting"})).unwrap();
+        assert!(body_para(&s).props.fmt_change.is_some(), "paragraph formatting change survives");
+
+        let mut s = formatted_while_tracking();
+        s.run("review.trackChanges", &json!({"value": false})).unwrap();
+        s.run("select.range", &json!({"anchor": {"block": 0, "off": 6}, "focus": {"block": 0, "off": 11}})).unwrap();
+        s.run("styles.inspectorClear", &json!({"level": "characterFormatting"})).unwrap();
+        assert!(body_para(&s).props_of_char(6).fmt_change.is_some(), "character formatting change survives");
+    }
+
     /// Comment anchors left in any story (the body, headers, footers, notes and text boxes), with
     /// the story each sits in.
     fn anchors(s: &Session) -> Vec<(wordcraft_doc::StoryRef, u32)> {

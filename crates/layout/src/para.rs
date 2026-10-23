@@ -646,6 +646,11 @@ pub(crate) fn ligature_features(l: wordcraft_doc::props::Ligatures) -> [wordcraf
     [f(b"liga", l.standard), f(b"clig", l.contextual), f(b"hlig", l.historical), f(b"dlig", l.discretional)]
 }
 
+/// A Khmer letter, sign or digit (U+1780–U+17FF, Khmer Symbols U+19E0–U+19FF).
+fn is_khmer(c: char) -> bool {
+    matches!(u32::from(c), 0x1780..=0x17FF | 0x19E0..=0x19FF)
+}
+
 /// Whether `c`'s capital is more than one character (ß → SS), so All Caps draws more
 /// characters than the document holds.
 fn caps_expands(c: char) -> bool {
@@ -1060,7 +1065,10 @@ impl<'a> Builder<'a> {
             // The shaper kerns by default; Word kerns only when Kerning for fonts covers the size.
             // Without `w14:ligatures` the shaper's default (standard and contextual) stays.
             let [kern_off] = no_kern;
-            let all = match rc.ligatures {
+            // Khmer shaping builds its syllables (pre-base vowels, stacked signs) in `liga` and
+            // `clig`, so a run's ligature setting never reaches Khmer text: Word ignores it there.
+            let ligatures = rc.ligatures.filter(|_| !shape_text.chars().any(is_khmer));
+            let all = match ligatures {
                 Some(l) => {
                     let [a, b, c, d] = ligature_features(l);
                     [kern_off, a, b, c, d]
@@ -1068,7 +1076,7 @@ impl<'a> Builder<'a> {
                 None => [kern_off; 5],
             };
             let from = usize::from(rc.kerned());
-            let to = if rc.ligatures.is_some() { all.len() } else { 1 };
+            let to = if ligatures.is_some() { all.len() } else { 1 };
             let features: &[wordcraft_fonts::Feature] = all.get(from..to).unwrap_or_default();
             let shaped = if use_levels {
                 wordcraft_fonts::shape_run(&st.face, shape_text, features, map, key.rtl)

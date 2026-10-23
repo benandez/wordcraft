@@ -10688,3 +10688,20 @@ fn layout_cache_invalidates_on_changed_filepath() {
     let text_b = shown(&l_b);
     assert_eq!(text_b, "/path/two/a.docx", "second layout with same cache shows /path/two/a.docx");
 }
+
+/// Keep with next takes the same 0.01 pt of slack as the other fit checks: a kept paragraph and
+/// the next one's first line that fill the page to within it stay on the page.
+#[test]
+fn keep_with_next_fits_to_the_hundredth_of_a_point() {
+    use wordcraft_doc::props::LineSpacing;
+    let exact =
+        |h: f32| ParaProps { space_before: Some(0.0), space_after: Some(0.0), line_spacing: Some(LineSpacing::Exactly(h)), ..Default::default() };
+    let mut d = Document::from_text("Filler\nKept\nNext");
+    let body = d.last_section.page_h - d.last_section.margin_top - d.last_section.margin_bottom;
+    d.para_mut(StoryRef::Body, &Path::top(0)).unwrap().props = exact(body - 24.0 + 0.005);
+    d.para_mut(StoryRef::Body, &Path::top(1)).unwrap().props = ParaProps { keep_next: Some(true), ..exact(12.0) };
+    d.para_mut(StoryRef::Body, &Path::top(2)).unwrap().props = exact(12.0);
+    let l = lay(&d);
+    assert_eq!(l.caret(&Pos::body(1, 0)).unwrap().page, 0, "the kept paragraph stays on the first page");
+    assert_eq!(l.caret(&Pos::body(2, 0)).unwrap().page, 0, "and so does the next one's first line");
+}
