@@ -59,6 +59,59 @@ fn a_linked_chain_lays_its_story_out_at_a_bounded_number_of_widths() {
     assert!(widths.len() <= textbox::MAX_FLOW_WIDTHS, "{} widths laid the story out", widths.len());
 }
 
+/// The paragraph layouts (by address) showing story `head` across the document.
+fn story_layouts(l: &DocLayout, head: u32) -> Vec<usize> {
+    l.pages
+        .iter()
+        .flat_map(|p| &p.items)
+        .filter_map(|it| match it {
+            Placed::Lines { story: StoryRef::Part(s), para, .. } if *s == head => Some(Arc::as_ptr(para) as usize),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn stacked_boxes_of_any_width_share_a_layout() {
+    // Stacked text is laid out one letter to a line whatever the box's width.
+    let n = 20;
+    let mut d = Document::from_text(&vec!["p"; n].join("\n"));
+    let story = "Stacked letters run on through every box. ".repeat(20);
+    let ids: Vec<u32> = (0..n).map(|i| text_box(&mut d, i, if i == 0 { &story } else { "" }, 100.0 + 3.0 * i as f32, 28.0)).collect();
+    for id in &ids {
+        d.parts.get_mut(id).unwrap().body.vert = wordcraft_doc::props::TextVert::Stacked;
+    }
+    for w in ids.windows(2) {
+        d.parts.get_mut(&w[0]).unwrap().body.next = Some(w[1]);
+    }
+    let mut widths = story_layouts(&lay(&d), ids[0]);
+    assert_eq!(widths.len(), n, "every box shows the story");
+    widths.sort_unstable();
+    widths.dedup();
+    assert_eq!(widths.len(), 1, "one layout for every stacked box");
+}
+
+#[test]
+fn past_the_cap_a_box_takes_a_layout_in_its_own_direction() {
+    // The cap is full of horizontal widths when a vertical box comes: it lays the story out
+    // its own way rather than showing a horizontal layout.
+    let n = textbox::MAX_FLOW_WIDTHS + 1;
+    let mut d = Document::from_text(&vec!["p"; n].join("\n"));
+    let story = "Words that run on and on through every box of the chain. ".repeat(200);
+    let ids: Vec<u32> = (0..n).map(|i| text_box(&mut d, i, if i == 0 { &story } else { "" }, 100.0 + 3.0 * i as f32, 28.0)).collect();
+    if let Some(last) = ids.last() {
+        d.parts.get_mut(last).unwrap().body.vert = wordcraft_doc::props::TextVert::Vert;
+    }
+    for w in ids.windows(2) {
+        d.parts.get_mut(&w[0]).unwrap().body.next = Some(w[1]);
+    }
+    let mut widths = story_layouts(&lay(&d), ids[0]);
+    assert_eq!(widths.len(), n, "every box shows the story");
+    widths.sort_unstable();
+    widths.dedup();
+    assert_eq!(widths.len(), n, "the vertical box has a layout of its own");
+}
+
 #[test]
 fn boxes_a_hair_apart_in_width_share_a_layout() {
     // Resized boxes differ by fractions of a point; those within a twentieth of a point of each

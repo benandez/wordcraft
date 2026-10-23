@@ -215,8 +215,9 @@ struct Cut {
 pub(crate) const MAX_FLOW_WIDTHS: usize = 16;
 
 /// Line lengths are told apart to a twentieth of a point (a twip): resized boxes a hair apart
-/// share one layout.
+/// share one layout. Stacked text is laid out at [`STACK_WIDTH`] whatever the box's size.
 fn flow_key(len: f32, vert: TextVert) -> (i32, TextVert) {
+    let len = if vert == TextVert::Stacked { STACK_WIDTH } else { len };
     ((len * 20.0).round() as i32, vert)
 }
 
@@ -246,14 +247,13 @@ fn flow(ctx: &mut Ctx, chain: &[u32], depth: usize) -> Vec<Vec<Placed>> {
         let (w, h) = sizes.get(id).copied().unwrap_or((0.0, 0.0));
         let (len, across) = frame(&body, w, h);
         let key = flow_key(len, body.vert);
-        let items = match layouts.iter().find(|(k, _)| *k == key) {
+        // Past the cap the box takes the nearest layout in its direction: the widest line length
+        // that fits it, else the narrowest. The first box in a direction is laid out (one more
+        // layout for each of the few directions at most).
+        let near = || layouts.iter().filter(|((_, v), _)| *v == key.1).min_by_key(|((k, _), _)| (*k > key.0, k.abs_diff(key.0)));
+        let kept = layouts.iter().find(|(k, _)| *k == key).or_else(|| if layouts.len() >= MAX_FLOW_WIDTHS { near() } else { None });
+        let items = match kept {
             Some((_, items)) => items.clone(),
-            // Past the cap the box takes the nearest layout: the same direction first, then the
-            // widest line length that fits it, else the narrowest.
-            None if layouts.len() >= MAX_FLOW_WIDTHS => {
-                let near = layouts.iter().min_by_key(|((k, v), _)| (*v != key.1, *k > key.0, k.abs_diff(key.0)));
-                near.map(|(_, items)| items.clone()).unwrap_or_default()
-            }
             None => {
                 (ctx.counters, ctx.eq_count) = (snap.0.clone(), snap.1);
                 let items = lay(ctx, head, &blocks, len, body.vert, depth);
