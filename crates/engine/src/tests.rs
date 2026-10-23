@@ -5061,6 +5061,45 @@ fn numeral_mode_sets_gets_and_rejects_junk() {
     assert_eq!(text(&s), "Year 2024");
 }
 
+/// The Numeral setting also applies to print and PDF output, not just the screen layout.
+#[test]
+fn export_layout_follows_the_numeral_setting() {
+    use wordcraft_layout::Placed;
+    fn glyph_ids(s: &Session) -> Vec<u32> {
+        let mut out = Vec::new();
+        for page in &s.export_layout().pages {
+            for it in &page.items {
+                if let Placed::Lines { para, .. } = it {
+                    out.extend(para.glyphs.iter().map(|g| g.gid));
+                }
+            }
+        }
+        out
+    }
+    let mut s = s();
+    s.doc = wordcraft_doc::Document::from_text("Year 2024");
+    let western = glyph_ids(&s);
+    assert!(!western.is_empty());
+    run(&mut s, "view.numeral", json!({"value": "hindi"}));
+    assert_ne!(glyph_ids(&s), western, "Hindi digits reach the printed layout");
+}
+
+/// File › Export PDF, Save As PDF and page images take the Numeral setting too.
+#[test]
+fn pdf_and_png_copies_follow_the_numeral_setting() {
+    let mut s = s();
+    s.doc = wordcraft_doc::Document::from_text("Year 2024");
+    // A fixed creation date, so the PDF bytes depend only on the layout.
+    s.doc.core.created = "2024-01-01T00:00:00Z".into();
+    let copy = |s: &Session, name: &str| crate::io::save_bytes_opts(name, &s.doc, &cmd::file::export_options(s, &json!({}))).unwrap();
+    let (pdf, png) = (copy(&s, "x.pdf"), copy(&s, "x.png"));
+    assert_eq!(copy(&s, "x.pdf"), pdf);
+    run(&mut s, "view.numeral", json!({"value": "hindi"}));
+    assert_eq!(cmd::file::export_options(&s, &json!({})).numeral, wordcraft_layout::NumeralMode::Hindi);
+    assert_ne!(copy(&s, "x.pdf"), pdf, "Hindi digits reach the PDF");
+    assert_ne!(copy(&s, "x.png"), png, "Hindi digits reach the page image");
+}
+
 /// Issue #67: View › Zoom steps. Zoom In/Out leave a fit mode and step 10% from the current zoom
 /// (the UI keeps `view.zoom` equal to the shown zoom while a fit mode is on), and never get stuck
 /// short of the 10%–500% limits.
@@ -6334,6 +6373,35 @@ fn convert_text_to_table_refuses_to_drop_content() {
     assert_eq!(s.doc.body.len(), 3);
     assert!(s.doc.body.get(1).and_then(|b| b.as_table()).is_some());
     assert_eq!(s.undo_depth(), depth);
+}
+
+#[test]
+fn convert_text_to_table_keeps_inline_content() {
+    // Issue #3751: the cells were rebuilt from plain text, losing formatting, pictures, links
+    // and tracked deletions.
+    use wordcraft_doc::para::InlineObject;
+    let mut s = s();
+    run(&mut s, "document.setText", json!({"text": "Name\t\tLink\tOld"}));
+    {
+        let p = s.doc.para_mut(StoryRef::Body, &wordcraft_doc::Path::top(0)).unwrap();
+        p.format(0, 4, &|c| c.bold = Some(true)).unwrap();
+        p.format(6, 10, &|c| c.link = Some("https://example.com".into())).unwrap();
+        p.format(11, 14, &|c| c.del = Some(1)).unwrap();
+        let img =
+            InlineObject::Image { media: "pic".into(), w: 10.0, h: 10.0, alt: String::new(), float: Default::default(), crop: [0.0; 4], ole: None };
+        p.insert_object(5, img, &Default::default()).unwrap();
+    }
+    run(&mut s, "select.all", json!({}));
+    run(&mut s, "table.fromText", json!({}));
+    let t = s.doc.body.iter().find_map(|b| b.as_table()).expect("a table");
+    let cell = |c: usize| t.rows[0].cells[c].blocks.iter().find_map(|b| b.as_para()).expect("a paragraph");
+    assert_eq!(cell(0).text, "Name");
+    assert_eq!(cell(0).props_of_char(0).bold, Some(true), "cell 1 lost bold");
+    assert!(matches!(cell(1).objects.as_slice(), [InlineObject::Image { media, .. }] if media == "pic"), "cell 2 lost its picture");
+    assert_eq!(cell(2).text, "Link");
+    assert_eq!(cell(2).props_of_char(0).link.as_deref(), Some("https://example.com"), "cell 3 lost its link");
+    assert_eq!(cell(3).text, "Old");
+    assert_eq!(cell(3).props_of_char(0).del, Some(1), "cell 4 lost its tracked deletion");
 }
 
 #[test]

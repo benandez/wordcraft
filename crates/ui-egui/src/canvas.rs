@@ -87,6 +87,10 @@ pub struct CanvasState {
     /// While the vertical scrollbar is dragged: the page at the top of the window (0-based),
     /// which a tip beside the pointer names (#2551).
     pub scrollbar_page: Option<usize>,
+    /// The page being looked at (0-based), for the status bar (#3880): the caret's page while the
+    /// caret is on screen, else the page at the top of the window. None until the canvas is drawn,
+    /// and in Read Mode.
+    pub viewed_page: Option<usize>,
     /// Effective scale (screen points per document point).
     pub scale: f32,
     pub canvas_rect: Option<Rect>,
@@ -253,6 +257,7 @@ impl Default for CanvasState {
             open_url: None,
             page_rects: Vec::new(),
             scrollbar_page: None,
+            viewed_page: None,
             scale: PX_PER_PT,
             canvas_rect: None,
             focused: false,
@@ -1651,6 +1656,17 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
     });
     app.canvas.scroll_offset = out.state.offset;
     scrollbar_page_tip(app, ui, out.id, &geo.rects, &geo.bands, layout.pages.len());
+    // The page the status bar names (#3880): the caret's, or a whole-story selection's page, while
+    // it is on screen; else the page at the top of the window.
+    app.canvas.viewed_page = (!app.session.view.read_mode && !geo.rects.is_empty()).then(|| {
+        let extent = if app.session.selects_whole_story() {
+            let page = app.session.page_hint.min(geo.rects.len() - 1);
+            geo.rects.get(page).map(|r| (page, r.top(), r.bottom()))
+        } else {
+            caret.and_then(|c| geo.rects.get(c.page).map(|r| (c.page, r.top() + c.top * geo.scale, r.top() + (c.top + c.height) * geo.scale)))
+        };
+        viewed_page(extent, &geo.rects, &geo.bands, app.canvas.scroll_offset.y, out.inner_rect.height()).min(layout.pages.len().saturating_sub(1))
+    });
     crate::ink::replay_bar(app, ui, out.inner_rect);
     app.canvas.scroll_max = (out.content_size - out.inner_rect.size()).max(egui::Vec2::ZERO);
     if app.session.view.read_mode {
@@ -2403,6 +2419,16 @@ fn scrollbar_page_tip(app: &mut WordApp, ui: &Ui, scroll: egui::Id, rects: &[Rec
 fn top_page(rects: &[Rect], bands: &[(f32, f32)], y: f32) -> usize {
     let bottom = |i: usize, r: &Rect| r.min.y + bands.get(i).map_or(r.height(), |b| b.1);
     rects.iter().enumerate().position(|(i, r)| bottom(i, r) > y).unwrap_or(rects.len().saturating_sub(1))
+}
+
+/// The page being looked at (#3880): the page of `caret` (page, top, bottom in content
+/// coordinates) while any of it is inside the window (`top` .. `top + height`), else the page at
+/// the window's top ([`top_page`]).
+fn viewed_page(caret: Option<(usize, f32, f32)>, rects: &[Rect], bands: &[(f32, f32)], top: f32, height: f32) -> usize {
+    match caret {
+        Some((page, from, to)) if to >= top && from <= top + height => page,
+        _ => top_page(rects, bands, top),
+    }
 }
 
 /// Whether wheel input counts as being over the canvas. Another widget's drag (a scrollbar, say)
@@ -4192,16 +4218,70 @@ mod tests {
             let last = h.state().canvas.scrollbar_page.expect("still dragging");
             assert!(last >= 9, "a two-digit page: {last}");
             let label = format!("Page {} of 12", last + 1);
-            let tip = h.query_by_label(&label).expect("the tip names the last page").rect();
+            // The status bar (at the left) says the same page (#3880); the tip is the one beside the pointer.
+            let tip = h.query_all_by_label(&label).map(|n| n.rect()).find(|r| r.center().x > 700.0).expect("the tip names the last page");
             let body = egui::TextStyle::Body.resolve(&h.ctx.global_style());
             assert!(tip.height() < 1.5 * h.ctx.fonts_mut(|f| f.row_height(&body)), "one line as the number grows: {tip:?}");
             h.event(button(end, false));
             h.step();
             h.step();
             assert_eq!(h.state().canvas.scrollbar_page, None, "the tip goes with the button");
-            assert!(h.query_by_label(&label).is_none(), "and its text");
+            assert!(h.query_all_by_label(&label).all(|n| n.rect().center().x < 700.0), "and its text (the status bar still names the page)");
             assert_eq!((h.state().session.rev(), &h.state().session.sel), (rev, &sel), "scrolling changes neither the document nor the selection");
         }
+    }
+
+    /// #3880: the status bar names the page being looked at. With the caret scrolled out of view, that
+    /// is the page at the top of the window; while the caret is on screen, its page.
+    #[test]
+    fn the_status_bar_names_the_page_in_view_not_only_the_caret_page() {
+        use egui_kittest::kittest::Queryable;
+        let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
+        for _ in 0..11 {
+            a.run("text.insert", json!({"text": "Page text"})).unwrap();
+            a.run("layout.break", json!({"kind": "page"})).unwrap();
+        }
+        a.run("view.commentsPane", json!({"value": false})).unwrap();
+        a.run("caret.docStart", json!({})).unwrap();
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).with_step_dt(1.0 / 60.0).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            a,
+        );
+        for _ in 0..6 {
+            h.step();
+        }
+        assert_eq!(h.state_mut().session.layout().pages.len(), 12);
+        assert!(h.query_by_label("Page 1 of 12").is_some(), "the caret is on page 1 and in view");
+        // Scroll to page 9 without touching the caret.
+        let (rev, sel) = (h.state().session.rev(), h.state().session.sel.clone());
+        let target = h.state().canvas.page_rects.get(8).map(|r| r.min.y - h.state().canvas.page_rects[0].min.y).expect("page 9");
+        let at = h.state().canvas.scroll_offset.y;
+        h.state_mut().canvas.scroll_request = Some(vec2(0.0, at + target));
+        for _ in 0..4 {
+            h.step();
+        }
+        assert!(h.query_by_label("Page 9 of 12").is_some(), "scrolled to page 9, the status bar says page 9");
+        assert!(h.query_by_label("Page 1 of 12").is_none());
+        assert_eq!((h.state().session.rev(), &h.state().session.sel), (rev, &sel), "scrolling changes neither the document nor the selection");
+    }
+
+    /// `viewed_page`: the caret's page while any of its line is on screen, else the window's top page.
+    #[test]
+    fn the_page_in_view_follows_the_caret_while_it_is_on_screen() {
+        let rects: Vec<Rect> = (0..4).map(|i| Rect::from_min_size(pos2(0.0, i as f32 * 110.0), vec2(80.0, 100.0))).collect();
+        let whole = vec![(0.0, 100.0); 4];
+        let caret = |page: usize, y: f32| Some((page, rects[page].min.y + y, rects[page].min.y + y + 10.0));
+        // Window 0..150 shows page 0 and the top of page 1.
+        assert_eq!(viewed_page(caret(1, 5.0), &rects, &whole, 0.0, 150.0), 1, "the caret is on screen, on page 1");
+        assert_eq!(viewed_page(caret(0, 5.0), &rects, &whole, 0.0, 150.0), 0);
+        // Scrolled to page 3: the caret on page 0 is off screen.
+        assert_eq!(viewed_page(caret(0, 5.0), &rects, &whole, 330.0, 100.0), 3);
+        assert_eq!(viewed_page(None, &rects, &whole, 220.0, 100.0), 2, "no caret: the top page");
+        assert_eq!(viewed_page(caret(2, 90.0), &rects, &whole, 330.0, 100.0), 3, "a caret just above the window is not in view");
     }
 
     /// `top_page`: the page at a window's top, the one below in a gap, the last one past the end.
