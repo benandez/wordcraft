@@ -260,7 +260,7 @@ fn insert_nodes_as_equation(s: &mut Session, nodes: Arg, v: &Value) -> CmdResult
 
 /// Starts editing the equation at the caret, materializing lazy nodes and clamping the requested
 /// position, and returns the equation and caret.
-fn edit(s: &mut Session, v: &Value) -> CmdResult {
+pub(super) fn edit(s: &mut Session, v: &Value) -> CmdResult {
     let at = equation_at_caret(s).ok_or_else(|| CmdError::Disabled("no equation at the caret".into()))?;
     let nodes = match s.doc.para_at(&at).and_then(|p| p.object_at(at.off)) {
         Some(InlineObject::Equation { math, linear, .. }) => {
