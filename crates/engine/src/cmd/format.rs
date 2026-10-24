@@ -7,6 +7,7 @@ use wordcraft_doc::resolve::ResolvedChar;
 use wordcraft_doc::{InlineObject, PartKind, Pos, RevisionKind, StoryRef};
 
 use super::sel_result;
+use super::tools::{is_turkic, lower_char, upper_char};
 use crate::{CmdError, CmdResult, CommandSpec, Session, p};
 
 /// Word's font size list.
@@ -453,7 +454,16 @@ fn change_case(s: &mut Session, v: &Value) -> CmdResult {
             let to = if path == b.path { b.off } else { p.len() };
             let chars = live_chars(p, from, to);
             let src: String = chars.iter().map(|(_, c)| c).collect();
-            case_groups(p, &chars, &convert_chars(&src, &mode, from == 0))
+            // Turkish, Azerbaijani and Crimean Tatar text follows the same case mapping as
+            // AutoCorrect (#1923); each run's own language decides (#3479).
+            let turkic: Vec<bool> = chars
+                .iter()
+                .map(|(off, _)| {
+                    let lang = s.doc.styles.resolve_char(p.props.style.as_deref(), p.props_of_char(*off)).lang;
+                    is_turkic(lang.as_deref().or(s.editing_lang.as_deref()))
+                })
+                .collect();
+            case_groups(p, &chars, &convert_chars(&src, &mode, from == 0, &turkic))
         };
         if groups.is_empty() {
             continue;
@@ -587,37 +597,47 @@ fn is_title(t: &str) -> bool {
 
 #[cfg(test)]
 fn convert(src: &str, mode: &str, para_start: bool) -> String {
-    convert_chars(src, mode, para_start).concat()
+    let turkic = vec![false; src.chars().count()];
+    convert_chars(src, mode, para_start, &turkic).concat()
 }
 
 /// The case-converted form of each character of `src`, in order (one entry per char, so a
-/// change of length such as ß → SS or İ → i̇ can be applied run by run).
-fn convert_chars(src: &str, mode: &str, para_start: bool) -> Vec<String> {
+/// change of length such as ß → SS or İ → i̇ can be applied run by run). `turkic` is one flag
+/// per char: true when that character's run is Turkish, Azerbaijani or Crimean Tatar.
+fn convert_chars(src: &str, mode: &str, para_start: bool, turkic: &[bool]) -> Vec<String> {
     let chars: Vec<char> = src.chars().collect();
     // Greek capital sigma lowers to the final form at the end of a word (as `str::to_lowercase`).
     let lower = |i: usize, c: char| -> String {
         let prev = i.checked_sub(1).and_then(|j| chars.get(j)).is_some_and(|p| p.is_alphabetic());
         let next = chars.get(i + 1).is_some_and(|n| n.is_alphabetic());
-        if c == 'Σ' && prev && !next { "ς".to_string() } else { c.to_lowercase().collect() }
+        if c == 'Σ' && prev && !next {
+            "ς".to_string()
+        } else if turkic.get(i).copied().unwrap_or(false) {
+            lower_char(c, true)
+        } else {
+            c.to_lowercase().collect()
+        }
     };
     // Title case capitalises the first word of any selection; sentence case only at a paragraph start.
     let mut up = mode == "title" || para_start;
     let mut out = Vec::with_capacity(chars.len());
     for (i, &c) in chars.iter().enumerate() {
+        let turkic = turkic.get(i).copied().unwrap_or(false);
+        let upper = |c: char| upper_char(c, turkic);
         let new = match mode {
-            "upper" => c.to_uppercase().collect(),
+            "upper" => upper(c),
             "lower" => lower(i, c),
             "toggle" => {
                 if c.is_uppercase() {
                     lower(i, c)
                 } else {
-                    c.to_uppercase().collect()
+                    upper(c)
                 }
             }
             "title" => {
                 let n = if up && c.is_alphabetic() {
                     up = false;
-                    c.to_uppercase().collect()
+                    upper(c)
                 } else {
                     lower(i, c)
                 };
@@ -630,7 +650,7 @@ fn convert_chars(src: &str, mode: &str, para_start: bool) -> Vec<String> {
                 // Sentence case.
                 let n = if up && c.is_alphabetic() {
                     up = false;
-                    c.to_uppercase().collect()
+                    upper(c)
                 } else {
                     lower(i, c)
                 };

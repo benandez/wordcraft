@@ -996,7 +996,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
     // Keys first, so this frame lays out and paints what was typed (handled after painting, a
     // keystroke showed one frame later). Focus is the canvas's from the last frame.
     // While "Save changes?" is up, keys answer it rather than edit the document behind it.
-    if app.canvas.focused && !matches!(app.dialog, Some(crate::dialogs::Dialog::SaveChanges { .. })) {
+    if app.canvas.focused && !app.ui.backstage && !matches!(app.dialog, Some(crate::dialogs::Dialog::SaveChanges { .. })) {
         crate::keys::canvas_events(app, ui.ctx());
     } else {
         // Alt+numpad entry doesn't survive the canvas losing the keyboard.
@@ -3673,6 +3673,31 @@ fn is_followable_link(url: &str) -> bool {
 mod tests {
     use super::*;
     use crate::table_resize::tests::{H, cell, screen, steps, table_window};
+
+    #[test]
+    fn backstage_blocks_typing_in_the_still_visible_canvas() {
+        for backstage in [false, true] {
+            let mut app = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), crate::Services::default());
+            app.ui.backstage = backstage;
+            let mut h = egui_kittest::Harness::builder().with_size(vec2(1440.0, 900.0)).build_ui_state(
+                |ui, app: &mut WordApp| {
+                    app.logic(&ui.ctx().clone());
+                    if app.fonts_frames < 2 {
+                        app.ui(ui);
+                        return;
+                    }
+                    app.canvas.focused = true;
+                    show(app, ui);
+                },
+                app,
+            );
+            h.run_steps(4);
+            assert!(!h.state().session.dirty);
+            h.event(egui::Event::Text("Must not reach the hidden document".into()));
+            h.run_steps(2);
+            assert_eq!(h.state().session.dirty, !backstage, "typing belongs to the canvas only outside Backstage");
+        }
+    }
 
     /// A window-following layout size (#1876, Read Mode): applied at once on entry or when forced,
     /// held while the window is dragged, applied once the size has been still for the settle time.

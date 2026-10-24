@@ -49,6 +49,9 @@ pub fn show(app: &mut WordApp, ui: &mut Ui, enter: f32) {
             let from = panel.max_rect().min - vec2((1.0 - enter) * 200.0, 0.0);
             let slid_to = Rect::from_min_size(from, vec2(200.0, panel.max_rect().height()));
             let mut slid = panel.new_child(egui::UiBuilder::new().max_rect(slid_to).layout(*panel.layout()));
+            if !app.ui.backstage {
+                slid.disable();
+            }
             let ui = &mut slid;
             let back = if mac {
                 // macOS (#222): the Backstage covers the title bar, so its top band is the title
@@ -74,14 +77,14 @@ pub fn show(app: &mut WordApp, ui: &mut Ui, enter: f32) {
                 resp
             };
             // Escape in the built-in file browser closes only the browser.
-            if back.clicked() || (!app.file_dialog_open() && ui.input(|i| i.key_pressed(egui::Key::Escape))) {
+            if app.ui.backstage && (back.clicked() || (!app.file_dialog_open() && ui.input(|i| i.key_pressed(egui::Key::Escape)))) {
                 app.ui.backstage = false;
                 app.canvas.want_focus = true;
             }
             ui.add_space(if mac { 12.0 } else { 6.0 });
             for (id, label, icon) in PAGES {
                 // No document open (#1129): Info, Save, Save As, Print and Export are greyed out.
-                let on = has_document || works_without_document(id);
+                let on = app.ui.backstage && (has_document || works_without_document(id));
                 let (r, resp) = ui.add_enabled_ui(on, |ui| ui.allocate_exact_size(vec2(200.0, 38.0), Sense::click())).inner;
                 resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, on, tl!(label)));
                 let active = app.ui.backstage_page == id;
@@ -156,6 +159,9 @@ pub fn show(app: &mut WordApp, ui: &mut Ui, enter: f32) {
             let shift = vec2((1.0 - enter) * 40.0, 0.0);
             let mut slid = panel.new_child(egui::UiBuilder::new().max_rect(panel.max_rect().translate(shift)).layout(*panel.layout()));
             slid.set_opacity(enter);
+            if !app.ui.backstage {
+                slid.disable();
+            }
             let ui = &mut slid;
             // The Print page fills the pane and scrolls its settings and its preview itself (#1156).
             if app.ui.backstage_page == "print" {
@@ -726,6 +732,43 @@ mod tests {
 
     use super::{HOME_TEMPLATES, TEMPLATES, matching_templates};
     use crate::{Services, WordApp};
+
+    #[test]
+    fn exiting_backstage_blocks_navigation_and_page_actions() {
+        for active in [false, true] {
+            for label in ["Save As", "Blank document"] {
+                let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Services::default());
+                a.run("text.insert", json!({"text": "Keep this draft"})).unwrap();
+                a.ui.backstage = true;
+                let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+                    |ui, app: &mut WordApp| {
+                        app.logic(&ui.ctx().clone());
+                        if app.fonts_frames < 2 {
+                            app.ui(ui);
+                            return;
+                        }
+                        super::show(app, ui, 0.75);
+                    },
+                    a,
+                );
+                h.run_steps(4);
+                let pos = h.get_by_label(label).rect().center();
+                h.state_mut().ui.backstage = active;
+                h.run_steps(2);
+                h.event(egui::Event::PointerMoved(pos));
+                h.event(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: true, modifiers: Default::default() });
+                h.step();
+                h.event(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: false, modifiers: Default::default() });
+                h.run_steps(2);
+                if label == "Save As" {
+                    assert_eq!(h.state().ui.backstage_page, if active { "saveAs" } else { "home" });
+                } else {
+                    assert_eq!(h.state().dialog.is_some(), active, "only an active template asks to replace the draft");
+                    assert!(h.state().session.dirty, "the existing draft stays unsaved");
+                }
+            }
+        }
+    }
 
     /// #1714: every side-menu item has its own icon, a drawn one (an unknown name would fall back
     /// to a tile with its first letter, the only icon here that draws text).
