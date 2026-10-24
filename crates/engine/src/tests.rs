@@ -893,6 +893,68 @@ fn find_replace_wildcards() {
 }
 
 #[test]
+fn regex_replace_expands_groups() {
+    // #4177: with Regular expressions on, Replace with expands capture groups.
+    let rep = |text: &str, q: &str, with: &str| rep_mode(text, q, with, json!({"regex": true}));
+    let names = "Smith, John and Doe, Jane";
+    // The issue's cases: `\n` and `$n` swap words; `${name}` names a group.
+    assert_eq!(rep(names, r"(\w+), (\w+)", r"\2 \1"), "John Smith and Jane Doe");
+    assert_eq!(rep(names, r"(\w+), (\w+)", "$2 $1"), "John Smith and Jane Doe");
+    assert_eq!(rep("2024-05", r"(?<y>\d{4})-", "${y}/"), "2024/05");
+    // Braced numbers, `$0` / `${0}` (whole match), `$$` (a dollar sign).
+    assert_eq!(rep("ab", "(a)(b)", "${2}${1}"), "ba");
+    assert_eq!(rep("ab", "a", "[$0|${0}]"), "[a|a]b");
+    assert_eq!(rep("5", r"(\d)", "$$$1"), "$5");
+    // `$name` takes the longest run of letters, digits and `_` (the regex crate's rule).
+    assert_eq!(rep("ab", "(?<x>a)", "$x_"), "b");
+    assert_eq!(rep("ab", "(?<x>a)", "${x}_"), "a_b");
+    assert_eq!(rep("ab", "(a)", "$1a"), "b");
+    // Missing, unknown and out-of-range groups expand to nothing.
+    assert_eq!(rep("ab", "(a)", "<$2>"), "<>b");
+    assert_eq!(rep("ab", "(a)", r"<\9>"), "<>b");
+    assert_eq!(rep("ab", "(a)", "<${nope}>"), "<>b");
+    assert_eq!(rep("ab", "(a)", "<$99999999999999999999999>"), "<>b");
+    assert_eq!(rep("ab", "(a)|(z)", "<$2>"), "<>b");
+    // A `$` that starts no group, and an unclosed brace, stay as written.
+    assert_eq!(rep("ab", "a", "$ ${x"), "$ ${xb");
+    // `\t` a tab, `\\` a backslash; other escapes stay as written.
+    assert_eq!(rep("ab", "a", r"\t\\\q"), "\t\\\\qb");
+    // Word's `^` codes still work.
+    assert_eq!(rep("ab", "a", "^&^t^&"), "a\tab");
+    // `\n` is a paragraph mark: it splits the paragraph, as `^p` does, in one undo step.
+    let mut s = s();
+    run(&mut s, "document.setText", json!({"text": "one, two"}));
+    assert_eq!(run(&mut s, "edit.replaceAll", json!({"text": r"(\w+), (\w+)", "with": r"$1\n$2", "regex": true}))["replaced"], 1);
+    assert_eq!(text(&s), "one\ntwo");
+    assert_eq!(s.doc.para_paths(StoryRef::Body).len(), 2);
+    run(&mut s, "edit.undo", json!({}));
+    assert_eq!(text(&s), "one, two");
+    run(&mut s, "document.setText", json!({"text": "a-b"}));
+    run(&mut s, "edit.replaceAll", json!({"text": "-", "with": "^p", "regex": true}));
+    assert_eq!(s.doc.para_paths(StoryRef::Body).len(), 2);
+    // Plain and wildcard Replace are unchanged: `$1` is literal there.
+    assert_eq!(rep_mode("ab", "a", "$1", json!({})), "$1b");
+    assert_eq!(rep_mode("ab", "(a)", "$1\\1", json!({"wildcards": true})), "$1ab");
+    // Hostile Replace text never panics.
+    run(&mut s, "document.setText", json!({"text": "ab ab"}));
+    for with in ["$", "${", "${}", "${0", "$\u{e9}", "\\", "${\u{1F600}}", "$18446744073709551616", "${-1}", "$$$", "\\0\\n\\", "^"] {
+        let _ = s.run("edit.replaceAll", &json!({"text": "(a)(?<n>b)?", "with": with, "regex": true}));
+    }
+}
+
+/// The body text after Replace All of `q` with `with` in `text`, matching case, with `extra` options.
+fn rep_mode(text: &str, q: &str, with: &str, extra: serde_json::Value) -> String {
+    let mut s = s();
+    run(&mut s, "document.setText", json!({"text": text}));
+    let mut v = json!({"text": q, "with": with, "matchCase": true});
+    if let (Some(o), Some(e)) = (v.as_object_mut(), extra.as_object()) {
+        o.extend(e.clone());
+    }
+    run(&mut s, "edit.replaceAll", v);
+    self::text(&s)
+}
+
+#[test]
 fn hostile_find_patterns_are_bounded() {
     let mut s = s();
     run(&mut s, "document.setText", json!({"text": &"a".repeat(5000)}));
