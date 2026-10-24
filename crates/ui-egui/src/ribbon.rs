@@ -357,6 +357,10 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
     }
     // A tab that just left stays in its place while it slides and fades away.
     let ghosts: Vec<(String, usize, f64)> = leaving.iter().filter(|(n, ..)| !tabs.iter().any(|(t, _)| t == n)).cloned().collect();
+    // Keep the exit animation moving even when a departing tab is in the overflow menu.
+    if !ghosts.is_empty() {
+        ui.ctx().request_repaint();
+    }
     for (name, at, _) in &ghosts {
         tabs.insert((*at).min(tabs.len()), (name.clone(), false));
     }
