@@ -921,6 +921,8 @@ fn regex_replace_expands_groups() {
     assert_eq!(rep("ab", "a", r"\t\\\q"), "\t\\\\qb");
     // Word's `^` codes still work.
     assert_eq!(rep("ab", "a", "^&^t^&"), "a\tab");
+    // `special: false` turns off the `^` codes only; groups still expand (CodeRabbit on #4177).
+    assert_eq!(rep_mode("ab", "(a)", "$1^t", json!({"regex": true, "special": false})), "a^tb");
     // `\n` is a paragraph mark: it splits the paragraph, as `^p` does, in one undo step.
     let mut s = s();
     run(&mut s, "document.setText", json!({"text": "one, two"}));

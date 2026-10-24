@@ -357,7 +357,8 @@ pub enum Piece {
 /// Read Replace with text: `^` codes (unless `literal`), `\1`–`\9` with wildcards, and with a
 /// regex also `$n`, `${n}`, `${name}`, `$name`, `$$`, `\n` (paragraph mark), `\t` and `\\`.
 pub fn parse_replace(with: &str, o: &Opts) -> Vec<Piece> {
-    if o.literal {
+    // With a regex, `special: false` turns off only the `^` codes; group references still expand.
+    if o.literal && !o.regex {
         return vec![Piece::Lit(with.to_string())];
     }
     let chars: Vec<char> = with.chars().collect();
@@ -404,6 +405,7 @@ pub fn parse_replace(with: &str, o: &Opts) -> Vec<Piece> {
             }
         }
         if c == '^'
+            && !o.literal
             && let Some(&n) = chars.get(i)
         {
             if n == '&' || n == 'c' {
