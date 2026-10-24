@@ -152,7 +152,8 @@ impl Sh {
         }
     }
 
-    /// Fill and outline in item `i`'s own colour, when it has one.
+    /// Accent fills and outlines in item `i`'s own colour, when it has one. Light outlines
+    /// keep the theme's background colour so adjacent nodes remain separated.
     fn recolor(&mut self, spec: &SmartArtSpec, i: usize) {
         let Some(c) = spec.items.get(i).and_then(|it| it.color) else { return };
         for p in [&mut self.fill, &mut self.line] {

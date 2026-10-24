@@ -7607,6 +7607,24 @@ fn smart_art_item_colors_stay_until_a_style_is_picked() {
     assert!(cmd::smart_art::selected_smart_art(&s).unwrap().has_custom_colors(), "undo brings the colours back");
 }
 
+/// A malformed colour must not silently replace a coloured item with its style colour.
+#[test]
+fn smart_art_item_colors_reject_invalid_values_without_changing_the_graphic() {
+    let mut s = s();
+    run(&mut s, "insert.smartArt", json!({"items": [{"text": "Keep", "color": "123456"}]}));
+    let before = cmd::smart_art::selected_smart_art(&s).unwrap();
+    for command in ["insert.smartArt", "smartArt.items"] {
+        for color in [json!("nope"), json!(42), json!(true), json!([]), json!({})] {
+            assert!(s.run(command, &json!({"items": [{"text": "Replace", "color": color}]})).is_err(), "{command}: {color}");
+            assert_eq!(cmd::smart_art::selected_smart_art(&s).unwrap(), before);
+        }
+        run(&mut s, command, json!({"items": [{"text": "Default", "color": null}, {"text": "Omitted"}]}));
+        assert!(!cmd::smart_art::selected_smart_art(&s).unwrap().has_custom_colors());
+        run(&mut s, "edit.undo", json!({}));
+        assert_eq!(cmd::smart_art::selected_smart_art(&s).unwrap(), before);
+    }
+}
+
 /// #497: hostile SmartArt params are capped or refused, never a panic.
 #[test]
 fn smart_art_hostile_params_are_capped() {

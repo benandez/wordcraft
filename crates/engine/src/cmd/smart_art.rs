@@ -258,7 +258,11 @@ fn items_of(v: &Value) -> Result<Vec<SmartArtItem>, CmdError> {
                 };
                 let level = p::u64(it, "level").unwrap_or(0).min(u64::from(MAX_LEVEL));
                 let mut item = SmartArtItem::new(text, u8::try_from(level).unwrap_or(MAX_LEVEL));
-                item.color = p::str(it, "color").and_then(Rgb::parse);
+                item.color = match it.get("color") {
+                    None | Some(Value::Null) => None,
+                    Some(Value::String(c)) => Some(Rgb::parse(c).ok_or_else(|| CmdError::Params("`color`: RRGGBB".into()))?),
+                    Some(_) => return Err(CmdError::Params("`color`: RRGGBB or null".into())),
+                };
                 Ok(item)
             }
             _ => Err(CmdError::Params(format!("`items`: {ITEMS}"))),
