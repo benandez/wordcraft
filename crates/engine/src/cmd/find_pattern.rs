@@ -452,7 +452,8 @@ fn regex_ref(chars: &[char], i: usize, c: char) -> Option<(Ref, usize)> {
         return match next {
             'n' => Some((Ref::Char(PARA_MARK), 1)),
             't' => Some((Ref::Char('\t'), 1)),
-            '\\' => Some((Ref::Char('\\'), 1)),
+            // `\$` and `\^` keep a `$` or `^` as typed (no group, no `^` code).
+            '\\' | '$' | '^' => Some((Ref::Char(next), 1)),
             '1'..='9' => Some((Ref::Group(next.to_digit(10).map(|d| Piece::Group(d as usize))), 1)),
             _ => None,
         };
