@@ -2589,7 +2589,7 @@ impl WordApp {
             backstage::forget_open_error(&ctx);
             backstage::forget_save_as_error(&ctx);
         }
-        let enter = ctx.animate_bool_responsive(egui::Id::new("backstage_enter"), self.ui.backstage);
+        let enter = ctx.animate_bool_responsive(egui::Id::unique("backstage_enter"), self.ui.backstage);
         let enter = egui::emath::easing::cubic_out(enter);
         self.paint_window(ui, &ctx, t, enter);
         self.show_overlays(ui, &ctx, enter);
@@ -2647,7 +2647,7 @@ impl WordApp {
                 let before = ui.available_rect_before_wrap();
                 glass = self.ribbon_glass().then(|| (ui.painter().add(egui::Shape::Noop), before));
                 chrome::title_bar(self, ui);
-                ribbon_blur::set_drawing(&ctx, self.ribbon_glass());
+                ribbon_blur::set_drawing(ctx, self.ribbon_glass());
                 let menu_fill = ctx.global_style().visuals.window_fill;
                 if glass.is_some() {
                     ctx.global_style_mut(|s| s.visuals.window_fill = ribbon_blur::menu_glass(menu_fill, s.visuals.dark_mode));
@@ -2656,7 +2656,7 @@ impl WordApp {
                 if glass.is_some() {
                     ctx.global_style_mut(|s| s.visuals.window_fill = menu_fill);
                 }
-                ribbon_blur::set_drawing(&ctx, false);
+                ribbon_blur::set_drawing(ctx, false);
                 if let Some((_, r)) = glass.as_mut() {
                     r.max.y = ui.available_rect_before_wrap().min.y;
                 }

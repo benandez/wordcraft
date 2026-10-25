@@ -143,7 +143,7 @@ struct Strip {
 
 /// Show `image` as the strip's texture and return it.
 pub fn upload(ctx: &Context, name: &str, image: ColorImage) -> egui::TextureId {
-    let id = egui::Id::new(("ribbon_blur_strip", name));
+    let id = egui::Id::unique(("ribbon_blur_strip", name));
     let kept: Option<Strip> = ctx.data(|d| d.get_temp(id));
     let strip = match kept {
         Some(mut s) => {
@@ -192,12 +192,12 @@ pub fn paint_band(app: &crate::WordApp, ui: &egui::Ui, area: Rect) {
 
 /// While set, the ribbon draws over the strip: its hover and press fills stay see-through.
 pub fn set_drawing(ctx: &Context, on: bool) {
-    ctx.data_mut(|d| d.insert_temp(egui::Id::new("ribbon_blur_drawing"), on));
+    ctx.data_mut(|d| d.insert_temp(egui::Id::unique("ribbon_blur_drawing"), on));
 }
 
 /// `fill` for a ribbon button's hover, press or check, see-through while the strip shows.
 pub fn button_fill(ctx: &Context, fill: Color32) -> Color32 {
-    let on = ctx.data(|d| d.get_temp::<bool>(egui::Id::new("ribbon_blur_drawing"))).unwrap_or(false);
+    let on = ctx.data(|d| d.get_temp::<bool>(egui::Id::unique("ribbon_blur_drawing"))).unwrap_or(false);
     if on { fill.gamma_multiply(0.6) } else { fill }
 }
 
@@ -231,7 +231,7 @@ pub fn glass(c: Color32) -> Color32 {
 /// The strip's size in texels, once it has been made.
 #[cfg(test)]
 pub fn strip_size(ctx: &Context) -> Option<[usize; 2]> {
-    let kept: Option<Strip> = ctx.data(|d| d.get_temp(egui::Id::new(("ribbon_blur_strip", "ribbon"))));
+    let kept: Option<Strip> = ctx.data(|d| d.get_temp(egui::Id::unique(("ribbon_blur_strip", "ribbon"))));
     kept.map(|s| s.image.size)
 }
 
