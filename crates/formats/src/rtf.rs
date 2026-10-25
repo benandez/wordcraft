@@ -2128,9 +2128,9 @@ impl Reader {
             "cell" => self.end_cell(),
             "nestcell" => self.end_para(true),
             "row" => self.end_row(),
-            "line" => self.ch('\n'),
+            "line" | "softline" => self.ch('\n'),
             "tab" => self.ch('\t'),
-            "page" => self.ch('\u{000C}'),
+            "page" | "softpage" => self.ch('\u{000C}'),
             "column" => self.ch('\u{000E}'),
             "emdash" => self.ch('—'),
             "endash" => self.ch('–'),
@@ -2144,13 +2144,15 @@ impl Reader {
             "qmspace" => self.ch('\u{2005}'),
             "zwj" => self.ch('\u{200D}'),
             "zwnj" => self.ch('\u{200C}'),
+            "zwbo" => self.ch('\u{200B}'),
+            "zwnbo" => self.ch('\u{2060}'),
             "u" => {
                 let u = (pv as i64).rem_euclid(65_536) as u16;
                 if (0xD800..0xDC00).contains(&u) {
                     self.pending_high = Some(u);
                 } else {
                     let c = match self.pending_high.take() {
-                        Some(h) if (0xDC00..0xE000).contains(&u) => char::decode_utf16([h, u]).next().and_then(|r| r.ok()).unwrap_or('\u{FFFD}'),
+                        Some(h) if (0xDC00..0xE000).contains(&u) => char::decode_utf16([h, u]).next().and_then(Result::ok).unwrap_or('\u{FFFD}'),
                         _ => char::from_u32(u32::from(u)).unwrap_or('\u{FFFD}'),
                     };
                     self.ch(c);
@@ -2638,7 +2640,7 @@ fn parse_full(bytes: &[u8]) -> Result<Parsed, String> {
                 let Some(&n) = bytes.get(i + 1) else { break };
                 if n.is_ascii_alphabetic() {
                     let mut j = i + 1;
-                    while bytes.get(j).is_some_and(|b| b.is_ascii_alphabetic()) && j - i <= 32 {
+                    while bytes.get(j).is_some_and(u8::is_ascii_alphabetic) && j - i <= 32 {
                         j += 1;
                     }
                     let word = std::str::from_utf8(bytes.get(i + 1..j).unwrap_or(b"")).unwrap_or("");
@@ -2648,7 +2650,7 @@ fn parse_full(bytes: &[u8]) -> Result<Parsed, String> {
                         k += 1;
                     }
                     let d0 = k;
-                    while bytes.get(k).is_some_and(|b| b.is_ascii_digit()) && k - d0 < 10 {
+                    while bytes.get(k).is_some_and(u8::is_ascii_digit) && k - d0 < 10 {
                         k += 1;
                     }
                     let param = if k > d0 {
@@ -2727,7 +2729,7 @@ fn parse_full(bytes: &[u8]) -> Result<Parsed, String> {
                         i += 2;
                         continue;
                     }
-                    b'~' => {
+                    b'~' | b' ' => {
                         r.ch('\u{00A0}');
                         i += 2;
                     }
@@ -4396,5 +4398,13 @@ mod tests {
         assert!(exported.contains("\\clvertalt"));
         assert!(exported.contains("\\clvertalc"));
         assert!(exported.contains("\\clvertalb"));
+    }
+
+    #[test]
+    fn rtf_backslash_space_and_special_breaks() {
+        let rtf = br"{\rtf1\ansi A\ B\~C\zwbo D\softline E\softpage F\par}";
+        let doc = import(rtf).unwrap();
+        let p = doc.body.first().unwrap().as_para().unwrap();
+        assert_eq!(p.text, "A\u{00A0}B\u{00A0}C\u{200B}D\nE\u{000C}F");
     }
 }
