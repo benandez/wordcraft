@@ -56,6 +56,30 @@ fn encrypted_doc_asks_for_a_password_and_rejects_a_wrong_one() {
     assert!(crate::io::needs_password(&e), "{e}");
 }
 
+/// Gap 9: AES-encrypted Word files — Standard encryption (Word 2007) and agile packages — open
+/// with the right password whatever Word extension they carry, and ask for one or refuse a wrong
+/// one the same way.
+#[test]
+fn aes_encrypted_packages_open_under_any_word_extension() {
+    let mut doc = wordcraft_doc::Document::from_text("Old secret minutes");
+    doc.core.title = "Minutes".into();
+    let pkg = wordcraft_docx::write(&doc).unwrap();
+    let standard = wordcraft_docx::encrypt_standard_for_tests(&pkg, "letmein", 128).unwrap();
+    let agile = wordcraft_docx::encrypt_with_spin_count(&pkg, "letmein", 8).unwrap();
+    for (kind, bytes) in [("standard", &standard), ("agile", &agile)] {
+        for name in ["old.doc", "old.docx", "old.dot", "noext"] {
+            let (d, encrypted) = crate::io::open_bytes_with(name, bytes, Some("letmein")).unwrap_or_else(|e| panic!("{kind} {name}: {e}"));
+            assert!(encrypted, "{kind} {name}");
+            assert!(d.plain_text(StoryRef::Body).contains("Old secret minutes"), "{kind} {name}");
+            assert_eq!(d.core.title, "Minutes");
+            let e = crate::io::open_bytes_with(name, bytes, None).unwrap_err();
+            assert!(crate::io::needs_password(&e), "{kind} {name}: {e}");
+            let e = crate::io::open_bytes_with(name, bytes, Some("letmeout")).unwrap_err();
+            assert!(crate::io::wrong_password(&e), "{kind} {name}: {e}");
+        }
+    }
+}
+
 #[test]
 fn txt_open_decodes_windows_1252_and_unmarked_utf16() {
     // #433: the TXT open path sniffs encodings like the formats importer.
@@ -4487,6 +4511,21 @@ fn word_count_with_an_object_selected_counts_the_document() {
     assert_eq!(run(&mut s, "review.wordCount", json!({}))["words"].as_u64(), Some(1));
 }
 
+/// #2982: a property imported from a file made by an older Word may have a name longer than
+/// today's limit. Such a name is still deletable (the dialog sends `null`), while setting or
+/// renaming a property to it stays refused.
+#[test]
+fn custom_properties_delete_legacy_names_but_new_names_keep_the_limit() {
+    let mut s = s();
+    let long = "x".repeat(crate::cmd::file::MAX_CUSTOM_NAME + 1);
+    s.doc.custom_props.push(wordcraft_doc::CustomProp { name: long.clone(), kind: "raw".into(), value: "<data/>".into() });
+    let mut custom = serde_json::Map::new();
+    custom.insert(long.clone(), serde_json::Value::Null);
+    run(&mut s, "file.properties", json!({"custom": custom}));
+    assert!(s.doc.custom_props.is_empty(), "the legacy name could be deleted");
+    assert!(s.run("file.properties", &json!({"custom": { (long): "x" }})).is_err(), "a new or updated name keeps the limit");
+}
+
 #[test]
 fn custom_properties_set_read_remove_and_undo() {
     let mut s = s();
@@ -4502,6 +4541,37 @@ fn custom_properties_set_read_remove_and_undo() {
     assert!(s.run("file.properties", &json!({"custom": {"n": 3}})).is_err());
     run(&mut s, "edit.undo", json!({}));
     assert_eq!(s.doc.custom_prop("Status"), Some("draft"));
+}
+
+/// #2982: a case-only rename arrives as the old spelling with null and the new one with its
+/// value. The removal must run first: object keys are sorted, so `Status` sorts before
+/// `status`, and setting before removing would let the removal take the new spelling too.
+#[test]
+fn custom_properties_case_only_rename_keeps_the_new_spelling() {
+    let mut s = s();
+    run(&mut s, "file.properties", json!({"custom": {"status": "draft"}}));
+    run(&mut s, "file.properties", json!({"custom": {"Status": "draft", "status": null}}));
+    let props: Vec<(&str, &str)> = s.doc.custom_props.iter().map(|p| (p.name.as_str(), p.value.as_str())).collect();
+    assert_eq!(props, [("Status", "draft")], "the property keeps the new spelling and its value");
+}
+
+/// #2982: what the Custom Properties dialog saves (through `file.properties`) survives a .docx
+/// save and reopen.
+#[test]
+fn custom_properties_round_trip_through_docx() {
+    let mut s = s();
+    run(&mut s, "file.properties", json!({"custom": {"Status": "draft", "Reviewer": "Ada L."}}));
+    let back = wordcraft_docx::read(&wordcraft_docx::write(&s.doc).unwrap()).unwrap();
+    assert_eq!(back.custom_prop("Status"), Some("draft"));
+    assert_eq!(back.custom_prop("Reviewer"), Some("Ada L."));
+    assert_eq!(back.custom_props.len(), 2);
+    // One call removes one and adds another; the saved file follows the document.
+    run(&mut s, "file.properties", json!({"custom": {"Status": null, "Owner": "Ada L."}}));
+    let back = wordcraft_docx::read(&wordcraft_docx::write(&s.doc).unwrap()).unwrap();
+    assert_eq!(back.custom_prop("Status"), None);
+    assert_eq!(back.custom_prop("Reviewer"), Some("Ada L."));
+    assert_eq!(back.custom_prop("Owner"), Some("Ada L."));
+    assert_eq!(back.custom_props.len(), 2);
 }
 
 /// `document_id` tells an edit from a replacement (the UI drops a "Save changes?" prompt
