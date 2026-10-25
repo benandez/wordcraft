@@ -432,9 +432,7 @@ pub fn text_pane(app: &mut WordApp, ui: &mut Ui) {
                 let mut text = it.text.clone();
                 let item_name = format!("{} {}", tl!("Text Pane"), i + 1);
                 let width = (ui.available_width() - SWATCH - ui.spacing().item_spacing.x).max(40.0);
-                let r = ui
-                    .add(egui::TextEdit::singleline(&mut text).id_salt(("smart_art_item", i)).desired_width(width))
-                    .accessible_name(item_name);
+                let r = ui.add(egui::TextEdit::singleline(&mut text).id_salt(("smart_art_item", i)).desired_width(width)).accessible_name(item_name);
                 color_button(app, ui, &g, i);
                 if want_focus == Some(i) {
                     r.request_focus();
