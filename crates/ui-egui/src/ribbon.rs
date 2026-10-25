@@ -167,13 +167,13 @@ fn ease_out_cubic(p: f32) -> f32 {
 /// each with its old place and the time it left, while they still fade away (none with
 /// animations off). The first frame starts nothing: tabs already there do not slide.
 fn note_contextual_tabs(ctx: &egui::Context, shown: &[(&str, usize)], now: f64, animate: bool) -> Vec<(String, usize, f64)> {
-    let (shown_id, leaving_id) = (egui::Id::new("contextual_tabs_shown"), egui::Id::new("contextual_tabs_leaving"));
+    let (shown_id, leaving_id) = (egui::Id::unique("contextual_tabs_shown"), egui::Id::unique("contextual_tabs_leaving"));
     let prev: Option<Vec<(String, usize)>> = ctx.data(|d| d.get_temp(shown_id));
     let mut leaving: Vec<(String, usize, f64)> = ctx.data(|d| d.get_temp(leaving_id)).unwrap_or_default();
     leaving.retain(|(n, _, start)| animate && now - start < TAB_ENTRY_SECS && !shown.iter().any(|(s, _)| s == n));
     if let Some(prev) = prev {
         for (tab, _) in shown.iter().filter(|(t, _)| !prev.iter().any(|(p, _)| p == t)) {
-            ctx.data_mut(|d| d.insert_temp(egui::Id::new(("contextual_tab_entry", *tab)), now));
+            ctx.data_mut(|d| d.insert_temp(egui::Id::unique(("contextual_tab_entry", *tab)), now));
         }
         for (tab, at) in prev.iter().filter(|(p, _)| animate && !shown.iter().any(|(s, _)| s == p)) {
             if !leaving.iter().any(|(n, _, _)| n == tab) {
@@ -191,7 +191,7 @@ fn note_contextual_tabs(ctx: &egui::Context, shown: &[(&str, usize)], now: f64, 
 /// How far a contextual tab's entry has come: 0 as it appears, 1 once settled (always 1 with
 /// animations off). Asks for repaints while it moves.
 fn tab_entry(ctx: &egui::Context, tab: &str, now: f64, animate: bool) -> f32 {
-    let start: Option<f64> = ctx.data(|d| d.get_temp(egui::Id::new(("contextual_tab_entry", tab))));
+    let start: Option<f64> = ctx.data(|d| d.get_temp(egui::Id::unique(("contextual_tab_entry", tab))));
     let Some(start) = start.filter(|_| animate) else { return 1.0 };
     let p = ((now - start) / TAB_ENTRY_SECS).clamp(0.0, 1.0) as f32;
     if p < 1.0 {
@@ -235,7 +235,7 @@ fn underline_at(u: &Underline, now: f64) -> (f32, f32) {
 
 /// Draws the underline under the active tab, sliding it from the tab chosen before.
 fn slide_underline(ui: &Ui, tab: &str, target: Rect, color: egui::Color32, now: f64, animate: bool) {
-    let id = egui::Id::new("tab_underline");
+    let id = egui::Id::unique("tab_underline");
     let prev: Option<Underline> = ui.ctx().data(|d| d.get_temp(id));
     let next = next_underline(prev.as_ref(), tab, (target.center().x, target.width()), now, animate);
     if next.from != next.to && now - next.start < UNDERLINE_SLIDE_SECS {
@@ -277,7 +277,7 @@ fn next_tab_change(prev: Option<&TabChange>, tab: &str, index: usize, now: f64, 
 /// How far the ribbon's content has come after a tab change, eased: 0 as the tab changes, 1 once
 /// settled, with the side it comes from (+1 from the right, -1 from the left).
 fn tab_content_entry(ctx: &egui::Context, tab: &str, index: usize, now: f64, animate: bool) -> (f32, f32) {
-    let id = egui::Id::new("ribbon_tab_change");
+    let id = egui::Id::unique("ribbon_tab_change");
     let prev: Option<TabChange> = ctx.data(|d| d.get_temp(id));
     let next = next_tab_change(prev.as_ref(), tab, index, now, animate);
     let p = ((now - next.start) / CONTENT_SWITCH_SECS).clamp(0.0, 1.0) as f32;
