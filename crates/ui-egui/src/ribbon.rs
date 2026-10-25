@@ -171,18 +171,27 @@ fn note_contextual_tabs(ctx: &egui::Context, shown: &[(&str, usize)], now: f64, 
     let prev: Option<Vec<(String, usize)>> = ctx.data(|d| d.get_temp(shown_id));
     let mut leaving: Vec<(String, usize, f64)> = ctx.data(|d| d.get_temp(leaving_id)).unwrap_or_default();
     leaving.retain(|(n, _, start)| animate && now - start < TAB_ENTRY_SECS && !shown.iter().any(|(s, _)| s == n));
+    // Positions in the stored shown list must count retained ghosts too, or tabs leaving on
+    // different frames are reinserted using indices from different layouts.
+    let shown_with_ghosts: Vec<(&str, usize)> = shown
+        .iter()
+        .map(|(tab, at)| {
+            let before = leaving.iter().filter(|(_, ghost_at, _)| ghost_at <= at).count();
+            (*tab, at + before)
+        })
+        .collect();
     if let Some(prev) = prev {
-        for (tab, _) in shown.iter().filter(|(t, _)| !prev.iter().any(|(p, _)| p == t)) {
+        for (tab, _) in shown_with_ghosts.iter().filter(|(t, _)| !prev.iter().any(|(p, _)| p == t)) {
             ctx.data_mut(|d| d.insert_temp(egui::Id::unique(("contextual_tab_entry", *tab)), now));
         }
-        for (tab, at) in prev.iter().filter(|(p, _)| animate && !shown.iter().any(|(s, _)| s == p)) {
+        for (tab, at) in prev.iter().filter(|(p, _)| animate && !shown_with_ghosts.iter().any(|(s, _)| s == p)) {
             if !leaving.iter().any(|(n, _, _)| n == tab) {
                 leaving.push((tab.clone(), *at, now));
             }
         }
     }
     ctx.data_mut(|d| {
-        d.insert_temp(shown_id, shown.iter().map(|(t, at)| (t.to_string(), *at)).collect::<Vec<_>>());
+        d.insert_temp(shown_id, shown_with_ghosts.iter().map(|(t, at)| (t.to_string(), *at)).collect::<Vec<_>>());
         d.insert_temp(leaving_id, leaving.clone());
     });
     leaving
