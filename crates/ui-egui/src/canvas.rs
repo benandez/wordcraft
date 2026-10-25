@@ -921,11 +921,13 @@ fn drawing_grid(body: wordcraft_geom::Rect, step: (f32, f32)) -> (Vec<f32>, Vec<
     (axis(body.x, body.w, step.0), axis(body.y, body.h, step.1))
 }
 
-/// The cells Table Layout › View Gridlines outlines on a page: the body's tables and the
-/// header's and footer's (#1628), skipping cells covered by a merge.
-fn gridline_cells(page: &Page) -> impl Iterator<Item = wordcraft_geom::Rect> + '_ {
-    page.items.iter().chain(&page.header).chain(&page.footer).filter_map(|it| match it {
-        Placed::Cell { rect, covered: false, .. } => Some(*rect),
+/// Global View Gridlines outlines every table (#1628). While editing a header/footer, also
+/// outline that story's cells (#2197), without adding printable borders or changing the view flag.
+fn gridline_cells(page: &Page, all: bool, editing: Option<StoryRef>) -> impl Iterator<Item = wordcraft_geom::Rect> + '_ {
+    // Automatic header/footer guides need not scan a potentially large body placement list.
+    let body = if all { page.items.as_slice() } else { &[] };
+    body.iter().chain(&page.header).chain(&page.footer).filter_map(move |it| match it {
+        Placed::Cell { rect, covered: false, story, .. } if all || Some(*story) == editing => Some(*rect),
         _ => None,
     })
 }
@@ -1144,6 +1146,8 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
     let caret = layout.caret_on(&preview_sel(app).unwrap_or(app.session.sel_ends()).focus, app.session.page_hint);
     // Editing a header/footer (or a note) dims the body; once per frame, for every page.
     let dim_body = dims_body(app, &layout);
+    let grid_story = text_box_host(app, &layout).unwrap_or(app.session.sel.focus.story);
+    let grid_story = matches!(part_kind(app, grid_story), Some(PartKind::Header | PartKind::Footer)).then_some(grid_story);
     if let Some(c) = caret
         && !app.session.selects_whole_story()
     {
@@ -1474,9 +1478,10 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                     painter.line_segment([pos2(x0, sy), pos2(x1, sy)], stroke);
                 }
             }
-            // Table Layout › View Gridlines: table cell outlines (on screen only).
-            if app.session.view.table_gridlines {
-                for rect in gridline_cells(page) {
+            // The current header/footer's cells have editing guides; explicit View Gridlines
+            // still outlines every table. Neither kind of guide is part of the document.
+            if app.session.view.table_gridlines || grid_story.is_some() {
+                for rect in gridline_cells(page, app.session.view.table_gridlines, grid_story) {
                     let r = Rect::from_min_size(
                         pos2(visual_sr.min.x + rect.x * page_scale, visual_sr.min.y + rect.y * page_scale),
                         vec2(rect.w * page_scale, rect.h * page_scale),
@@ -3502,6 +3507,7 @@ fn context_menu(app: &mut WordApp, ui: &mut Ui) {
         item(ui, app, "Change Picture…", "ui.changePicture", json!({}));
         item(ui, app, "Reset Picture", "picture.reset", json!({}));
         item(ui, app, "Size and Crop…", "ui.tab", json!({"tab": "Picture Format"}));
+        item(ui, app, "Crop", "ui.crop", json!({}));
     }
     if picture || object {
         // A numbered caption under (or over) the picture, shape, text box or chart (#1230).
@@ -6409,12 +6415,18 @@ mod tests {
         };
         let page = Page {
             items: vec![cell(100.0, false, StoryRef::Body), cell(110.0, true, StoryRef::Body)],
-            header: vec![cell(10.0, false, StoryRef::Part(1))],
+            header: vec![cell(10.0, false, StoryRef::Part(1)), cell(20.0, true, StoryRef::Part(1))],
             footer: vec![cell(200.0, false, StoryRef::Part(2))],
             ..Default::default()
         };
-        let ys: Vec<f32> = gridline_cells(&page).map(|r| r.y).collect();
+        let ys: Vec<f32> = gridline_cells(&page, true, None).map(|r| r.y).collect();
         assert_eq!(ys, [100.0, 10.0, 200.0]);
+        let ys: Vec<f32> = gridline_cells(&page, true, Some(StoryRef::Part(2))).map(|r| r.y).collect();
+        assert_eq!(ys, [100.0, 10.0, 200.0], "explicit View Gridlines still shows the other stories");
+        let ys = |editing| gridline_cells(&page, false, editing).map(|r| r.y).collect::<Vec<_>>();
+        assert_eq!(ys(Some(StoryRef::Part(1))), [10.0]);
+        assert_eq!(ys(Some(StoryRef::Part(2))), [200.0]);
+        assert!(ys(None).is_empty(), "closing header/footer editing removes the automatic guides");
     }
 
     #[test]
@@ -7174,6 +7186,63 @@ mod tests {
         h.step();
         assert_eq!(h.state().canvas.ime_preedit_range, None, "the commit clears the range");
         assert!(h.state().session.doc.plain_text(wordcraft_doc::StoryRef::Body).contains("にほん"));
+    }
+
+    #[test]
+    fn context_menu_crop_item_activates_crop_mode() {
+        use egui_kittest::kittest::Queryable;
+        use wordcraft_doc::para::{InlineObject, OBJ};
+        let mut app = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
+        let pic =
+            InlineObject::Image { media: "m".into(), w: 200.0, h: 100.0, alt: String::new(), float: Default::default(), crop: [0.0; 4], ole: None };
+        app.session.doc.insert_object(&Pos::body(0, 0), pic, &Default::default()).unwrap();
+        let end = Pos::body(0, OBJ.len_utf8());
+        app.run("select.range", json!({"anchor": Pos::body(0, 0), "focus": end})).unwrap();
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            app,
+        );
+        for _ in 0..6 {
+            h.step();
+        }
+        let (page, rect) = h.state_mut().session.layout().object(&Pos::body(0, 0), 0).map(|o| (o.page, o.rect)).expect("laid out");
+        let at = page_to_screen(h.state_mut(), page, rect.x + rect.w / 2.0, rect.y + rect.h / 2.0).expect("on screen");
+        h.event(egui::Event::PointerMoved(at));
+        for pressed in [true, false] {
+            h.event(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed, modifiers: Default::default() });
+            h.step();
+        }
+        h.step();
+        assert!(h.state().canvas.context_menu_open, "context menu is open on image");
+        h.get_by_label("Crop ").click();
+        for _ in 0..3 {
+            h.step();
+        }
+        assert!(crate::crop::active(h.state()).is_some(), "crop mode is active after clicking Crop in context menu");
+    }
+
+    #[test]
+    fn crop_is_disabled_when_cursor_is_adjacent_without_selection() {
+        let mut app = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
+        let pic = wordcraft_doc::para::InlineObject::Image {
+            media: "m".into(),
+            w: 200.0,
+            h: 100.0,
+            alt: String::new(),
+            float: Default::default(),
+            crop: [0.0; 4],
+            ole: None,
+        };
+        app.session.doc.insert_object(&Pos::body(0, 0), pic, &Default::default()).unwrap();
+        // Caret is collapsed right at pos 0 (adjacent to the picture).
+        app.session.sel = wordcraft_engine::Selection::caret(Pos::body(0, 0));
+        assert!(crate::ribbon::has_picture_selected(&app.session), "adjacent caret sees picture in ribbon");
+        assert!(!crate::widgets::enabled(&app, "ui.crop"), "ui.crop is disabled when not selected as object");
+        assert!(crate::crop::active(&app).is_none());
     }
 
     fn page_at_index(rects: &[Rect], p: Pos2) -> Option<usize> {
