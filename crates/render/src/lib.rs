@@ -529,6 +529,12 @@ impl RenderOptions {
         self.ink(self.read_paper.or(doc.settings.page_color).unwrap_or(self.paper))
     }
 
+    /// The on-screen color of paper with no page color: [`RenderOptions::read_paper`], else
+    /// [`RenderOptions::paper`]. White Read Mode paper on a dark page is the dark paper grey.
+    pub fn blank_paper(&self) -> Rgb {
+        self.ink(self.read_paper.unwrap_or(self.paper))
+    }
+
     /// The on-screen colour for a document colour (see [`RenderOptions::dark`]).
     pub fn ink(&self, c: Rgb) -> Rgb {
         if !self.dark {
@@ -1683,6 +1689,26 @@ mod tests {
         let plain = render_page(&d, page, 2.0, &RenderOptions::default());
         let on_sepia = render_page(&d, page, 2.0, &sepia);
         assert!(darkest(&plain) < 0x40 && darkest(&on_sepia) <= darkest(&plain) + 8, "{} {}", darkest(&plain), darkest(&on_sepia));
+    }
+
+    /// The paper the canvas draws under a page before its raster: white, the reading paper, or
+    /// the dark paper grey on a dark page, never the document's page color.
+    #[test]
+    fn blank_paper_is_the_reading_paper_or_white_on_screen() {
+        let mut d = Document::from_text("Hello");
+        d.settings.page_color = Some(Rgb(0x10, 0x10, 0x40));
+        let grey = Rgb(DARK_PAPER, DARK_PAPER, DARK_PAPER);
+        for (opts, paper) in [
+            (RenderOptions::default(), Rgb::WHITE),
+            (RenderOptions { read_paper: Some(SEPIA_PAPER), ..Default::default() }, SEPIA_PAPER),
+            (RenderOptions { read_paper: Some(Rgb::WHITE), dark: true, ..Default::default() }, grey),
+            (RenderOptions { dark: true, ..Default::default() }, grey),
+        ] {
+            assert_eq!(opts.blank_paper(), paper);
+            if opts.read_paper.is_some() {
+                assert_eq!(opts.paper_of(&d), paper, "the reading paper hides the page color");
+            }
+        }
     }
 
     /// A PNG signature, an IHDR declaring `w`×`h` 8-bit RGBA and a short IDAT (all CRCs valid, so

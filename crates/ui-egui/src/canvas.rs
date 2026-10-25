@@ -1059,14 +1059,12 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
         app.canvas.read_target_page = None;
         app.canvas.scroll_request = Some(vec2(page as f32 * step, 0.0));
     }
-    // View › Switch Modes: dark paper, inverted document colours.
-    // In Read Mode the Page color setting is used instead: Inverse draws the dark page, Sepia
-    // draws sepia paper and None draws white paper.
-    use wordcraft_engine::cmd::view::ReadPageColor;
-    let read_mode = app.session.view.read_mode;
-    let dark_page = if read_mode { app.session.view.read_page_color == ReadPageColor::Inverse } else { app.session.view.dark_mode };
-    let sepia_page = read_mode && app.session.view.read_page_color == ReadPageColor::Sepia;
-    let dark_paper = wordcraft_render::DARK_PAPER;
+    // The paper under each page, as the page raster draws it without a page color: the dark page
+    // of View › Switch Modes, or in Read Mode the Page color's white, sepia or dark paper.
+    let paper = {
+        let p = page_render_options(app, false).blank_paper();
+        Color32::from_rgb(p.0, p.1, p.2)
+    };
     let show_ruler = app.session.view.ruler
         && app.session.view.mode == wordcraft_layout::ViewMode::Print
         && !app.session.view.read_mode
@@ -1364,14 +1362,6 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
             };
             // Shadow and paper.
             painter.rect_filled(visual_sr.translate(vec2(0.0, 2.0)).expand(1.5), 1.0, t.page_shadow);
-            let paper = if dark_page {
-                Color32::from_gray(dark_paper)
-            } else if sepia_page {
-                let s = wordcraft_render::SEPIA_PAPER;
-                Color32::from_rgb(s.0, s.1, s.2)
-            } else {
-                Color32::WHITE
-            };
             painter.rect_filled(visual_sr, 0.0, paper);
             if tiled {
                 // Render before painting to keep the frame sharp immediately after an edit or
@@ -3602,6 +3592,14 @@ fn field_showing_code(app: &WordApp, pos: &wordcraft_doc::Pos) -> Option<wordcra
     })
 }
 
+/// Whether the pages are drawn dark: View › Switch Modes, or in Read Mode the Page color's
+/// Inverse (Switch Modes is ignored there). Drawing over the pages (ink, drag previews) follows it.
+pub(crate) fn dark_page(app: &WordApp) -> bool {
+    use wordcraft_engine::cmd::view::ReadPageColor;
+    let v = &app.session.view;
+    if v.read_mode { v.read_page_color == ReadPageColor::Inverse } else { v.dark_mode }
+}
+
 /// Render options for this view's page rasters: marks, markup, dark page, header/body dimming.
 fn page_render_options(app: &WordApp, dim_body: bool) -> wordcraft_render::RenderOptions {
     let mut opts = screen_render_options();
@@ -3612,14 +3610,13 @@ fn page_render_options(app: &WordApp, dim_body: bool) -> wordcraft_render::Rende
     // Ink Replay draws the ink itself, stroke by stroke, over pages without it.
     opts.display.hide_ink = app.session.view.hide_ink || app.session.view.draw.replay;
     opts.display.revisions = app.session.prefs.markup.clone();
-    opts.dark = app.session.view.dark_mode;
+    opts.dark = dark_page(app);
     opts.dark_paper = wordcraft_render::DARK_PAPER;
-    // In Read Mode the Page color sets the paper and the dark page, and Switch Modes is ignored.
+    // In Read Mode the Page color sets the paper.
     if app.session.view.read_mode {
         use wordcraft_engine::cmd::view::ReadPageColor;
         let color = app.session.view.read_page_color;
         opts.read_paper = Some(if color == ReadPageColor::Sepia { wordcraft_render::SEPIA_PAPER } else { wordcraft_doc::props::Rgb::WHITE });
-        opts.dark = color == ReadPageColor::Inverse;
     }
     opts.display.dim_header = !dim_body;
     opts.display.dim_body = dim_body;
@@ -4125,15 +4122,45 @@ mod tests {
         a.run("view.printLayout", json!({})).unwrap();
         assert_eq!(paper(&a), Rgb(0x10, 0x20, 0x40), "leaving Read Mode brings the page color back");
         assert!(!page_render_options(&a, false).dark);
-        // With Switch Modes on, Read Mode's paper still follows the Page color: None is white and Sepia is sepia.
+        // With Switch Modes on, Read Mode's paper still follows the Page color, which is kept from
+        // the last entry: Inverse is dark, None is white and Sepia is sepia.
         a.session.view.dark_mode = true;
         a.run("view.readMode", json!({})).unwrap();
+        assert!(page_render_options(&a, false).dark, "Inverse is kept");
+        a.run("view.readPageColor", json!({"value": "none"})).unwrap();
         assert!(!page_render_options(&a, false).dark);
         assert_eq!(paper(&a), Rgb::WHITE);
         a.run("view.readPageColor", json!({"value": "sepia"})).unwrap();
         assert_eq!(paper(&a), wordcraft_render::SEPIA_PAPER);
         a.run("view.printLayout", json!({})).unwrap();
         assert!(page_render_options(&a, false).dark, "Print Layout keeps Switch Modes");
+    }
+
+    /// What the canvas draws over the pages (ink, object drag previews, table drag arrows) and the
+    /// paper drawn under a page before its raster follow Read Mode's Page color, not Switch Modes.
+    #[test]
+    fn drawing_over_the_pages_follows_the_read_mode_page_color() {
+        use wordcraft_doc::props::Rgb;
+        let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("Hello WordCraft")), Default::default());
+        a.run("design.pageColor", json!({"color": "#102040"})).unwrap();
+        let blank = |a: &WordApp| page_render_options(a, false).blank_paper();
+        let grey = Rgb(wordcraft_render::DARK_PAPER, wordcraft_render::DARK_PAPER, wordcraft_render::DARK_PAPER);
+        a.session.view.dark_mode = true;
+        assert!(dark_page(&a), "Switch Modes in Print Layout");
+        assert_eq!(blank(&a), grey);
+        a.run("view.readMode", json!({})).unwrap();
+        assert!(!dark_page(&a), "None in Read Mode, with Switch Modes on");
+        assert_eq!(blank(&a), Rgb::WHITE);
+        a.run("view.readPageColor", json!({"value": "sepia"})).unwrap();
+        assert!(!dark_page(&a));
+        assert_eq!(blank(&a), wordcraft_render::SEPIA_PAPER);
+        a.session.view.dark_mode = false;
+        a.run("view.readPageColor", json!({"value": "inverse"})).unwrap();
+        assert!(dark_page(&a), "Inverse in Read Mode, with Switch Modes off");
+        assert_eq!(blank(&a), grey);
+        a.run("view.printLayout", json!({})).unwrap();
+        assert!(!dark_page(&a));
+        assert_eq!(blank(&a), Rgb::WHITE, "the paper under the raster, not the page color");
     }
 
     /// #299: the caret's colour is worked out only when the caret is drawn: with text selected
