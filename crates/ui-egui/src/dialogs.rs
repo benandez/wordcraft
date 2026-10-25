@@ -2073,7 +2073,8 @@ fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                         }
                     }
                     ui.horizontal(|ui| {
-                        let points = ui.add_enabled(*kern == Some(true), egui::DragValue::new(kern_at).speed(0.5).range(1.0..=1638.0).max_decimals(1));
+                        let points =
+                            ui.add_enabled(*kern == Some(true), egui::DragValue::new(kern_at).speed(0.5).range(1.0..=1638.0).max_decimals(1));
                         let points_label = ui.label(tl!("Points and above"));
                         points.labelled_by(points_label.id);
                     });
@@ -2444,23 +2445,27 @@ fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                     let top_label = ui.label(tl!("Top:"));
                     ui.add(
                         egui::DragValue::new(top).speed(3.6 / crate::options::unit().pt_per_unit()).measure(crate::options::unit()).max_decimals(2),
-                    ).labelled_by(top_label.id);
+                    )
+                    .labelled_by(top_label.id);
                     let bottom_label = ui.label(tl!("Bottom:"));
                     ui.add(
                         egui::DragValue::new(bottom)
                             .speed(3.6 / crate::options::unit().pt_per_unit())
                             .measure(crate::options::unit())
                             .max_decimals(2),
-                    ).labelled_by(bottom_label.id);
+                    )
+                    .labelled_by(bottom_label.id);
                     ui.end_row();
                     let left_label = ui.label(if *mirror { tl!("Inside:") } else { tl!("Left:") });
                     ui.add(
                         egui::DragValue::new(left).speed(3.6 / crate::options::unit().pt_per_unit()).measure(crate::options::unit()).max_decimals(2),
-                    ).labelled_by(left_label.id);
+                    )
+                    .labelled_by(left_label.id);
                     let right_label = ui.label(if *mirror { tl!("Outside:") } else { tl!("Right:") });
                     ui.add(
                         egui::DragValue::new(right).speed(3.6 / crate::options::unit().pt_per_unit()).measure(crate::options::unit()).max_decimals(2),
-                    ).labelled_by(right_label.id);
+                    )
+                    .labelled_by(right_label.id);
                     ui.end_row();
                 });
             });
