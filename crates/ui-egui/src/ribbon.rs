@@ -235,7 +235,7 @@ fn underline_at(u: &Underline, now: f64) -> (f32, f32) {
 
 /// Draws the underline under the active tab, sliding it from the tab chosen before.
 fn slide_underline(ui: &Ui, tab: &str, target: Rect, color: egui::Color32, now: f64, animate: bool) {
-    let id = egui::Id::new("tab_underline");
+    let id = egui::Id::unique("tab_underline");
     let prev: Option<Underline> = ui.ctx().data(|d| d.get_temp(id));
     let next = next_underline(prev.as_ref(), tab, (target.center().x, target.width()), now, animate);
     if next.from != next.to && now - next.start < UNDERLINE_SLIDE_SECS {
@@ -277,7 +277,7 @@ fn next_tab_change(prev: Option<&TabChange>, tab: &str, index: usize, now: f64, 
 /// How far the ribbon's content has come after a tab change, eased: 0 as the tab changes, 1 once
 /// settled, with the side it comes from (+1 from the right, -1 from the left).
 fn tab_content_entry(ctx: &egui::Context, tab: &str, index: usize, now: f64, animate: bool) -> (f32, f32) {
-    let id = egui::Id::new("ribbon_tab_change");
+    let id = egui::Id::unique("ribbon_tab_change");
     let prev: Option<TabChange> = ctx.data(|d| d.get_temp(id));
     let next = next_tab_change(prev.as_ref(), tab, index, now, animate);
     let p = ((now - next.start) / CONTENT_SWITCH_SECS).clamp(0.0, 1.0) as f32;
