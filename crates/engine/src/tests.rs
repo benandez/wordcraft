@@ -893,6 +893,72 @@ fn find_replace_wildcards() {
 }
 
 #[test]
+fn regex_replace_expands_groups() {
+    // #4177: with Regular expressions on, Replace with expands capture groups.
+    let rep = |text: &str, q: &str, with: &str| rep_mode(text, q, with, json!({"regex": true}));
+    let names = "Smith, John and Doe, Jane";
+    // The issue's cases: `\n` and `$n` swap words; `${name}` names a group.
+    assert_eq!(rep(names, r"(\w+), (\w+)", r"\2 \1"), "John Smith and Jane Doe");
+    assert_eq!(rep(names, r"(\w+), (\w+)", "$2 $1"), "John Smith and Jane Doe");
+    assert_eq!(rep("2024-05", r"(?<y>\d{4})-", "${y}/"), "2024/05");
+    // Braced numbers, `$0` / `${0}` (whole match), `$$` (a dollar sign).
+    assert_eq!(rep("ab", "(a)(b)", "${2}${1}"), "ba");
+    assert_eq!(rep("ab", "a", "[$0|${0}]"), "[a|a]b");
+    assert_eq!(rep("5", r"(\d)", "$$$1"), "$5");
+    // `$name` takes the longest run of letters, digits and `_` (the regex crate's rule).
+    assert_eq!(rep("ab", "(?<x>a)", "$x_"), "b");
+    assert_eq!(rep("ab", "(?<x>a)", "${x}_"), "a_b");
+    assert_eq!(rep("ab", "(a)", "$1a"), "b");
+    // Missing, unknown and out-of-range groups expand to nothing.
+    assert_eq!(rep("ab", "(a)", "<$2>"), "<>b");
+    assert_eq!(rep("ab", "(a)", r"<\9>"), "<>b");
+    assert_eq!(rep("ab", "(a)", "<${nope}>"), "<>b");
+    assert_eq!(rep("ab", "(a)", "<$99999999999999999999999>"), "<>b");
+    assert_eq!(rep("ab", "(a)|(z)", "<$2>"), "<>b");
+    // A `$` that starts no group, and an unclosed brace, stay as written.
+    assert_eq!(rep("ab", "a", "$ ${x"), "$ ${xb");
+    // `\t` a tab, `\\` a backslash; other escapes stay as written.
+    assert_eq!(rep("ab", "a", r"\t\\\q"), "\t\\\\qb");
+    // Word's `^` codes still work.
+    assert_eq!(rep("ab", "a", "^&^t^&"), "a\tab");
+    // `\$` and `\^` keep the character as typed (CodeRabbit on #4177).
+    assert_eq!(rep("ab", "(a)", r"\$1\^p"), "$1^pb");
+    // `special: false` turns off the `^` codes only; groups still expand (CodeRabbit on #4177).
+    assert_eq!(rep_mode("ab", "(a)", "$1^t", json!({"regex": true, "special": false})), "a^tb");
+    // `\n` is a paragraph mark: it splits the paragraph, as `^p` does, in one undo step.
+    let mut s = s();
+    run(&mut s, "document.setText", json!({"text": "one, two"}));
+    assert_eq!(run(&mut s, "edit.replaceAll", json!({"text": r"(\w+), (\w+)", "with": r"$1\n$2", "regex": true}))["replaced"], 1);
+    assert_eq!(text(&s), "one\ntwo");
+    assert_eq!(s.doc.para_paths(StoryRef::Body).len(), 2);
+    run(&mut s, "edit.undo", json!({}));
+    assert_eq!(text(&s), "one, two");
+    run(&mut s, "document.setText", json!({"text": "a-b"}));
+    run(&mut s, "edit.replaceAll", json!({"text": "-", "with": "^p", "regex": true}));
+    assert_eq!(s.doc.para_paths(StoryRef::Body).len(), 2);
+    // Plain and wildcard Replace are unchanged: `$1` is literal there.
+    assert_eq!(rep_mode("ab", "a", "$1", json!({})), "$1b");
+    assert_eq!(rep_mode("ab", "(a)", "$1\\1", json!({"wildcards": true})), "$1ab");
+    // Hostile Replace text never panics.
+    run(&mut s, "document.setText", json!({"text": "ab ab"}));
+    for with in ["$", "${", "${}", "${0", "$\u{e9}", "\\", "${\u{1F600}}", "$18446744073709551616", "${-1}", "$$$", "\\0\\n\\", "^"] {
+        let _ = s.run("edit.replaceAll", &json!({"text": "(a)(?<n>b)?", "with": with, "regex": true}));
+    }
+}
+
+/// The body text after Replace All of `q` with `with` in `text`, matching case, with `extra` options.
+fn rep_mode(text: &str, q: &str, with: &str, extra: serde_json::Value) -> String {
+    let mut s = s();
+    run(&mut s, "document.setText", json!({"text": text}));
+    let mut v = json!({"text": q, "with": with, "matchCase": true});
+    if let (Some(o), Some(e)) = (v.as_object_mut(), extra.as_object()) {
+        o.extend(e.clone());
+    }
+    run(&mut s, "edit.replaceAll", v);
+    self::text(&s)
+}
+
+#[test]
 fn hostile_find_patterns_are_bounded() {
     let mut s = s();
     run(&mut s, "document.setText", json!({"text": &"a".repeat(5000)}));
@@ -10510,4 +10576,115 @@ fn export_png_refuses_a_path_that_is_not_png() {
         assert!(std::fs::read(&target).unwrap().starts_with(b"\x89PNG"), "{name} is not a PNG");
     }
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn style_set_keeps_imported_styles_latent_styles_and_defaults() {
+    use wordcraft_doc::props::{Rgb, TextColor};
+    use wordcraft_doc::styles::{Style, StyleKind};
+    for name in ["basic", "lines", "shaded", "casual", "centered", "minimalist", "title"] {
+        let mut s = s();
+        let mut body = s.doc.styles.get("Normal").unwrap().clone();
+        body.id = "BodyText".into();
+        body.name = "Body Text".into();
+        body.builtin = true;
+        body.based_on = Some("Normal".into());
+        body.chr.size = Some(20.0);
+        body.chr.color = Some(TextColor::Rgb(Rgb(0xFF, 0, 0)));
+        let grid = Style { id: "GridTable4".into(), name: "Grid Table 4".into(), kind: StyleKind::Table, builtin: true, ..Default::default() };
+        s.doc.styles.styles.push(body.clone());
+        s.doc.styles.styles.push(grid.clone());
+        s.doc.styles.latent_styles = Some("<w:latentStyles/>".into());
+        s.doc.styles.default_chr.lang = Some("de-DE".into());
+        s.doc.styles.default_chr.size = Some(11.0);
+        run(&mut s, "design.styleSet", json!({ "name": name }));
+        assert_eq!(s.doc.styles.get("BodyText"), Some(&body), "{name}: BodyText");
+        assert_eq!(s.doc.styles.get("GridTable4"), Some(&grid), "{name}: GridTable4");
+        assert_eq!(s.doc.styles.latent_styles.as_deref(), Some("<w:latentStyles/>"), "{name}");
+        assert_eq!(s.doc.styles.default_chr.lang.as_deref(), Some("de-DE"), "{name}");
+        assert_eq!(s.doc.styles.default_chr.size, Some(11.0), "{name}");
+        assert_eq!(s.doc.styles.styles.iter().filter(|x| x.id == "Heading1").count(), 1, "{name}");
+        let saved = crate::io::save_bytes("x.docx", &s.doc).unwrap();
+        let back = crate::io::open_bytes("x.docx", &saved).unwrap();
+        assert!(back.styles.get("BodyText").is_some(), "{name}: BodyText after round trip");
+    }
+    let mut s = s();
+    run(&mut s, "design.styleSet", json!({ "name": "title" }));
+    assert_eq!(s.doc.styles.get("Title").unwrap().chr.size, Some(36.0));
+}
+
+fn style_size(s: &Session, id: &str) -> f32 {
+    s.doc.styles.resolve_char(Some(id), &Default::default()).size
+}
+
+#[test]
+fn scale_font_sizes_adds_points_to_every_style() {
+    let mut s = Session::new(crate::sample::sample_document());
+    let ids: Vec<String> = s.doc.styles.styles.iter().map(|x| x.id.clone()).collect();
+    let before: Vec<f32> = ids.iter().map(|i| style_size(&s, i)).collect();
+    let base = s.doc.styles.resolve_char(None, &Default::default()).size;
+    let runs = serde_json::to_string(&s.doc.body).unwrap();
+    run(&mut s, "design.scaleFontSizes", json!({"delta": 2}));
+    // Every style (explicit or inherited) grows by exactly 2, once.
+    for (i, b) in ids.iter().zip(&before) {
+        assert_eq!(style_size(&s, i), b + 2.0, "{i}");
+    }
+    assert_eq!(s.doc.styles.resolve_char(None, &Default::default()).size, base + 2.0);
+    assert_eq!(serde_json::to_string(&s.doc.body).unwrap(), runs, "runs untouched");
+    run(&mut s, "edit.undo", json!({}));
+    for (i, b) in ids.iter().zip(&before) {
+        assert_eq!(style_size(&s, i), *b, "undo {i}");
+    }
+}
+
+#[test]
+fn scale_font_sizes_percent_and_clamp_and_errors() {
+    let mut s = Session::new(crate::sample::sample_document());
+    let n = style_size(&s, "Normal");
+    run(&mut s, "design.scaleFontSizes", json!({"percent": 10}));
+    assert_eq!(style_size(&s, "Normal"), (n * 1.1 * 2.0).round() / 2.0);
+    run(&mut s, "design.scaleFontSizes", json!({"delta": -500}));
+    assert_eq!(style_size(&s, "Normal"), 1.0);
+    for bad in [
+        json!({}),
+        json!({"delta": 1e9}),
+        json!({"percent": -100}),
+        json!({"percent": 1e9}),
+        json!({"delta": "x"}),
+        json!({"delta": 0}),
+        json!({"percent": 0}),
+        json!({"delta": 1, "percent": 10}),
+        json!({"delta": 2, "percent": "x"}),
+        json!({"percent": 10, "delta": null}),
+    ] {
+        assert!(s.run("design.scaleFontSizes", &bad).is_err(), "{bad}");
+    }
+}
+
+#[test]
+fn scale_font_sizes_reaches_char_table_and_cs_sizes_and_unset_default() {
+    use wordcraft_doc::props::CharProps;
+    use wordcraft_doc::{Style, StyleKind, styles::TablePart};
+    let mut s = s();
+    s.doc.styles.default_chr.size = None;
+    s.doc.styles.default_chr.size_cs = Some(10.0);
+    let mut ch = Style { id: "Big".into(), name: "Big".into(), kind: StyleKind::Character, ..Default::default() };
+    ch.chr.size = Some(20.0);
+    ch.chr.size_cs = Some(22.0);
+    let mut tb = Style { id: "Grid".into(), name: "Grid".into(), kind: StyleKind::Table, ..Default::default() };
+    let mut parts = wordcraft_doc::styles::TableStyleParts::default();
+    parts.header_chr.size = Some(14.0);
+    parts.regions.entry(TablePart::Band2Horz).or_default().chr.size = Some(8.0);
+    tb.table = Some(parts);
+    s.doc.styles.styles.extend([ch, tb]);
+    run(&mut s, "design.scaleFontSizes", json!({"delta": 2}));
+    let st = &s.doc.styles;
+    assert_eq!(st.default_chr.size, Some(13.0), "unset default is 11 pt, made explicit");
+    assert_eq!(st.default_chr.size_cs, Some(12.0));
+    let big = CharProps { style: Some("Big".into()), ..Default::default() };
+    assert_eq!(st.resolve_char(None, &big).size, 22.0);
+    assert_eq!(st.resolve_char(None, &big).size_cs, 24.0);
+    let grid = st.styles.iter().find(|x| x.id == "Grid").and_then(|x| x.table.as_ref()).unwrap();
+    assert_eq!(grid.header_chr.size, Some(16.0));
+    assert_eq!(grid.regions.get(&TablePart::Band2Horz).unwrap().chr.size, Some(10.0));
 }

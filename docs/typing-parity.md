@@ -114,6 +114,8 @@ formatting of the text before the cursor. Not yet compared side by side in Word.
 | Change Case (Shift+F3, Home › Aa) (tracking on) | Word shows no insertion or deletion markup (checked with Formatting markup set to none, so Word may record it as a hidden formatting revision). **Differs:** WordCraft records the changed letters as a tracked deletion of the old and insertion of the new, since case isn't a run property a formatting revision could hold; Reject All restores the old case, Accept All keeps the new. Your own tracked insertion is rewritten in place; already-deleted text is left alone and doesn't count (with tracking off too), so changing case again (or Shift+F3) works from the visible text. Refused in content locked against editing | `tests_revision_checks::tracked_change_case_rejects_back_to_the_original_case`, `tracked_change_case_of_own_insertion_stays_an_insertion`, `tracked_change_case_twice_reads_only_the_live_text`, `tracked_change_case_handles_sharp_s_and_mixed_formatting`, `change_case_refuses_content_locked_against_editing` |
 | Unlink Fields (Ctrl+Shift+F9) (tracking on) | not tracked, like Word: the field's result stays as ordinary text. Refused in content locked against editing | `tests_revision_checks::tracked_unlink_keeps_the_result_as_plain_text`, `unlink_refuses_a_field_in_content_locked_against_editing` |
 
+> **Three-column preset update:** 2026-10-15 · `blankThree` headers/footers start the caret in the first of three table cells (#2197). `text.tab` reaches the next cell and `text.insert` edits it through the existing command path. `crates/engine/tests/it/three_column_headers.rs` checks cell navigation, independent formatting, preset/text undo/redo and repeated DOCX save/reopen.
+
 ## Editing keys
 
 Word's documented keyboard behaviour (Microsoft's shortcut list, feature names only); the
@@ -156,6 +158,13 @@ ideographic space (`autocorrect_finds_the_word_after_a_wide_space`):
   is “ (U+201C) even though it shows on the right of the word, after a letter ” (U+201D); in an
   acronym (`צה"ל`) it becomes ” as in Word for Mac 16.113.4, not gershayim (״); `'` after a letter
   (`ג'ירפה`) is ’ as after any letter, with no geresh conversion (not yet checked in Word; `smart_quotes_in_hebrew_use_logical_order`, #1670).
+- Add a period with double-space (File › Options › Proofing › AutoCorrect Options › AutoFormat As
+  You Type, `tools.autocorrect {"doubleSpacePeriod"}`; **off by default**, as macOS's system switch
+  is a per-user choice): a second Space after a letter, a digit or a closing bracket or quote turns
+  the first into a period (`Hello  world`→`Hello. world`). Other punctuation before the spaces,
+  a lone space, the start of a paragraph, a tab, a selection typed over and a third space are left
+  as typed; Undo puts the two spaces back (`double_space_adds_a_period_when_asked`, #2848). Not
+  observed in Word; Word for Mac follows the macOS setting.
 - Correct TWo INitial CApitals: a finished word of three or more letters with two capitals and
   the rest lowercase loses its second capital (`WOrd`→`Word`, `TEh`→`The`); not the exceptions
   (`IDs`, `CDs`, `PCs`, `TVs`, … plus the user's, `tools.autocorrect {"addInitialCapsException"}`)
@@ -427,6 +436,8 @@ again.
 | 2026-10-19 | trivial | Delete on whole selected cells (rows, columns, the table, a cell) leaves one empty paragraph in each, with the cell's last paragraph's formatting; nested tables go too (#2802) |
 | 2026-10-19 | trivial | Ctrl+Tab (⌥Tab on macOS) types a tab character in a table cell (#3137) |
 | 2026-10-16 | trivial | AltGr on Linux (Wayland) types ś, ł, ż… instead of opening KeyTips: the modifiers event without Alt that follows the Right Alt key no longer reads as Alt let go, and a bare AltGr tap doesn't open KeyTips (#2388) |
+| 2026-10-20 | trivial | AutoFormat As You Type: optional "Add a period with double-space" (off by default), undoable (#2848) |
+| 2026-10-15 | trivial | Three-column header/footer preset: first-cell caret, Tab navigation, independent formatting and undo/redo regression coverage (#2197) |
 | 2026-10-18 | trivial | Typing over a selection takes the first selected character's formatting, also when the selection was made right to left (#2879) |
 | 2026-10-17 | trivial | A table inserted in a right-to-left paragraph is a right-to-left table, so Tab moves to the cell on the left (#2634) |
 | 2026-10-15 | trivial | Backspace after a section break and Delete before it remove the break, also one on the last paragraph's mark; the text takes the following section's setup and keeps the headers it showed (#2127) |
