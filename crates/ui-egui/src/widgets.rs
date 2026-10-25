@@ -1312,7 +1312,7 @@ pub fn icon_menu_item(ui: &mut Ui, icon: &str, text: &str, shortcut: &str, min_w
 /// of its parent and shows only the border.
 pub fn section<R>(ui: &mut Ui, title: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
     let t = Tokens::get(ui.ctx());
-    let key = egui::Id::new("dialog_section_fill");
+    let key = egui::Id::unique();
     let parent: Option<Color32> = ui.data(|d| d.get_temp(key));
     let fill = parent.unwrap_or_else(|| ui.visuals().window_fill.lerp_to_gamma(t.text, 0.04));
     ui.data_mut(|d| d.insert_temp(key, fill));

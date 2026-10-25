@@ -5068,7 +5068,7 @@ mod tests {
         for _ in 0..4 {
             h.step();
         }
-        let id = egui::Id::new(("dialog", "Page Setup"));
+        let id = egui::Id::unique();
         let rect = h.ctx.memory(|m| m.area_rect(id)).expect("the dialog is open");
         assert!(rect.height() <= 360.5, "the dialog is {}pt tall on a 360pt screen", rect.height());
     }
