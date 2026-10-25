@@ -118,7 +118,7 @@ fn styles_pane(app: &mut WordApp, ui: &mut Ui, t: &Tokens) {
             // a pane floated for the first time goes there rather than over the ribbon.
             let home = ui.available_rect_before_wrap();
             let mut win = egui::Window::new(tl!("Styles"))
-                .id(egui::Id::new("styles_pane_float"))
+                .id(egui::Id::unique("styles_pane_float"))
                 .title_bar(false)
                 .collapsible(false)
                 .resizable(true)
