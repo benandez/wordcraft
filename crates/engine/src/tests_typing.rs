@@ -319,6 +319,29 @@ fn list_autoformat_does_not_override_a_style_linked_heading_number() {
     assert_eq!(paras(&s)[1].0, "- Two", "the trigger stays as typed text, not stripped into a bullet");
 }
 
+/// A heading numbered only through its style's linked Multilevel List keeps "---" and "+--+--+"
+/// as text on Enter, as a paragraph numbered directly does: no border, no table, and at the top
+/// of the document the heading keeps its number.
+#[test]
+fn border_and_table_lines_stay_text_in_a_style_numbered_heading() {
+    for (above, keys) in [("", "---"), ("Above\n", "---"), ("", "+--+--+"), ("Above\n", "+--+--+")] {
+        let mut s = s();
+        typ(&mut s, &format!("{above}{keys}"));
+        run(&mut s, "para.heading1", json!({}));
+        run(&mut s, "list.multilevelPreset", json!({"preset": "headings"}));
+        let at = Pos::body(s.doc.body.len() - 1, 0);
+        assert_eq!(s.doc.para_at(&at).unwrap().props.numbering, None, "numbered through the style, not directly");
+        typ(&mut s, "\nText");
+        assert_eq!(s.doc.plain_text(StoryRef::Body), format!("{above}{keys}\nText"), "{above:?}{keys}");
+        assert!(s.doc.body.iter().all(|b| b.as_para().is_some_and(|p| p.props.borders.is_none())), "{above:?}{keys}");
+        let mut want = vec![num(Some("1"), "Heading1"), num(None, "Normal")];
+        if !above.is_empty() {
+            want.insert(0, num(None, "Normal"));
+        }
+        assert_eq!(numbers(&mut s), want, "{above:?}{keys}");
+    }
+}
+
 #[test]
 fn list_autoformat_triggers() {
     let s = typed("- Item\nNext");
@@ -522,6 +545,174 @@ fn ordinals_become_superscript() {
     };
     assert!(sup("1st") && sup("22nd") && sup("13th"));
     assert!(!sup("1th"));
+}
+
+#[test]
+fn bold_and_italic_marks_become_formatting() {
+    let mut s = s();
+    run(&mut s, "tools.autocorrect", json!({"boldItalic": true, "capSentences": false}));
+    typ(&mut s, "say *very* nice, _quite_ good *two words*. ok\n*end*\nnext");
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "say very nice, quite good two words. ok\nend\nnext");
+    let p = s.doc.para_at(&Pos::body(0, 0)).unwrap();
+    let at = |t: &str| p.props_of_char(p.text.find(t).unwrap());
+    assert_eq!((at("very").bold, at("very").italic), (Some(true), None));
+    assert_eq!((at("quite").italic, at("quite").bold), (Some(true), None));
+    // Complex-script text (Arabic, Hebrew) takes the formatting too.
+    assert_eq!((at("very").bold_cs, at("quite").italic_cs), (Some(true), Some(true)));
+    assert_eq!(at("two").bold, Some(true));
+    assert_eq!(at("words").bold, Some(true));
+    for plain in ["say", " nice", ", ", " good", ". ok"] {
+        assert_eq!((at(plain).bold, at(plain).italic), (None, None), "{plain:?}");
+    }
+    // Enter finishes the marked word too, and the next paragraph is not bold.
+    let p = s.doc.para_at(&Pos::body(1, 0)).unwrap();
+    assert_eq!((p.props_of_char(0).bold, p.mark.bold), (Some(true), None));
+    let p = s.doc.para_at(&Pos::body(2, 0)).unwrap();
+    assert_eq!((p.props_of_char(0).bold, p.mark.bold), (None, None));
+    // With Track Changes on, the paragraph marks carry the same revisions as for unmarked text.
+    let marks = |keys: &str| {
+        let mut s = self::s();
+        run(&mut s, "tools.autocorrect", json!({"boldItalic": true}));
+        run(&mut s, "review.trackChanges", json!({"value": true}));
+        typ(&mut s, keys);
+        s.doc.body.iter().filter_map(|b| b.as_para()).map(|p| (p.mark.ins.is_some(), p.mark.del.is_some())).collect::<Vec<_>>()
+    };
+    assert_eq!(marks("x *end*\n"), marks("x end\n"));
+    // After a no-break space too.
+    let mut s = self::s();
+    run(&mut s, "tools.autocorrect", json!({"boldItalic": true}));
+    typ(&mut s, "a\u{a0}*word* ");
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "a\u{a0}word ");
+    // A red word between plain marks: the next paragraph takes the closing mark's formatting.
+    let mut s = self::s();
+    run(&mut s, "tools.autocorrect", json!({"boldItalic": true}));
+    typ(&mut s, "*");
+    run(&mut s, "format.color", json!({"color": "FF0000"}));
+    typ(&mut s, "red");
+    run(&mut s, "format.color", json!({"color": "auto"}));
+    typ(&mut s, "*\nnext");
+    let red = s.doc.para_at(&Pos::body(0, 0)).unwrap().props_of_char(0).color;
+    let p = s.doc.para_at(&Pos::body(1, 0)).unwrap();
+    assert!(red.is_some());
+    assert_ne!(p.mark.color, red);
+    assert_ne!(p.props_of_char(0).color, red);
+    // A heading's next style starts afresh after Enter, as without the marks.
+    let mut s = self::s();
+    run(&mut s, "tools.autocorrect", json!({"boldItalic": true}));
+    run(&mut s, "para.heading1", json!({}));
+    run(&mut s, "format.bold", json!({}));
+    typ(&mut s, "*title*\n");
+    let p = s.doc.para_at(&Pos::body(1, 0)).unwrap();
+    assert_eq!((p.props.style.as_deref(), p.mark.bold), (Some("Normal"), None));
+    // Marks typed before Track Changes was turned on stay: removing them would not be tracked.
+    let mut s = self::s();
+    run(&mut s, "tools.autocorrect", json!({"boldItalic": true}));
+    typ(&mut s, "x *end*");
+    run(&mut s, "review.trackChanges", json!({"value": true}));
+    typ(&mut s, " ");
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "X *end* ");
+    // Marks the same author typed with Track Changes on are converted.
+    let mut s = self::s();
+    run(&mut s, "tools.autocorrect", json!({"boldItalic": true}));
+    run(&mut s, "review.trackChanges", json!({"value": true}));
+    typ(&mut s, "x *end* ");
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "X end ");
+    // Marks another author inserted stay.
+    let mut s = self::s();
+    run(&mut s, "tools.autocorrect", json!({"boldItalic": true}));
+    run(&mut s, "review.trackChanges", json!({"value": true}));
+    run(&mut s, "file.setAuthor", json!({"name": "Ana"}));
+    typ(&mut s, "x *end*");
+    run(&mut s, "file.setAuthor", json!({"name": "Ben"}));
+    typ(&mut s, " ");
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "X *end* ");
+    // Undo right after brings the marks back.
+    let mut s = self::s();
+    run(&mut s, "tools.autocorrect", json!({"boldItalic": true}));
+    typ(&mut s, "a *b* ");
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "A b ");
+    run(&mut s, "edit.undo", json!({}));
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "A *b* ");
+    // After Enter, Undo brings the marks back and the Enter stays.
+    let mut s = self::s();
+    run(&mut s, "tools.autocorrect", json!({"boldItalic": true}));
+    typ(&mut s, "a *b*\n");
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "A b\n");
+    run(&mut s, "edit.undo", json!({}));
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "A *b*\n");
+}
+
+#[test]
+fn autocorrect_goes_on_after_bold_and_italic_marks() {
+    // After a space or punctuation, the word without its marks is replaced and capitalized.
+    let mut s = s();
+    run(&mut s, "tools.autocorrect", json!({"boldItalic": true, "add": {"from": "wc", "to": "WordCraft"}}));
+    typ(&mut s, "*teh* end. _wc_.");
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "The end. WordCraft.");
+    let p = s.doc.para_at(&Pos::body(0, 0)).unwrap();
+    let at = |t: &str| p.props_of_char(p.text.find(t).unwrap()).clone();
+    assert_eq!((at("The").bold, at("WordCraft").italic, at(" end").bold), (Some(true), Some(true), None));
+    // One Undo brings the marks back as typed.
+    run(&mut s, "edit.undo", json!({}));
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "The end. _wc_.");
+    // A marked web address becomes a link, and the text typed after it is neither bold nor italic.
+    let mut s = self::s();
+    run(&mut s, "tools.autocorrect", json!({"boldItalic": true}));
+    typ(&mut s, "see *www.example.org* and _www.example.com_ next ");
+    let p = s.doc.para_at(&Pos::body(0, 0)).unwrap();
+    let at = |t: &str| p.props_of_char(p.text.find(t).unwrap()).clone();
+    assert_eq!((at("www.example.org").bold, at("www.example.org").link.is_some()), (Some(true), true));
+    assert_eq!((at("www.example.com").italic, at("www.example.com").link.is_some()), (Some(true), true));
+    for plain in [" and", " next"] {
+        assert_eq!((at(plain).bold, at(plain).italic, at(plain).link.is_some()), (None, None, false), "{plain:?}");
+    }
+    // After Enter too; a longer replacement moves the Enter with it, and Undo keeps the Enter.
+    let mut s = self::s();
+    run(&mut s, "tools.autocorrect", json!({"boldItalic": true, "add": {"from": "wc", "to": "WordCraft"}}));
+    typ(&mut s, "*teh*\nok. *wc*\nnext");
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "The\nOk. WordCraft\nnext");
+    let p = s.doc.para_at(&Pos::body(1, 0)).unwrap();
+    assert_eq!(p.props_of_char(p.text.find("WordCraft").unwrap()).bold, Some(true));
+    let mut s = self::s();
+    run(&mut s, "tools.autocorrect", json!({"boldItalic": true}));
+    typ(&mut s, "*teh*\n");
+    run(&mut s, "edit.undo", json!({}));
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "*teh*\n");
+    // In a span of several words, the first word is replaced and capitalized as it is typed.
+    let mut s = self::s();
+    run(&mut s, "tools.autocorrect", json!({"boldItalic": true}));
+    typ(&mut s, "*teh end* and _teh rest_ ");
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "The end and the rest ");
+    let p = s.doc.para_at(&Pos::body(0, 0)).unwrap();
+    let at = |t: &str| p.props_of_char(p.text.find(t).unwrap()).clone();
+    assert_eq!((at("The end").bold, at("the rest").italic, at(" and").bold), (Some(true), Some(true), None));
+}
+
+#[test]
+fn bold_and_italic_marks_stay_as_typed_unless_they_enclose_words() {
+    let mut s = s();
+    run(&mut s, "tools.autocorrect", json!({"boldItalic": true, "capSentences": false}));
+    let keys = "2*3* file_name_ * x* *x * ** __ *?!* _-_ ";
+    typ(&mut s, keys);
+    assert_eq!(s.doc.plain_text(StoryRef::Body), keys);
+    // Marks stay while formatting is limited to the document's styles.
+    let mut s = self::s();
+    run(&mut s, "tools.autocorrect", json!({"boldItalic": true}));
+    run(&mut s, "review.restrict", json!({"mode": "none", "formatting": true}));
+    typ(&mut s, "*word* ");
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "*word* ");
+    // Marks around an object (here a check box content control) stay.
+    let mut s = self::s();
+    run(&mut s, "tools.autocorrect", json!({"boldItalic": true}));
+    typ(&mut s, "x *");
+    run(&mut s, "developer.checkBox", json!({}));
+    run(&mut s, "caret.docEnd", json!({}));
+    typ(&mut s, "* ");
+    let p = s.doc.para_at(&Pos::body(0, 0)).unwrap();
+    assert_eq!(p.text.matches('*').count(), 2, "{:?}", p.text);
+    // Off by default.
+    let s = typed("*bold* _italic_ ");
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "*bold* _italic_ ");
 }
 
 #[test]
@@ -2951,6 +3142,7 @@ fn highlight_toggle_checks_past_the_resolved_run_limit() {
             } else {
                 doc.para_mut(StoryRef::Body, &Pos::body(1, 0).path).unwrap().runs[0].props.highlight = Some(Highlight::Yellow);
             }
+            doc.para_mut(StoryRef::Body, &Pos::body(0, 0).path).unwrap().mark.highlight = Some(Highlight::Blue);
             let original = doc.clone();
             let mut s = Session::new(doc);
             s.last_highlight = Highlight::Blue;
@@ -2987,4 +3179,210 @@ fn highlight_preview_preserves_the_session_colour_and_document() {
     assert_eq!(serde_json::to_value(&s.doc).unwrap(), original);
     assert_eq!(s.last_highlight, Highlight::Blue);
     assert_eq!(s.undo_depth(), depth);
+}
+
+/// Whole-cell column selections include paragraph marks, including empty cells and
+/// inherited mark colours; adjacent unselected cells and undo/redo keep their formatting.
+#[test]
+fn highlight_toggle_checks_whole_cell_marks() {
+    use wordcraft_doc::props::Highlight;
+    use wordcraft_doc::{CharProps, Paragraph};
+    for inherited in [false, true] {
+        for empty in [false, true] {
+            let mut s = s();
+            run(&mut s, "insert.table", json!({"rows":2,"cols":2}));
+            let (table, _, _) = s.sel.focus.path.cell().unwrap();
+            let pos = |row, col| {
+                let mut path = table.clone();
+                path.0.extend([row, col, 0]);
+                Pos::new(StoryRef::Body, path, 0)
+            };
+            if inherited {
+                s.doc.styles.default_chr.highlight = Some(Highlight::Yellow);
+            }
+            for row in 0..2 {
+                for col in 0..2 {
+                    let p = s.doc.para_mut(StoryRef::Body, &pos(row, col).path).unwrap();
+                    let colour = if col == 0 { Highlight::Blue } else { Highlight::Red };
+                    *p = Paragraph::with_text(
+                        if empty && row == 1 && col == 0 { "" } else { "AB" },
+                        CharProps { highlight: Some(colour), ..Default::default() },
+                    );
+                    p.mark.highlight = Some(colour);
+                    if row == 1 && col == 0 {
+                        p.mark.highlight = if inherited { None } else { Some(Highlight::Yellow) };
+                    }
+                }
+            }
+            s.last_highlight = Highlight::Blue;
+            run(&mut s, "caret.set", json!({"pos":pos(0,0)}));
+            run(&mut s, "table.selectColumn", json!({}));
+            assert!(!s.cell_range().unwrap().stream);
+            let original = serde_json::to_value(&s.doc).unwrap();
+            run(&mut s, "format.highlight", json!({}));
+            for row in 0..2 {
+                let p = s.doc.para_at(&pos(row, 0)).unwrap();
+                assert_eq!(p.mark.highlight, Some(Highlight::Blue), "inherited={inherited}, empty={empty}");
+                assert!(p.runs.iter().all(|r| r.props.highlight == Some(Highlight::Blue)));
+            }
+            run(&mut s, "format.highlight", json!({}));
+            for row in 0..2 {
+                let p = s.doc.para_at(&pos(row, 0)).unwrap();
+                assert_eq!(p.mark.highlight, Some(Highlight::None));
+                assert!(p.runs.iter().all(|r| r.props.highlight == Some(Highlight::None)));
+                let other = s.doc.para_at(&pos(row, 1)).unwrap();
+                assert_eq!(other.mark.highlight, Some(Highlight::Red));
+                assert!(other.runs.iter().all(|r| r.props.highlight == Some(Highlight::Red)));
+            }
+            run(&mut s, "edit.undo", json!({}));
+            run(&mut s, "edit.undo", json!({}));
+            assert_eq!(serde_json::to_value(&s.doc).unwrap(), original);
+            run(&mut s, "edit.redo", json!({}));
+            assert_eq!(s.doc.para_at(&pos(1, 0)).unwrap().mark.highlight, Some(Highlight::Blue));
+        }
+    }
+}
+
+/// Fully selected marks participate even when the selection has no text runs or an
+/// empty paragraph between blue runs; repeated toggles and undo preserve these targets.
+#[test]
+fn highlight_toggle_checks_ordinary_paragraph_marks() {
+    use wordcraft_doc::props::Highlight;
+    for text in ["AB", "AB\n\nAB", "\n"] {
+        let mut doc = wordcraft_doc::Document::from_text(text);
+        doc.styles.default_chr.highlight = Some(Highlight::Blue);
+        let paths = doc.para_paths(StoryRef::Body);
+        for path in &paths {
+            let p = doc.para_mut(StoryRef::Body, path).unwrap();
+            p.mark.highlight = Some(Highlight::Blue);
+            for r in &mut p.runs {
+                r.props.highlight = Some(Highlight::Blue);
+            }
+        }
+        let mismatch = if text == "AB\n\nAB" { 1 } else { 0 };
+        doc.para_mut(StoryRef::Body, &paths[mismatch]).unwrap().mark.highlight = Some(Highlight::Yellow);
+        let original = serde_json::to_value(&doc).unwrap();
+        let mut s = Session::new(doc);
+        s.last_highlight = Highlight::Blue;
+        run(&mut s, "select.all", json!({}));
+        run(&mut s, "format.highlight", json!({}));
+        for path in &paths {
+            let p = s.doc.para(StoryRef::Body, path).unwrap();
+            assert_eq!(p.mark.highlight, Some(Highlight::Blue), "text={text:?}");
+            assert!(p.runs.iter().all(|r| r.props.highlight == Some(Highlight::Blue)));
+        }
+        run(&mut s, "format.highlight", json!({}));
+        assert!(paths.iter().all(|p| s.doc.para(StoryRef::Body, p).unwrap().mark.highlight == Some(Highlight::None)));
+        run(&mut s, "edit.undo", json!({}));
+        run(&mut s, "edit.undo", json!({}));
+        assert_eq!(serde_json::to_value(&s.doc).unwrap(), original);
+    }
+}
+
+/// A partial text column excludes paragraph marks and text beyond its selected offsets,
+/// so a different mark colour must not prevent clearing the selected blue characters.
+#[test]
+fn highlight_partial_column_ignores_unselected_marks() {
+    use wordcraft_doc::props::Highlight;
+    let mut doc = wordcraft_doc::Document::from_text("AB\nAB");
+    for path in doc.para_paths(StoryRef::Body) {
+        let p = doc.para_mut(StoryRef::Body, &path).unwrap();
+        p.mark.highlight = Some(Highlight::Yellow);
+        for r in &mut p.runs {
+            r.props.highlight = Some(Highlight::Blue);
+        }
+    }
+    let mut s = Session::new(doc);
+    s.last_highlight = Highlight::Blue;
+    run(&mut s, "select.column", json!({"anchor":Pos::body(0,0),"focus":Pos::body(1,1)}));
+    run(&mut s, "format.highlight", json!({}));
+    for row in 0..2 {
+        let p = s.doc.para_at(&Pos::body(row, 0)).unwrap();
+        assert_eq!(p.props_of_char(0).highlight, Some(Highlight::None));
+        assert_eq!(p.props_of_char(1).highlight, Some(Highlight::Blue));
+        assert_eq!(p.mark.highlight, Some(Highlight::Yellow));
+    }
+}
+
+#[test]
+fn tab_with_a_whole_paragraph_selected_indents_it() {
+    let mut s = typed("Hello world");
+    run(&mut s, "select.paragraph", json!({}));
+    run(&mut s, "text.tab", json!({}));
+    assert_eq!(paras(&s), vec![para("Hello world", None)]);
+    assert_eq!(indents(&s).0, Some(36.0));
+}
+
+#[test]
+fn tab_with_a_partial_selection_still_inserts_a_tab() {
+    let mut s = typed("Hello world");
+    run(&mut s, "select.text", json!({"text": "ello"}));
+    run(&mut s, "text.tab", json!({}));
+    assert_eq!(paras(&s), vec![para("H\t world", None)]);
+}
+
+/// Tab with a whole paragraph selected indents it as one Undo step: the selection stays while
+/// the indent is applied, and Undo restores both the indentation and that same selection. A
+/// partial selection still types a tab character (the test above), and Tab in a table cell still
+/// navigates (the table tests above).
+#[test]
+fn tab_with_a_whole_paragraph_selected_undoes_indent_and_selection_together() {
+    let mut s = typed("Hello world");
+    run(&mut s, "select.paragraph", json!({}));
+    let selected = s.sel.clone();
+    let depth = s.undo_depth();
+    run(&mut s, "text.tab", json!({}));
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "Hello world", "Tab indents, it types no tab");
+    assert_eq!(s.sel, selected, "the whole paragraph stays selected");
+    assert_eq!(indents(&s), (Some(36.0), None));
+    assert_eq!(s.undo_depth(), depth + 1, "one paragraph, one Undo step");
+    run(&mut s, "edit.undo", json!({}));
+    assert_eq!(indents(&s), (None, None), "Undo takes the indent back");
+    assert_eq!(s.sel, selected, "and restores the selection the indent was applied to");
+    assert_eq!(paras(&s), vec![para("Hello world", None)]);
+}
+
+/// #2848: "Add a period with double-space" (an AutoFormat As You Type switch, off by default):
+/// a second Space after a word, a number or a closing bracket or quote turns the first into a
+/// period. Undo puts the two spaces back; other punctuation, a lone space and a run of three
+/// spaces are left as typed.
+#[test]
+fn double_space_adds_a_period_when_asked() {
+    let with_option = |keys: &str| {
+        let mut s = s();
+        run(&mut s, "tools.autocorrect", json!({"doubleSpacePeriod": true}));
+        typ(&mut s, keys);
+        s
+    };
+    let text = |s: &Session| s.doc.plain_text(StoryRef::Body);
+    // Off unless asked for.
+    assert_eq!(text(&typed("Hello  world")), "Hello  world");
+    assert!(!s().prefs.autocorrect.double_space_period);
+    // On: the second space makes the period, and the next sentence starts with a capital.
+    assert_eq!(text(&with_option("Hello  world")), "Hello. world");
+    assert_eq!(text(&with_option("Hello  world ")), "Hello. World ");
+    assert_eq!(text(&with_option("See page 5  Then")), "See page 5. Then");
+    assert_eq!(text(&with_option("(it is done)  Next")), "(it is done). Next");
+    assert_eq!(text(&with_option("He said \"stop\"  Next")), "He said “stop”. Next");
+    // Undo brings the two spaces back, in one step.
+    let mut t = with_option("Hello  ");
+    assert_eq!(text(&t), "Hello. ");
+    run(&mut t, "edit.undo", json!({}));
+    assert_eq!(text(&t), "Hello  ");
+    // Left alone: other punctuation before the spaces, a lone space, spaces at the start of a
+    // paragraph or after a tab, and a third space.
+    for keys in ["Hello.  x", "Hello,  x", "Hello?  x", "Hello;  x", "Hello:  x", "Hello x", "  x", "\n  x", "a\t  x"] {
+        let want = typed(keys);
+        assert_eq!(text(&with_option(keys)), text(&want), "{keys:?}");
+    }
+    assert_eq!(text(&with_option("Hello   x")), "Hello.  x");
+    // A selection typed over, and the master switch.
+    let mut t = with_option("Hello world");
+    run(&mut t, "select.all", json!({}));
+    run(&mut t, "text.insert", json!({"text": " "}));
+    assert_eq!(text(&t), " ");
+    let mut t = s();
+    run(&mut t, "tools.autocorrect", json!({"doubleSpacePeriod": true, "enabled": false}));
+    typ(&mut t, "Hello  world");
+    assert_eq!(text(&t), "Hello  world");
 }

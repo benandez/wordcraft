@@ -152,6 +152,7 @@ impl AutoScroll {
                 Stroke::NONE,
             ));
         }
+        // No pointer position (outside the window) counts as the dead zone: `update` cancels the gesture then.
         let displacement = ui.ctx().input(|i| i.pointer.hover_pos()).map_or(0.0, |p| p.y - anchor.y);
         ui.ctx().set_cursor_icon(cursor_icon(displacement));
     }
