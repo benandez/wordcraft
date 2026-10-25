@@ -5,7 +5,7 @@
 //! bottom-border paragraph), bullet and ordered lists (nested by indentation), GFM pipe tables,
 //! and inlines: emphasis/strong (the CommonMark delimiter algorithm), `~~strike~~`, code spans,
 //! inline links, autolinks, images (`data:` URIs become pictures, others their alt text),
-//! backslash escapes, entities, `<br>` and `<a id>` anchors.
+//! backslash escapes, entities, HTML comments (`<!-- ... -->`), `<br>` and `<a id>` anchors.
 //!
 //! Export writes the same constructs; pictures become `![alt](media-name)` placeholders.
 
@@ -268,7 +268,7 @@ fn list_marker(t: &str) -> Option<Marker> {
     let (m, len) = if matches!(first, '-' | '+' | '*') {
         (Marker { ordered: false, ch: first, len: 1, start: 1 }, 1)
     } else {
-        let digits = t.chars().take_while(|c| c.is_ascii_digit()).count();
+        let digits = t.chars().take_while(char::is_ascii_digit).count();
         if !(1..=9).contains(&digits) {
             return None;
         }
@@ -351,6 +351,7 @@ fn interrupts(l: &str) -> bool {
         || thematic_break(t)
         || fence(t).is_some()
         || t.starts_with('>')
+        || t.starts_with("<!--")
         || list_marker(t).is_some_and(|m| (!m.ordered || m.start == 1) && !is_blank(t.get(m.len..).unwrap_or("")))
 }
 
@@ -360,7 +361,11 @@ fn flush_para(lines: &mut Vec<String>, out: &mut Vec<FBlock>, depth: usize, refs
     }
     let text = join_lines(lines);
     lines.clear();
-    let p = Para { inlines: parse_inlines(&text, &Fmt::default(), depth, refs), ..Default::default() };
+    let inlines = parse_inlines(&text, &Fmt::default(), depth, refs);
+    if inlines.is_empty() {
+        return;
+    }
+    let p = Para { inlines, ..Default::default() };
     out.push(FBlock::Para(p));
 }
 
@@ -467,6 +472,16 @@ fn parse_blocks(lines: &[String], depth: usize, level: u8, refs: &Refs) -> Vec<F
                     break;
                 }
                 out.push(code_para(strip_indent(l, ind)));
+            }
+            continue;
+        }
+        if t.starts_with("<!--") {
+            flush_para(&mut para, &mut out, depth, refs);
+            while let Some(l) = lines.get(i) {
+                i += 1;
+                if l.contains("-->") {
+                    break;
+                }
             }
             continue;
         }
@@ -607,7 +622,7 @@ fn parse_list(lines: &[String], mut i: usize, depth: usize, level: u8, out: &mut
             i += 1;
         }
         // Blank lines at the end of an item belong between items.
-        while item.len() > 1 && item.last().is_some_and(|x| x.is_empty()) {
+        while item.len() > 1 && item.last().is_some_and(String::is_empty) {
             item.pop();
         }
         let li = ListInfo { ordered: first.ordered, level: level.min(8), start: first.start };
@@ -833,7 +848,7 @@ fn unescape(s: &str) -> String {
     let mut chars = s.chars().peekable();
     while let Some(c) = chars.next() {
         if c == '\\'
-            && let Some(n) = chars.peek().copied().filter(|n| n.is_ascii_punctuation())
+            && let Some(n) = chars.peek().copied().filter(char::is_ascii_punctuation)
         {
             out.push(n);
             chars.next();
@@ -852,7 +867,7 @@ fn tag_attr(tag: &str, name: &str) -> Option<String> {
         let at = from + k;
         let before = lower.get(..at)?.chars().next_back();
         let after = lower.get(at + name.len()..)?.trim_start();
-        if before.is_some_and(|c| c.is_whitespace()) && after.starts_with('=') {
+        if before.is_some_and(char::is_whitespace) && after.starts_with('=') {
             let v = after.get(1..)?.trim_start();
             let q = v.chars().next()?;
             return Some(if q == '"' || q == '\'' {
@@ -1016,6 +1031,12 @@ fn tokenize(s: &str, base: &Fmt, depth: usize, refs: &Refs) -> Vec<Node> {
                 }
             }
             b'<' => {
+                if let Some(pos) = s.get(i..).and_then(|r| r.strip_prefix("<!--")).and_then(|r| r.find("-->")) {
+                    flush!();
+                    i += 4 + pos + 3;
+                    text_start = i;
+                    continue;
+                }
                 let rest = s.get(i + 1..).unwrap_or("");
                 let end = within(rest, MAX_TAG).find('>');
                 let inner = end.and_then(|e| rest.get(..e)).unwrap_or("");
@@ -1257,7 +1278,7 @@ fn escape_line_start(s: String) -> String {
         || (t.starts_with('-') && t.trim_end_matches([' ', '\t']).chars().all(|c| c == '-'))
         || thematic_break(t)
         || {
-            let d = t.chars().take_while(|c| c.is_ascii_digit()).count();
+            let d = t.chars().take_while(char::is_ascii_digit).count();
             d > 0
                 && t.get(d..).is_some_and(|r| {
                     r.starts_with(". ") || r.starts_with(") ") || r.starts_with(".\t") || r.starts_with(")\t") || r == "." || r == ")"
@@ -2051,5 +2072,14 @@ mod tests {
         let FBlock::Para(p3) = &f.blocks[3] else { panic!() };
         assert_eq!(p3.text(), "one item");
         assert!(p3.list.unwrap().ordered);
+    }
+
+    #[test]
+    fn html_comments_are_ignored_in_blocks_and_inlines() {
+        let md = "<!-- block comment -->\n\nHello <!-- inline comment -->world!\n\n<!--\nmultiline\ncomment\n-->\n\nAfter comment.";
+        let flow = parse(md);
+        assert_eq!(flow.blocks.len(), 2);
+        let texts: Vec<String> = flow.blocks.iter().filter_map(|b| if let FBlock::Para(p) = b { Some(p.text()) } else { None }).collect();
+        assert_eq!(texts, ["Hello world!", "After comment."]);
     }
 }
