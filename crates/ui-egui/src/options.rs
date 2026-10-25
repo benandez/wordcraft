@@ -672,14 +672,15 @@ fn theme_picker(app: &mut WordApp, ui: &mut Ui) {
 fn status_count_picker(app: &mut WordApp, ui: &mut Ui) {
     use crate::StatusCount;
     ui.horizontal(|ui| {
-        ui.label(tl!("Status bar count:"));
-        egui::ComboBox::from_id_salt("status_count").selected_text(tl!(app.ui.status_count.label())).width(220.0).show_ui(ui, |ui| {
+        let label = ui.label(tl!("Status bar count:"));
+        let combo = egui::ComboBox::from_id_salt("status_count").selected_text(tl!(app.ui.status_count.label())).width(220.0).show_ui(ui, |ui| {
             for c in StatusCount::ALL {
                 if ui.selectable_label(app.ui.status_count == c, tl!(c.label())).clicked() {
                     let _ = app.run("ui.statusCount", json!({"value": c.code()}));
                 }
             }
         });
+        combo.response.labelled_by(label.id);
     });
     note(ui, "You can also right-click the count in the status bar to change it.");
 }
