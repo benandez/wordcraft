@@ -821,17 +821,17 @@ mod tests {
     #[test]
     fn a_focus_the_update_does_not_carry_falls_back_to_the_root() {
         let root = egui::accesskit_root_id().accesskit_id();
-        let lost = egui::Id::new("run_that_was_dropped").accesskit_id();
+        let lost = egui::Id::unique("run_that_was_dropped").accesskit_id();
         let make = |focus: accesskit::NodeId| accesskit::TreeUpdate {
             nodes: vec![
                 (root, {
                     let mut n = Node::new(Role::Window);
-                    n.push_child(egui::Id::new("kept").accesskit_id());
+                    n.push_child(egui::Id::unique("kept").accesskit_id());
                     n
                 }),
-                (egui::Id::new("kept").accesskit_id(), Node::new(Role::TextRun)),
+                (egui::Id::unique("kept").accesskit_id(), Node::new(Role::TextRun)),
             ],
-            tree: Some(accesskit::Tree::new(root)),
+            tree: Some(accesskit::TreeInfo::new(root)),
             tree_id: accesskit::TreeId::ROOT,
             focus,
         };
@@ -899,10 +899,10 @@ mod tests {
     struct NoopHandler;
 
     impl accesskit_consumer::TreeChangeHandler for NoopHandler {
-        fn node_added(&mut self, _node: &accesskit_consumer::Node<'_>) {}
-        fn node_updated(&mut self, _old_node: &accesskit_consumer::Node<'_>, _new_node: &accesskit_consumer::Node<'_>) {}
-        fn focus_moved(&mut self, _old_node: Option<&accesskit_consumer::Node<'_>>, _new_node: Option<&accesskit_consumer::Node<'_>>) {}
-        fn node_removed(&mut self, _node: &accesskit_consumer::Node<'_>) {}
+        fn node_added(&mut self, _node: &accesskit_consumer::NodeRef<'_>) {}
+        fn node_updated(&mut self, _old_node: &accesskit_consumer::NodeRef<'_>, _new_node: &accesskit_consumer::NodeRef<'_>) {}
+        fn focus_moved(&mut self, _old_node: Option<&accesskit_consumer::NodeRef<'_>>, _new_node: Option<&accesskit_consumer::NodeRef<'_>>) {}
+        fn node_removed(&mut self, _node: &accesskit_consumer::NodeRef<'_>) {}
     }
 
     /// Hostile layouts and junk geometry don't panic and the tree stays bounded.
