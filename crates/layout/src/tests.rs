@@ -11821,7 +11821,7 @@ fn split_frame_keeps_flow_bottom() {
         crop: [0.1, 0.2, 0.3, 0.4],
         story: StoryRef::Body,
         path: Path::top(0),
-        off: 0,
+        off: if y < CUT { 3 } else { 6 },
         spin: Default::default(),
     };
     for wrap in [Wrap::BehindText, Wrap::InFrontOfText, Wrap::Square, Wrap::Tight, Wrap::Through, Wrap::TopAndBottom, Wrap::Inline] {
@@ -11912,6 +11912,243 @@ fn split_frame_keeps_flow_bottom() {
             };
             assert_eq!(images(&first), vec![(Rect::new(5.0, 10.0, 20.0, 10.0), [0.1, 0.2, 0.3, 0.4], String::from("synthetic"))]);
             assert_eq!(images(&rest), vec![(Rect::new(5.0, 2.0, 20.0, 10.0), [0.1, 0.2, 0.3, 0.4], String::from("synthetic"))]);
+        }
+    }
+}
+
+mod behind_owner {
+    use super::*;
+    use wordcraft_doc::para::{Anchor, CanvasStyle, Float, GroupChild, Wrap};
+    use wordcraft_doc::props::LineSpacing;
+
+    #[derive(Clone, Copy, Debug)]
+    enum Kind {
+        Image,
+        Shape,
+        Graphic,
+        Canvas,
+    }
+
+    fn frame_model(kind: Kind, wrap: Option<Wrap>) -> DocLayout {
+        let mut doc = Document::new();
+        doc.styles.default_chr.font = Some("Source Sans 3".into());
+        doc.last_section.page_h = 140.0;
+        doc.last_section.margin_top = 20.0;
+        doc.last_section.margin_bottom = 20.0;
+        let mut table = Table::new(1, 1, 200.0);
+        let mut first = Paragraph::with_text("First", Default::default());
+        first.props = ParaProps {
+            line_spacing: Some(LineSpacing::Exactly(20.0)),
+            space_before: Some(0.0),
+            space_after: Some(0.0),
+            widow_control: Some(false),
+            ..Default::default()
+        };
+        if let Some(wrap) = wrap {
+            let float = Float { wrap, h_rel: Anchor::Column, v_rel: Anchor::Paragraph, y: 40.0, ..Default::default() };
+            let object = match kind {
+                Kind::Image => InlineObject::Image {
+                    media: "ownership-control".into(),
+                    w: 20.0,
+                    h: 40.0,
+                    alt: String::new(),
+                    float,
+                    crop: [0.1, 0.2, 0.3, 0.4],
+                    ole: None,
+                },
+                Kind::Shape => rect_shape(20.0, 40.0, float),
+                Kind::Graphic => InlineObject::Graphic {
+                    w: 20.0,
+                    h: 40.0,
+                    alt: String::new(),
+                    float,
+                    graphic: Arc::new(wordcraft_doc::graphic::Graphic { w: 20.0, h: 40.0, ..Default::default() }),
+                },
+                Kind::Canvas => InlineObject::Group {
+                    w: 20.0,
+                    h: 40.0,
+                    float,
+                    ch_w: 20.0,
+                    ch_h: 40.0,
+                    children: vec![GroupChild { x: 0.0, y: 0.0, obj: rect_shape(20.0, 40.0, Default::default()) }],
+                    canvas: Some(CanvasStyle::default()),
+                },
+            };
+            first.insert_object(0, object, &Default::default()).unwrap();
+        }
+        let mut second = Paragraph::with_text("Second", Default::default());
+        second.props = ParaProps {
+            line_spacing: Some(LineSpacing::Exactly(10.0)),
+            space_before: Some(130.0),
+            space_after: Some(0.0),
+            widow_control: Some(false),
+            ..Default::default()
+        };
+        table.rows[0].cells[0].blocks = vec![wordcraft_doc::para_block(first), wordcraft_doc::para_block(second)];
+        doc.body = vec![Arc::new(Block::Table(table))];
+        lay(&doc)
+    }
+
+    fn cell_rects(layout: &DocLayout) -> Vec<Rect> {
+        layout
+            .pages
+            .iter()
+            .flat_map(|page| &page.items)
+            .filter_map(|item| match item {
+                Placed::Cell { rect, .. } => Some(*rect),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn assert_frame_flow(kind: Kind) {
+        let plain = frame_model(kind, None);
+        let behind = frame_model(kind, Some(Wrap::BehindText));
+        let foreground = frame_model(kind, Some(Wrap::InFrontOfText));
+        assert_eq!(plain.pages.len(), 2);
+        assert_eq!(behind.pages.len(), 2);
+        let frame = behind.pages[0]
+            .items
+            .iter()
+            .find_map(|item| match item {
+                Placed::Object { rect, wrap: Wrap::BehindText, story, path, off, .. } => Some((*rect, *story, path, *off)),
+                _ => None,
+            })
+            .unwrap();
+        let owned = |item: &Placed| match item {
+            Placed::Image { rect, story, path, off, .. } | Placed::Graphic { rect, story, path, off, .. } => {
+                *rect == frame.0 && *story == frame.1 && path == frame.2 && *off == frame.3
+            }
+            Placed::Shape { rect, object: Some(pos), .. } => *rect == frame.0 && pos.story == frame.1 && &pos.path == frame.2 && pos.off == frame.3,
+            _ => false,
+        };
+        assert!(behind.pages[0].items.iter().any(owned), "{kind:?}: the actual drawable matches its behind-text marker");
+        if matches!(kind, Kind::Canvas) {
+            assert!(
+                behind.pages[0].items.iter().any(|item| matches!(item, Placed::Clip { rect, items, .. }
+                if *rect == frame.0 && !items.is_empty() && items.iter().all(owned))),
+                "the actual canvas clip members share the owner's identity"
+            );
+        }
+        let lines = |layout: &DocLayout| {
+            layout
+                .pages
+                .iter()
+                .enumerate()
+                .flat_map(|(page, laid)| {
+                    laid.items.iter().filter_map(move |item| match item {
+                        Placed::Lines { story: StoryRef::Body, path, l0, l1, .. } if path.0.len() == 4 => Some((page, path.0[3], *l0, *l1)),
+                        _ => None,
+                    })
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(lines(&behind), vec![(0, 0, 0, 1), (1, 1, 0, 1)], "both paragraphs survive exactly once on their flow pages");
+        assert_eq!(lines(&behind), lines(&plain));
+        assert!(cell_rects(&foreground)[0].h > cell_rects(&plain)[0].h, "foreground retains the existing flow-bottom policy");
+        assert_eq!(cell_rects(&behind), cell_rects(&plain), "{kind:?}: behind-text ink must not enlarge the retained row fragment");
+    }
+
+    #[test]
+    fn image_flow() {
+        assert_frame_flow(Kind::Image);
+    }
+    #[test]
+    fn shape_flow() {
+        assert_frame_flow(Kind::Shape);
+    }
+    #[test]
+    fn graphic_flow() {
+        assert_frame_flow(Kind::Graphic);
+    }
+    #[test]
+    fn canvas_flow() {
+        assert_frame_flow(Kind::Canvas);
+    }
+    #[test]
+    fn unrelated_ink_keeps_flow() {
+        use crate::table::{CellPart, RowLayout, split_row};
+        let image = |off, y, height| Placed::Image {
+            rect: Rect::new(5.0, y, 20.0, height),
+            media: "ownership-control".into(),
+            crop: [0.0; 4],
+            story: StoryRef::Body,
+            path: Path::top(0),
+            off,
+            spin: Default::default(),
+        };
+        let shape = |object| Placed::Shape {
+            rect: Rect::new(5.0, 40.0, 20.0, 40.0),
+            kind: wordcraft_doc::para::ShapeKind::Rectangle,
+            fill: None,
+            stroke: None,
+            stroke_width: 1.0,
+            freeform: None,
+            effects: Default::default(),
+            spin: Default::default(),
+            extra: Default::default(),
+            object,
+            alt: String::new(),
+        };
+        let owner = wordcraft_doc::Pos::body(0, 0);
+        let clip = |items| Placed::Clip { rect: Rect::new(5.0, 40.0, 20.0, 40.0), spin: Default::default(), items };
+        let mut foreign_story = image(0, 40.0, 40.0);
+        if let Placed::Image { story, .. } = &mut foreign_story {
+            *story = StoryRef::Part(1);
+        }
+        let mut foreign_path = image(0, 40.0, 40.0);
+        if let Placed::Image { path, .. } = &mut foreign_path {
+            *path = Path::top(1);
+        }
+        let cases = vec![
+            ("matching", image(0, 40.0, 40.0), 24.0),
+            ("other offset", image(9, 40.0, 40.0), 84.0),
+            ("other story", foreign_story, 84.0),
+            ("other path", foreign_path, 84.0),
+            ("anonymous shape", shape(None), 84.0),
+            ("owned clip", clip(vec![shape(Some(owner.clone()))]), 24.0),
+            ("empty clip", clip(Vec::new()), 84.0),
+            ("mixed clip", clip(vec![shape(Some(owner)), shape(Some(wordcraft_doc::Pos::body(0, 3)))]), 84.0),
+        ];
+        for (case, ink, expected) in cases {
+            let rect = Rect::new(0.0, 0.0, 100.0, 200.0);
+            let items = vec![
+                image(3, 10.0, 10.0),
+                image(6, 150.0, 10.0),
+                ink,
+                Placed::Object {
+                    rect: Rect::new(5.0, 40.0, 20.0, 40.0),
+                    spin: Default::default(),
+                    story: StoryRef::Body,
+                    path: Path::top(0),
+                    off: 0,
+                    text_box: None,
+                    wrap: Wrap::BehindText,
+                    origin: Default::default(),
+                },
+                Placed::Cell { rect, covered: false, table: Path::top(0), row: 0, cell: 0, story: StoryRef::Body, clip: false },
+            ];
+            let row = RowLayout {
+                height: 200.0,
+                min_height: 0.0,
+                bottom: 4.0,
+                edge: 0.0,
+                cells: vec![CellPart { top: 2.0, items: 0..items.len(), end: Some(160.0) }],
+                items,
+            };
+            let (first, rest) = split_row(&row, 100.0).unwrap();
+            assert_eq!(first.height, expected, "{case}: only a confirmed behind-text owner suppresses ink bounds");
+            let images = |part: &RowLayout| {
+                part.items
+                    .iter()
+                    .filter_map(|item| match item {
+                        Placed::Image { rect, off: 3 | 6, .. } => Some(*rect),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(images(&first), vec![Rect::new(5.0, 10.0, 20.0, 10.0)], "{case}: unrelated fitting image survives");
+            assert_eq!(images(&rest), vec![Rect::new(5.0, 2.0, 20.0, 10.0)], "{case}: unrelated continuation image survives");
         }
     }
 }

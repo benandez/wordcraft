@@ -826,6 +826,15 @@ pub fn layout_table(ctx: &mut Ctx, story: StoryRef, t: &Table, path: &[u32], ava
     TableLayout { x, width: total, rows: out }
 }
 
+// Floating ink and its Object marker share this identity, including group members.
+fn draw_owner(item: &Placed) -> Option<(StoryRef, &wordcraft_doc::Path, usize)> {
+    match item {
+        Placed::Image { story, path, off, .. } | Placed::Graphic { story, path, off, .. } => Some((*story, path, *off)),
+        Placed::Shape { object: Some(pos), .. } => Some((pos.story, &pos.path, pos.off)),
+        _ => None,
+    }
+}
+
 /// Split a row at `cut` (points below the row's top) so the part above fits on this page.
 /// Paragraph lines break between lines; fills, vertical rules and cell areas are cut; the
 /// rest moves up to the top of the continuation. `None` when no line fits above the cut.
@@ -933,7 +942,23 @@ pub fn split_row(row: &RowLayout, cut: f32) -> Option<(RowLayout, RowLayout)> {
     // Nested boxes crossing the cut retain their geometry.
     let mut kept_bottom = 0.0f32;
     for (((items, splits), c), &moved_top) in cells.iter().zip(&splits).zip(&row.cells).zip(&moved) {
+        let behind: std::collections::HashSet<_> = items
+            .iter()
+            .filter_map(|item| match item {
+                Placed::Object { story, path, off, wrap: wordcraft_doc::para::Wrap::BehindText, .. } => Some((*story, path, *off)),
+                _ => None,
+            })
+            .collect();
         for (it, &split) in items.iter().zip(splits) {
+            let owner = draw_owner(it).or_else(|| {
+                let Placed::Clip { items, .. } = it else { return None };
+                let owner = draw_owner(items.first()?)?;
+                // Canvas members emitted together share one owner. Unknown clips retain flow bounds.
+                items.iter().all(|item| draw_owner(item) == Some(owner)).then_some(owner)
+            });
+            if owner.is_some_and(|owner| behind.contains(&owner)) {
+                continue;
+            }
             let bottom = if let Some(r) = it.turned_bounds() {
                 fits(r.bottom()).then_some(r.bottom())
             } else {
