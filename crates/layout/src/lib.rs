@@ -4458,8 +4458,8 @@ fn place_table(ctx: &mut Ctx, pb: &mut PageBuilder, t: &wordcraft_doc::Table, bl
             if pb.y + cur.height + cur.edge <= pb.bottom + 0.01 && !defer_kept {
                 break;
             }
-            // An at-least row with less room than its minimum moves on whole, unless nothing
-            // is above it on this page (moving on would gain nothing).
+            // A missing minimum moves the row whole only when a fresh body can hold it.
+            // At the top of a page, moving on would gain nothing.
             let room = pb.bottom - pb.y;
             let page_height = pb.bottom - body_top - repeated_height;
             let moves_on = rest.is_none() && !pb.at_top() && !fresh && !under_top_headers && short_of_min(ri, room, page_height);
