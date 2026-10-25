@@ -374,7 +374,7 @@ const SWATCH: f32 = 18.0;
 
 /// Id of item `i`'s colour button.
 fn color_button_id(i: usize) -> egui::Id {
-    egui::Id::new(("smart_art_color_button", i))
+    egui::Id::unique(("smart_art_color_button", i))
 }
 
 /// The button at the right of item `i`'s row: its shape's colour (the style's until changed).
@@ -388,7 +388,7 @@ fn color_button(app: &mut WordApp, ui: &mut Ui, g: &SmartArtSpec, i: usize) {
         .get(i)
         .filter(|it| !it.text.is_empty())
         .map_or_else(|| format!("{} ({})", tl!("Shape color"), i + 1), |it| format!("{}: {}", tl!("Shape color"), it.text));
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label.as_str()));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), label.as_str()));
     let Some(accent_n) = g.style_accent(i) else { return };
     let theme = app.session.doc.settings.theme_colors.clone();
     let own = g.items.get(i).and_then(|it| it.color);
