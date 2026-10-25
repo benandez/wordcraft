@@ -3303,3 +3303,20 @@ fn highlight_partial_column_ignores_unselected_marks() {
         assert_eq!(p.mark.highlight, Some(Highlight::Yellow));
     }
 }
+
+#[test]
+fn tab_with_a_whole_paragraph_selected_indents_it() {
+    let mut s = typed("Hello world");
+    run(&mut s, "select.paragraph", json!({}));
+    run(&mut s, "text.tab", json!({}));
+    assert_eq!(paras(&s), vec![para("Hello world", None)]);
+    assert_eq!(indents(&s).0, Some(36.0));
+}
+
+#[test]
+fn tab_with_a_partial_selection_still_inserts_a_tab() {
+    let mut s = typed("Hello world");
+    run(&mut s, "select.text", json!({"text": "ello"}));
+    run(&mut s, "text.tab", json!({}));
+    assert_eq!(paras(&s), vec![para("H\t world", None)]);
+}

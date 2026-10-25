@@ -166,10 +166,12 @@ enum CaseSwitch {
     FirstCap,
 }
 
-/// The first capitalization switch in a field code. Quoted text in the code is not a switch.
-fn case_switch(instr: &str) -> Option<CaseSwitch> {
+/// The capitalization switches in a field code, in the order they appear. Quoted text in the code
+/// is not a switch.
+fn case_switches(instr: &str) -> Vec<CaseSwitch> {
     let mut chars = instr.chars().peekable();
     let mut quoted = false;
+    let mut cases = Vec::new();
     while let Some(c) = chars.next() {
         match c {
             '\\' if quoted => {
@@ -190,21 +192,26 @@ fn case_switch(instr: &str) -> Option<CaseSwitch> {
                     "firstcap" => CaseSwitch::FirstCap,
                     _ => continue,
                 };
-                return Some(case);
+                cases.push(case);
             }
             _ => {}
         }
     }
-    None
+    cases
 }
 
-/// `text` with the field's capitalization switch applied. `\* Upper` capitalizes every letter,
-/// `\* Lower` makes every letter lowercase, `\* Caps` capitalizes the first letter of each word,
-/// and `\* FirstCap` capitalizes the first letter of the first word. A word's first letter is its
-/// first letter or digit, after any leading quote, bracket or other punctuation. Without a switch,
-/// the function returns `text` unchanged.
+/// `text` with the field's capitalization switches applied in the order they appear, so
+/// `\* Lower \* Caps` shows "WEEKLY REPORT" as "Weekly Report". `\* Upper` capitalizes every
+/// letter, `\* Lower` makes every letter lowercase, `\* Caps` capitalizes the first letter of each
+/// word, and `\* FirstCap` capitalizes the first letter of the first word. A word's first letter is
+/// its first letter or digit, after any leading quote, bracket or other punctuation. Without a
+/// switch, the function returns `text` unchanged.
 pub fn apply_case_switch(instr: &str, text: String) -> String {
-    let Some(case) = case_switch(instr) else { return text };
+    case_switches(instr).into_iter().fold(text, apply_case)
+}
+
+/// `text` with one capitalization switch applied (see [`apply_case_switch`]).
+fn apply_case(text: String, case: CaseSwitch) -> String {
     match case {
         CaseSwitch::Upper => text.to_uppercase(),
         CaseSwitch::Lower => text.to_lowercase(),
@@ -235,7 +242,7 @@ pub fn apply_case_switch(instr: &str, text: String) -> String {
 /// Formats `n` in `fmt` as a field shows it. Cardinal, ordinal and dollar text is lowercase
 /// (`\* CardText` shows "twenty-one", `\* DollarText` shows "twenty-one and 00/100") and writes
 /// numbers up to 999,999; a larger number keeps its digits. `\* Hex` writes uppercase hexadecimal
-/// digits (`1CA`). The field's capitalization switch applies after that (`\* CardText \* Caps`
+/// digits (`1CA`). The field's capitalization switches apply after that (`\* CardText \* Caps`
 /// shows "Twenty-one").
 pub fn field_number(instr: &str, fmt: NumFormat, n: u32) -> String {
     let text = match fmt {
@@ -457,6 +464,17 @@ mod tests {
             assert_eq!(field_number(r"SEQ x \* Upper", fmt, 1_000_140), "1000140", "{fmt:?}");
         }
         assert_eq!(field_number("SEQ x", NumFormat::CardinalText, 999_999), "nine hundred ninety-nine thousand nine hundred ninety-nine");
+    }
+
+    /// Several capitalization switches apply in the order they appear.
+    #[test]
+    fn capitalization_switches_apply_in_order() {
+        let ctx = FieldCtx { title: "WEEKLY REPORT".into(), ..Default::default() };
+        let text = |instr: &str| field_text(instr, "", &ctx).0;
+        assert_eq!(text(r"TITLE \* Lower \* Caps"), "Weekly Report");
+        assert_eq!(text(r"TITLE \* Lower \* FirstCap"), "Weekly report");
+        assert_eq!(text(r"TITLE \* Caps \* Lower"), "weekly report");
+        assert_eq!(text(r"TITLE \* Lower \* MERGEFORMAT \* Upper"), "WEEKLY REPORT");
     }
 
     /// #1765: ASK and SET only assign text to a bookmark; they show nothing, whatever result is stored.
