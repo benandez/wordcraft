@@ -10734,6 +10734,115 @@ fn export_png_refuses_a_path_that_is_not_png() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// The body's IME replacement epoch advances when the whole body is swapped (setText, Undo/Redo)
+/// and stays put for ordinary edits; an equation editing session cannot ride across a replacement.
+#[test]
+fn ime_body_epoch_marks_body_replacements_not_edits() {
+    let mut s = s();
+    run(&mut s, "text.insert", json!({"text": "one"}));
+    let first = s.ime_body_epoch();
+    run(&mut s, "text.insert", json!({"text": " two"}));
+    assert_eq!(s.ime_body_epoch(), first, "typing is not a replacement");
+
+    run(&mut s, "document.setText", json!({"text": "same text"}));
+    let replaced = s.ime_body_epoch();
+    assert!(replaced > first, "setText replaces the body under the same document id");
+    assert_eq!(s.document_id(), 1, "the document id itself is unchanged");
+
+    // The same text again still replaces the body: a composition must not survive on content
+    // equality.
+    run(&mut s, "document.setText", json!({"text": "same text"}));
+    assert!(s.ime_body_epoch() > replaced);
+
+    // Undo swaps the body back.
+    let before_undo = s.ime_body_epoch();
+    assert!(s.undo());
+    assert!(s.ime_body_epoch() > before_undo, "Undo replaces the body");
+}
+
+/// Replacing the document body while an equation is being edited ends that equation editing
+/// session.
+#[test]
+fn a_body_replacement_ends_equation_editing() {
+    let mut s = s();
+    run(&mut s, "insert.equation", json!({"linear": "x+y"}));
+    assert!(s.math.is_some());
+    run(&mut s, "document.setText", json!({"text": "x+y"}));
+    assert!(s.math.is_none(), "the old equation's editing session is gone");
+}
+
+/// A failed command that cleared the equation session puts it back with the document.
+#[test]
+fn a_failed_replacement_keeps_equation_editing() {
+    let mut s = s();
+    run(&mut s, "insert.equation", json!({"linear": "x+y"}));
+    let session = s.math.as_ref().map(|m| m.session);
+    assert!(session.is_some());
+    // Missing `text` is rejected before any mutation.
+    assert!(s.run("document.setText", &json!({})).is_err());
+    assert_eq!(s.math.as_ref().map(|m| m.session), session);
+}
+
+/// Track Changes: deleting a range whose text is already marked deleted is a real no-op. It
+/// creates no revision record, no undo-visible change and no IME revision.
+#[test]
+fn deleting_an_already_deleted_tracked_range_is_a_classified_noop() {
+    let mut s = s();
+    run(&mut s, "text.insert", json!({"text": "abc"}));
+    run(&mut s, "review.trackChanges", json!({"value": true}));
+    s.sel = crate::Selection { anchor: Pos::body(0, 0), focus: Pos::body(0, 1) };
+    run(&mut s, "text.backspace", json!({}));
+    let revisions = s.doc.revisions.len();
+    let revision = s.ime_state_revision().expect("an IME revision");
+    s.sel = crate::Selection { anchor: Pos::body(0, 0), focus: Pos::body(0, 1) };
+    run(&mut s, "text.backspace", json!({}));
+    let outcome = s.ime_edit_outcome();
+    assert!(outcome.classified, "{outcome:?}");
+    assert!(!outcome.content_changed && !outcome.state_changed, "{outcome:?}");
+    assert_eq!(s.doc.revisions.len(), revisions, "no unused Delete revision is appended");
+    assert_eq!(s.ime_state_revision(), Some(revision), "the no-op did not move the settled caret");
+    s.sel = crate::Selection { anchor: Pos::body(0, 0), focus: Pos::body(0, 1) };
+    assert!(s.ime_state_revision() > Some(revision), "re-selecting moves the caret, not the document");
+}
+
+/// `text.insert` classifies the automatic rewrites its own handler performs: smart quotes,
+/// list autoformat and AutoCorrect are `transformed`, not the IME's literal insert.
+#[test]
+fn text_insert_marks_automatic_rewrites_as_transformed() {
+    let mut session = s();
+    run(&mut session, "text.insert", json!({"text": "\""}));
+    assert!(session.ime_edit_outcome().transformed, "smart quote: {:?}", session.ime_edit_outcome());
+    assert_eq!(text(&session), "\u{201C}");
+
+    let mut session = s();
+    for c in ["W", "o", "r", "d", " ", "(", "c", ")", " "] {
+        run(&mut session, "text.insert", json!({"text": c}));
+    }
+    assert!(session.ime_edit_outcome().transformed, "AutoCorrect: {:?}", session.ime_edit_outcome());
+
+    let mut session = s();
+    run(&mut session, "text.insert", json!({"text": "*"}));
+    run(&mut session, "text.insert", json!({"text": " "}));
+    assert!(session.ime_edit_outcome().transformed, "list AutoFormat: {:?}", session.ime_edit_outcome());
+
+    let mut session = s();
+    run(&mut session, "text.insert", json!({"text": "A--b"}));
+    run(&mut session, "text.insert", json!({"text": " "}));
+    assert!(session.ime_edit_outcome().transformed, "dash AutoFormat: {:?}", session.ime_edit_outcome());
+    assert_eq!(text(&session), "A\u{2014}b ");
+
+    let mut session = s();
+    run(&mut session, "tools.autocorrect", json!({"doubleSpacePeriod": true}));
+    for c in "Hello  ".chars() {
+        run(&mut session, "text.insert", json!({"text": c.to_string()}));
+    }
+    let outcome = session.ime_edit_outcome();
+    assert!(outcome.transformed && outcome.content_changed && outcome.state_changed, "double-space period: {outcome:?}");
+    assert_eq!(text(&session), "Hello. ");
+    run(&mut session, "edit.undo", json!({}));
+    assert_eq!(text(&session), "Hello  ", "undo restores the spaces in one step");
+}
+
 #[test]
 fn style_set_keeps_imported_styles_latent_styles_and_defaults() {
     use wordcraft_doc::props::{Rgb, TextColor};
