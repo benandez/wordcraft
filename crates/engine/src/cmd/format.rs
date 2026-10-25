@@ -401,7 +401,7 @@ fn target_has_highlight(s: &Session, h: Highlight) -> bool {
     if let Some(rows) = column_rows(s) {
         for (a, b) in rows {
             let Some(p) = s.doc.para_at(&a) else { continue };
-            if a == b {
+            if a == b || (a.off == 0 && b.off == p.len()) {
                 seen = true;
                 if !matches(p.props.style.as_deref(), &p.mark) {
                     return false;
@@ -425,6 +425,13 @@ fn target_has_highlight(s: &Session, h: Highlight) -> bool {
             let Some(p) = s.doc.para(a.story, &path) else { continue };
             let from = if path == a.path { a.off } else { 0 };
             let to = if path == b.path { b.off } else { p.len() };
+            // Match format_range: fully selected paragraphs include their mark.
+            if to == p.len() && (from == 0 || path != a.path) {
+                seen = true;
+                if !matches(p.props.style.as_deref(), &p.mark) {
+                    return false;
+                }
+            }
             for (r, c) in p.run_ranges() {
                 if r.end > from && r.start < to {
                     seen = true;

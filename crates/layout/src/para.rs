@@ -1066,6 +1066,10 @@ impl<'a> Builder<'a> {
                 let d = show(c);
                 if d != c {
                     d
+                } else if c == '\u{a0}' {
+                    // Word sets a no-break space as wide as a space; some fonts draw their own
+                    // U+00A0 glyph wider. Only the shaping changes: line breaking reads the text.
+                    ' '
                 } else if upper {
                     upper_char(c)
                 } else {
@@ -1517,6 +1521,8 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
     let math_props = doc.settings.math.clone().unwrap_or_default();
     // The byte ranges of runs left out of the layout, in order, adjacent runs merged.
     let mut left: Vec<std::ops::Range<usize>> = Vec::new();
+    // The byte ranges of objects with nothing to show (bookmarks, comment anchors), in order.
+    let mut bare: Vec<std::ops::Range<usize>> = Vec::new();
     // Each run's proofing language and whether it is checked (spelling, grammar, hyphenation).
     let mut runs: Vec<ProofRun> = Vec::new();
     for (range, props) in p.run_ranges() {
@@ -1752,7 +1758,10 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
                             push(&mut b, ClKind::Tab, 0.0, 0.0);
                             ptabs.push((b.clusters.len() - 1, *align, *relative_to, *leader));
                         }
-                        _ => push(&mut b, ClKind::Marker, 0.0, 0.0),
+                        _ => {
+                            bare.push(start..end);
+                            push(&mut b, ClKind::Marker, 0.0, 0.0)
+                        }
                     }
                 }
             }
@@ -1769,15 +1778,19 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
         if rp.snap_to_grid && env.grid.chars.is_some() { Vec::new() } else { auto_space(&mut b, &p.text, rp.auto_space_de, rp.auto_space_dn) };
     // Break opportunities and hyphenation points come from the text as laid out: hidden text that is
     // not shown and, without markup, tracked deletions are left out, so a space or soft hyphen there
-    // is no place to break, and words are hyphenated as they read.
+    // is no place to break, and words are hyphenated as they read. An object with nothing to show
+    // is left out too: its U+FFFC has the line-break class CB, but a bookmark never moves a break.
+    let mut skip = left.clone();
+    skip.extend(bare);
+    skip.sort_unstable_by_key(|r| r.start);
     // The text and, for each char of it, its end there and in `p.text`.
-    let (text, ends): (std::borrow::Cow<str>, Vec<(usize, usize)>) = if left.is_empty() {
+    let (text, ends): (std::borrow::Cow<str>, Vec<(usize, usize)>) = if skip.is_empty() {
         (p.text.as_str().into(), Vec::new())
     } else {
         let (mut text, mut ends) = (String::new(), Vec::new());
-        let mut next = left.iter().peekable();
+        let mut next = skip.iter().peekable();
         for (i, c) in p.text.char_indices() {
-            // `left` is in order: skip the ranges that end here, then is `i` in the next one?
+            // `skip` is in order: skip the ranges that end here, then is `i` in the next one?
             while next.next_if(|r| r.end <= i).is_some() {}
             if next.peek().is_some_and(|r| r.start <= i) {
                 continue;
@@ -1789,7 +1802,7 @@ pub fn layout_para(p: &Paragraph, env: &ParaEnv) -> ParaLayout {
     };
     // The end of a char in `text` → the same place in `p.text`.
     let to_para = |i: usize| -> Option<usize> {
-        if left.is_empty() { Some(i) } else { ends.binary_search_by_key(&i, |e| e.0).ok().and_then(|k| ends.get(k)).map(|e| e.1) }
+        if skip.is_empty() { Some(i) } else { ends.binary_search_by_key(&i, |e| e.0).ok().and_then(|k| ends.get(k)).map(|e| e.1) }
     };
     let mut found = Vec::new();
     for (i, o) in unicode_linebreak::linebreaks(&text) {
@@ -2049,6 +2062,8 @@ fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u32, level: Optio
     // Word 2013+ (compatibility mode 15) fits more text on a justified line by shrinking its
     // spaces (`space_room`); never on lines with tabs.
     let shrink_spaces = rp.align == Align::Justify && env.doc.settings.compat_mode >= wordcraft_doc::COMPAT_MODE_CURRENT;
+    // Word stretches a justified line ending in a manual line break unless the document says not to.
+    let expand_break = !env.doc.settings.do_not_expand_shift_return;
     let hanging_at = if rp.indent_first < 0.0 { Some(rp.indent_left) } else { None };
     // Hyphenation Options: the zone, and how many lines in a row may end with a hyphen.
     let zone = Some(env.doc.settings.hyphenation_zone).filter(|z| z.is_finite() && *z >= 0.0).unwrap_or(HYPHENATION_ZONE).min(1584.0);
@@ -2570,7 +2585,9 @@ fn break_lines(pl: &mut ParaLayout, env: &ParaEnv, mark_style: u32, level: Optio
                 *label_shift = shift;
             }
         }
-        let justify = display.is_none() && ((rp.align == Align::Justify && end == LineEnd::Wrap) || rp.align == Align::Distribute);
+        // A line ending in a manual line break is stretched too, unless `doNotExpandShiftReturn` says not to.
+        let stretch_end = end == LineEnd::Wrap || (end == LineEnd::LineBreak && expand_break);
+        let justify = display.is_none() && ((rp.align == Align::Justify && stretch_end) || rp.align == Align::Distribute);
         // A line that only fits with shrunk spaces is shrunk, the last line of the paragraph too.
         let shrink = display.is_none() && shrink_spaces && slack < 0.0 && last_tab.is_none();
         if shrink {
