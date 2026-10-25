@@ -137,7 +137,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui, enter: f32) {
             ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
                 for (label, id) in [("About", "about"), ("Discord community", "discord")] {
                     let (r, resp) = ui.allocate_exact_size(vec2(200.0, 32.0), Sense::click());
-                    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), tl!(label)));
+                    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), tl!(label)));
                     let h = ui.ctx().animate_bool_responsive(resp.id.with("hover"), resp.hovered());
                     if h > 0.0 {
                         ui.painter().rect_filled(r, 0.0, egui::Color32::from_white_alpha((26.0 * h) as u8));
