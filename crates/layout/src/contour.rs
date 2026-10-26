@@ -209,6 +209,8 @@ pub(crate) struct Alphas {
     /// Pictures whose cost was charged for a lasting outline found in [`crate::LayoutCache`]
     /// ([`Alphas::charge`]) without decoding them in this layout.
     charged: HashSet<(usize, usize)>,
+    /// Pixels each picture took of the budget (also when it then failed to decode), by bytes.
+    costs: HashMap<(usize, usize), u64>,
     /// Pictures refused for the budget (bytes' address and length), not looked at again.
     refused: HashSet<(usize, usize)>,
     /// Pixels decoded so far.
@@ -229,9 +231,13 @@ impl Alphas {
                 // A picture already charged for (its outline was cached) isn't charged twice.
                 let mut free = 0u64;
                 let paid = self.charged.contains(&key);
+                let before = self.decoded;
                 let alpha = decode_alpha(bytes, if paid { &mut free } else { &mut self.decoded }).inspect_err(|_| {
                     self.refused.insert(key);
                 })?;
+                if !paid {
+                    self.costs.insert(key, self.decoded.saturating_sub(before));
+                }
                 let alpha = alpha.map(Arc::new);
                 self.seen.insert(key, alpha.clone());
                 alpha
@@ -241,12 +247,9 @@ impl Alphas {
     }
 
     /// The pixels picture `bytes` took of the budget when it was decoded in this layout (0:
-    /// not decoded, or none to look at).
+    /// not decoded, or none to look at; a picture that failed to decode still cost its pixels).
     pub(crate) fn cost(&self, bytes: &[u8]) -> u64 {
-        match self.seen.get(&(bytes.as_ptr() as usize, bytes.len())) {
-            Some(Some(a)) => u64::from(a.w) * u64::from(a.h),
-            _ => 0,
-        }
+        self.costs.get(&(bytes.as_ptr() as usize, bytes.len())).copied().unwrap_or(0)
     }
 
     /// Charges the budget for picture `bytes`, whose outline was found kept from an earlier
@@ -268,6 +271,7 @@ impl Alphas {
             Some(total) => {
                 self.decoded = total;
                 self.charged.insert(key);
+                self.costs.insert(key, cost);
                 Ok(())
             }
             None => {

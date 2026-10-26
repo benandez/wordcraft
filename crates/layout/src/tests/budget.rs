@@ -59,7 +59,8 @@ fn a_linked_chain_lays_its_story_out_for_a_bounded_amount_of_work() {
     widths.sort_unstable();
     widths.dedup();
     textbox::FLOW_WORK_CAP.with(|c| c.set(textbox::MAX_FLOW_WORK));
-    assert!(widths.len() < n / 2, "{} widths laid the story out", widths.len());
+    // The cap is spent after the first few layouts (each is far over 2000 / 8 work).
+    assert!(widths.len() <= 8, "{} widths laid the story out", widths.len());
 }
 
 #[test]
@@ -132,6 +133,10 @@ fn past_the_cap_a_box_takes_a_layout_in_its_own_direction() {
     widths.dedup();
     textbox::FLOW_WORK_CAP.with(|c| c.set(textbox::MAX_FLOW_WORK));
     assert!(widths.len() > 1 && widths.len() < n, "{} layouts: the vertical box has its own, the rest are shared", widths.len());
+    // The vertical box's layout is none of the horizontal boxes'.
+    let mut all = story_layouts(&lay(&d), ids[0]);
+    let vertical = all.pop();
+    assert!(vertical.is_some_and(|v| !all.contains(&v)), "the vertical box shares a horizontal layout");
 }
 
 #[test]
@@ -386,4 +391,113 @@ fn cold_and_warm_caches_give_the_same_outlines() {
     assert_eq!(warm_spent, cold_spent);
     // And again: a layout after a layout.
     assert_eq!(pass(&mut warm).0, cold);
+}
+
+/// A PNG whose header says `side` × `side` RGBA and whose body is missing: it has transparency
+/// to look at, costs its pixels, and then fails to decode.
+fn truncated_png(side: u32) -> Vec<u8> {
+    fn crc(data: &[u8]) -> u32 {
+        let mut c = !0u32;
+        for b in data {
+            c ^= u32::from(*b);
+            for _ in 0..8 {
+                c = if c & 1 != 0 { 0xEDB8_8320 ^ (c >> 1) } else { c >> 1 };
+            }
+        }
+        !c
+    }
+    let mut ihdr = b"IHDR".to_vec();
+    ihdr.extend(side.to_be_bytes());
+    ihdr.extend(side.to_be_bytes());
+    ihdr.extend([8, 6, 0, 0, 0]);
+    let mut png = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13];
+    png.extend(&ihdr);
+    png.extend(crc(&ihdr).to_be_bytes());
+    // An image data chunk of junk: the header is read, the pixels aren't there.
+    let mut idat = b"IDAT".to_vec();
+    idat.extend([0x78, 0x9c, 1, 2, 3, 4]);
+    png.extend(6u32.to_be_bytes());
+    png.extend(&idat);
+    png.extend(crc(&idat).to_be_bytes());
+    png
+}
+
+#[test]
+fn a_truncated_picture_costs_the_same_cold_and_warm() {
+    // Its header promises transparency, so a layout spends its pixels before the body fails to
+    // decode; a layout finding its (empty) outline kept spends them too, or pictures after it
+    // would get outlines only with the cache warm.
+    let (big, disc) = (Arc::new(truncated_png(8000)), Arc::new(disc_png(64)));
+    let key = |bytes: &Arc<Vec<u8>>, n: &str| (n.to_string(), Arc::as_ptr(bytes) as usize, bytes.len(), [0; 4]);
+    let pass = |outlines: &mut Outlines| {
+        let mut alphas = contour::Alphas::default();
+        alphas.decoded = contour::MAX_DECODED_PIXELS - 8000 * 8000;
+        let got = [(&big, "big"), (&disc, "disc")].map(|(p, n)| picture_outline(outlines, &mut alphas, key(p, n), p, [0.0; 4]).is_some());
+        (got, alphas.decoded)
+    };
+    let mut warm = Outlines::new();
+    let (cold, spent) = pass(&mut warm);
+    assert_eq!(spent, contour::MAX_DECODED_PIXELS, "the truncated picture spent its pixels");
+    assert_eq!(cold, [false, false], "no budget is left for the disc");
+    assert_eq!(warm.get(&key(&big, "big")).map(|e| e.2), Some(8000 * 8000), "the entry holds the cost");
+    // Also with a roomy first layout filling the cache, then a tight one.
+    let mut roomy_cache = Outlines::new();
+    let mut roomy = contour::Alphas::default();
+    for (p, n) in [(&big, "big"), (&disc, "disc")] {
+        let _ = picture_outline(&mut roomy_cache, &mut roomy, key(p, n), p, [0.0; 4]);
+    }
+    assert_eq!(pass(&mut roomy_cache), (cold, spent), "warm matches cold");
+}
+
+#[test]
+fn a_header_row_holding_a_canvas_repeats_within_the_budget() {
+    use wordcraft_doc::para::{Anchor, CanvasStyle, Float, GroupChild, ShapeKind, Wrap};
+    // A canvas of 800 members in an exact-height header row, over two thousand pages: each page
+    // would clone all 800 members.
+    let member = InlineObject::Shape {
+        kind: ShapeKind::Rectangle,
+        w: 4.0,
+        h: 4.0,
+        fill: None,
+        stroke: None,
+        stroke_width: 0.0,
+        float: Float::default(),
+        story: None,
+        effects: Default::default(),
+        freeform: None,
+        extra: Default::default(),
+    };
+    let canvas = InlineObject::Group {
+        w: 40.0,
+        h: 40.0,
+        float: Float { wrap: Wrap::InFrontOfText, h_rel: Anchor::Column, v_rel: Anchor::Paragraph, x: 5.0, y: 5.0, ..Default::default() },
+        ch_w: 40.0,
+        ch_h: 40.0,
+        children: (0..800).map(|_| GroupChild { x: 1.0, y: 1.0, obj: member.clone() }).collect(),
+        canvas: Some(CanvasStyle { fill: None, stroke: None, stroke_width: 0.0 }),
+    };
+    let mut t = Table::new(2001, 1, 468.0);
+    t.rows[0].props.header = true;
+    t.rows[0].props.height = Some(60.0);
+    t.rows[0].props.height_rule = HeightRule::Exact;
+    let mut p = Paragraph::with_text("", Default::default());
+    p.insert_object(0, canvas, &Default::default()).unwrap();
+    t.rows[0].cells[0].blocks = vec![para_block(p)];
+    for row in t.rows.iter_mut().skip(1) {
+        row.props.height = Some(600.0);
+        row.props.height_rule = HeightRule::Exact;
+    }
+    fn count(it: &Placed) -> usize {
+        match it {
+            Placed::Clip { items, .. } => items.iter().map(count).fold(1, usize::saturating_add),
+            _ => 1,
+        }
+    }
+    let mut d = Document::from_text("");
+    d.insert_block(StoryRef::Body, &Path::top(1), Block::Table(t)).unwrap();
+    let l = lay(&d);
+    assert!(l.pages.len() >= 1000, "{} pages", l.pages.len());
+    let items: usize = l.pages.iter().flat_map(|p| &p.items).map(count).sum();
+    assert!(items <= MAX_HEADER_ITEMS + 2000 + 50 * l.pages.len(), "{items} items placed");
+    assert!(items > 100_000, "the header still repeats on early pages: {items}");
 }
