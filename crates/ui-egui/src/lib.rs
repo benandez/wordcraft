@@ -83,6 +83,7 @@ pub mod table_pen;
 pub mod table_resize;
 pub mod table_ruler;
 pub mod theme;
+pub mod updates_ui;
 pub mod widgets;
 pub mod window_close;
 pub mod window_geometry;
@@ -291,6 +292,18 @@ pub struct UiState {
     /// View › Navigation Pane: open or closed as the person left it, kept between runs (#2526).
     /// The session owns it while running (see [`WordApp::prefs`]).
     pub nav_pane: bool,
+    /// Where the Styles pane sits (#1756). The session owns it while running (see [`WordApp::prefs`]).
+    #[serde(deserialize_with = "lenient_styles_pane_dock")]
+    pub styles_pane_dock: wordcraft_engine::StylesPaneDock,
+    /// The floating Styles pane's `[x, y, width, height]`, also kept while it is docked.
+    #[serde(deserialize_with = "lenient_float_rect")]
+    pub styles_pane_float: Option<[f32; 4]>,
+    /// The docked Styles pane's width this run; like the other panes' widths, not kept between runs.
+    #[serde(skip)]
+    pub styles_pane_width: Option<f32>,
+    /// Where each of the other task panes sits, by [`panes::Pane::key`] (#1756).
+    #[serde(deserialize_with = "panes::lenient_places")]
+    pub pane_places: std::collections::BTreeMap<String, panes::SavedPane>,
     /// Headings whose sub-headings the Navigation pane hides (#1997); per session, not saved.
     #[serde(skip)]
     pub nav_collapsed: std::collections::HashSet<wordcraft_doc::Path>,
@@ -373,17 +386,6 @@ pub struct UiState {
     pub update_fields_before_print: bool,
     /// The custom dictionary (File › Options › Proofing, Add to Dictionary), kept between runs.
     pub dictionary: Vec<String>,
-    /// Where the Styles pane sits (#1756); the session owns it while running (`view.stylesPaneDock`).
-    pub styles_pane_dock: wordcraft_engine::StylesPaneDock,
-    /// The floating Styles pane's place and size, `[x, y, width, height]` in points; brought
-    /// back on screen when it is shown ([`panes::float_rect`]).
-    pub styles_pane_float: Option<[f32; 4]>,
-    /// The floating Styles pane has been placed at `styles_pane_float` this run; never persisted.
-    #[serde(skip)]
-    pub styles_pane_placed: bool,
-    /// Where a docked Styles pane's title was let go after a drag this frame; never persisted.
-    #[serde(skip)]
-    pub styles_title_dropped: Option<egui::Pos2>,
 }
 
 /// The ribbon tab the app opens on, and the one it falls back to when the tab that was showing
@@ -419,6 +421,10 @@ impl Default for UiState {
             legacy_dark: None,
             nav_tab: "headings".into(),
             nav_pane: false,
+            styles_pane_dock: wordcraft_engine::StylesPaneDock::Right,
+            styles_pane_float: None,
+            styles_pane_width: None,
+            pane_places: Default::default(),
             nav_collapsed: Default::default(),
             show_discord: true,
             author: String::new(),
@@ -451,10 +457,6 @@ impl Default for UiState {
             print_backgrounds: false,
             update_fields_before_print: false,
             dictionary: Vec::new(),
-            styles_pane_dock: wordcraft_engine::StylesPaneDock::Right,
-            styles_pane_float: None,
-            styles_pane_placed: false,
-            styles_title_dropped: None,
         }
     }
 }
@@ -512,6 +514,18 @@ pub fn recent_fonts_from<'a>(names: impl IntoIterator<Item = &'a str>) -> Vec<St
         }
     }
     out
+}
+
+/// An unknown saved position reads as the default.
+fn lenient_styles_pane_dock<'de, D: serde::Deserializer<'de>>(d: D) -> Result<wordcraft_engine::StylesPaneDock, D::Error> {
+    let v = Value::deserialize(d)?;
+    Ok(v.as_str().and_then(wordcraft_engine::StylesPaneDock::parse).unwrap_or_default())
+}
+
+/// Anything but four finite numbers reads as no saved rect; `craft_ui::panes` brings a saved one
+/// back inside the window.
+fn lenient_float_rect<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<[f32; 4]>, D::Error> {
+    Ok(panes::float_rect(&Value::deserialize(d)?))
 }
 
 /// `recentFonts` as saved, through [`recent_fonts_from`]: an entry that isn't a name is dropped,
@@ -583,6 +597,7 @@ pub struct WordApp {
     pub mac_titlebar: chrome::MacTitleBar,
     /// Focus (#1678): the ribbon is dropped down from the Focus bar, over the page.
     pub(crate) focus_ribbon: bool,
+    pub(crate) updates_rt: updates_ui::Runtime,
     control_rx: Option<std::sync::mpsc::Receiver<ControlRequest>>,
     /// Admitted `ui.screenshot` requests: count/byte budgets, retries and completion slots.
     shots: control::Shots,
@@ -750,6 +765,7 @@ impl WordApp {
             integrated_titlebar: false,
             mac_titlebar: chrome::MacTitleBar::default(),
             focus_ribbon: false,
+            updates_rt: updates_ui::Runtime::default(),
             control_rx: None,
             shots: control::Shots::default(),
             capture_epoch: 0,
@@ -855,11 +871,11 @@ impl WordApp {
         ui.read_aloud_skip_citations = self.session.read_aloud.skip_citations;
         ui.dark_page = self.session.view.dark_mode;
         ui.nav_pane = self.session.view.nav_pane;
+        ui.styles_pane_dock = self.session.view.styles_pane_dock;
         ui.check_spelling = self.session.view.proofing;
         ui.keyboard = self.session.keymap.clone();
         ui.ribbon = self.session.ribbon.clone();
         ui.ink_pens = self.session.view.draw.pens.clone();
-        ui.styles_pane_dock = self.session.view.styles_pane_dock;
         ui
     }
 
@@ -904,6 +920,7 @@ impl WordApp {
         self.session.read_aloud.skip_citations = self.ui.read_aloud_skip_citations;
         self.session.view.dark_mode = self.ui.dark_page;
         self.session.view.nav_pane = self.ui.nav_pane;
+        self.session.view.styles_pane_dock = self.ui.styles_pane_dock;
         self.session.view.proofing = self.ui.check_spelling;
         // Keys for commands this version doesn't have are dropped.
         self.session.keymap = std::mem::take(&mut self.ui.keyboard);
@@ -913,7 +930,6 @@ impl WordApp {
         self.session.ribbon = std::mem::take(&mut self.ui.ribbon);
         self.session.ribbon.retain_known(&reg);
         self.session.view.draw.pens = std::mem::take(&mut self.ui.ink_pens);
-        self.session.view.styles_pane_dock = self.ui.styles_pane_dock;
     }
 
     /// Select the picture or icon the person just inserted or pasted, so it shows its handles.
@@ -1645,6 +1661,10 @@ impl WordApp {
     fn ui_command(&mut self, id: &str, p: &Value) -> Option<Result<Value, String>> {
         let s = |k: &str| p.get(k).and_then(Value::as_str);
         Some(Ok(match id {
+            "ui.checkForUpdates" | "help.checkForUpdates" => {
+                crate::updates_ui::check(self);
+                Value::Null
+            }
             "ui.tab" => {
                 let tab = s("tab").unwrap_or("Home").to_string();
                 if tab == "File" {
@@ -1706,6 +1726,7 @@ impl WordApp {
                 self.canvas.want_focus = true;
                 json!({"pending": "contextMenu"})
             }
+            "ui.paneDock" => return Some(panes::dock_command(self, p)),
             "ui.collapseRibbon" => {
                 self.ui.ribbon_collapsed = !self.ui.ribbon_collapsed;
                 json!({"collapsed": self.ui.ribbon_collapsed})
@@ -2261,6 +2282,7 @@ impl WordApp {
 
     /// Per-frame logic before layout: control requests, screenshots, shortcuts, file drops.
     pub fn logic(&mut self, ctx: &egui::Context) {
+        updates_ui::tick(self, ctx);
         let lang = i18n::Lang::from_pref(&self.ui.language);
         i18n::set_current(lang);
         // New documents are written in the interface's language when WordCraft can proof it
@@ -2654,6 +2676,7 @@ impl WordApp {
     fn show_overlays(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         content_controls::popup(self, ctx);
         dialogs::show(self, ctx);
+        updates_ui::show(self, ctx);
         #[cfg(not(target_arch = "wasm32"))]
         file_browser::show(self, ctx);
         colors::show(self, ctx);
@@ -3035,6 +3058,7 @@ pub(crate) fn works_without_document(id: &str) -> bool {
             | "ui.discord"
             | "ui.caretAnimation"
             | "ui.startScreen"
+            | "ui.checkForUpdates"
     ) || id.starts_with("help.")
 }
 
@@ -7923,107 +7947,123 @@ mod tests {
         assert!(!old.session.view.nav_pane, "no saved value: closed");
     }
 
-    /// #1756: where the Styles pane sits, and the floating pane's place and size, are kept
-    /// between runs in the preferences, never in the document.
+    /// Task panes: two open panes on one edge sit side by side, the first outermost; a pane's ×
+    /// runs its command; the Styles pane's place and float rect survive a restart (#1756).
     #[test]
-    fn styles_pane_dock_survives_restart() {
-        use wordcraft_engine::StylesPaneDock;
-        let mut first = app();
-        assert_eq!(first.session.view.styles_pane_dock, StylesPaneDock::Right);
-        first.run("view.stylesPaneDock", json!({"dock": "float"})).unwrap();
-        first.ui.styles_pane_float = Some([300.0, 120.0, 280.0, 500.0]);
-        let saved = serde_json::to_vec(&first.prefs()).unwrap();
-        let mut second = app();
-        second.apply_prefs(UiState::from_json(&saved).unwrap());
-        assert_eq!(second.session.view.styles_pane_dock, StylesPaneDock::Floating);
-        assert_eq!(second.ui.styles_pane_float, Some([300.0, 120.0, 280.0, 500.0]));
-        first.run("view.stylesPaneDock", json!({"dock": "left"})).unwrap();
-        let mut third = app();
-        third.apply_prefs(UiState::from_json(&serde_json::to_vec(&first.prefs()).unwrap()).unwrap());
-        assert_eq!(third.session.view.styles_pane_dock, StylesPaneDock::Left);
-        // Settings from before #1756, or a value this version doesn't know: on the right.
-        for old in [r#"{"tab":"Insert"}"#, r#"{"stylesPaneDock":"top","stylesPaneFloat":"x"}"#] {
-            let mut a = app();
-            a.apply_prefs(UiState::from_json(old.as_bytes()).unwrap());
-            assert_eq!(a.session.view.styles_pane_dock, StylesPaneDock::Right, "{old}");
-            assert_eq!(a.ui.styles_pane_float, None, "{old}");
-        }
-    }
-
-    /// #1756: the Styles pane shows on the side it is docked to, or floats over the document.
-    #[test]
-    fn styles_pane_shows_where_it_is_docked() {
+    fn task_panes_share_an_edge_close_and_keep_the_styles_place() {
         use egui_kittest::kittest::Queryable;
-        for (dock, check) in [("right", 0), ("left", 1), ("float", 2)] {
-            let mut a = app();
-            a.run("view.stylesPane", json!({"value": true})).unwrap();
-            a.run("view.stylesPaneDock", json!({"dock": dock})).unwrap();
-            let mut h = harness(a);
-            h.run_steps(4);
-            let r = h.get_by_label("Manage Styles…").rect();
-            match check {
-                0 => assert!(r.min.x > 1100.0, "docked right: {r:?}"),
-                1 => assert!(r.max.x < 340.0, "docked left: {r:?}"),
-                _ => assert!(r.min.x > 340.0 && r.max.x < 1100.0, "floating over the document: {r:?}"),
-            }
+        let bars = |h: &egui_kittest::Harness<'_, WordApp>| {
+            let mut bars: Vec<egui::Rect> = h.get_all_by_label_contains("Move Pane: ").map(|n| n.rect()).collect();
+            bars.sort_by(|a, b| a.left().total_cmp(&b.left()));
+            bars
+        };
+        // A title bar's ▾ and × sit right of the bar, on its row.
+        fn click_button(h: &egui_kittest::Harness<'_, WordApp>, bar: egui::Rect, label: &str) {
+            let on_row = |r: egui::Rect| r.center().y > bar.top() && r.center().y < bar.bottom() && r.left() >= bar.right() - 1.0;
+            let node = h.get_all_by_label(label).filter(|n| on_row(n.rect())).min_by(|a, b| a.rect().left().total_cmp(&b.rect().left()));
+            node.unwrap_or_else(|| panic!("no {label} beside the title bar")).click();
         }
+        let mut a = app();
+        a.run("view.stylesPane", json!({"value": true})).unwrap();
+        a.run("view.commentsPane", json!({"value": true})).unwrap();
+        let mut h = harness(a);
+        h.run_steps(4);
+        let [comments, styles] = bars(&h)[..] else { panic!("two pane title bars") };
+        assert!(comments.right() <= styles.left() + 1.0, "side by side");
+        assert!(comments.left() > 720.0, "both on the right");
+        // Default widths 290 and 250: Styles, opened first, is the outer one.
+        assert!((comments.width() - styles.width() - 40.0).abs() < 2.0, "Styles is outermost: {comments:?} {styles:?}");
+
+        click_button(&h, styles, "Close");
+        h.run_steps(3);
+        assert!(!h.state().session.view.styles_pane, "× ran view.stylesPane");
+        assert!(h.state().session.view.comments_pane);
+        assert_eq!(bars(&h).len(), 1);
+
+        h.state_mut().run("view.stylesPane", json!({"value": true})).unwrap();
+        h.run_steps(3);
+        let styles = *bars(&h).last().unwrap();
+        click_button(&h, styles, "Pane Options");
+        h.run_steps(2);
+        h.get_by_label("Float").click();
+        h.run_steps(3);
+        assert_eq!(h.state().session.view.styles_pane_dock, wordcraft_engine::StylesPaneDock::Floating);
+        let rect = h.state().ui.styles_pane_float.expect("the float rect is kept");
+
+        let saved = serde_json::to_vec(&h.state().prefs()).unwrap();
+        let mut next = app();
+        next.apply_prefs(serde_json::from_slice(&saved).unwrap());
+        assert_eq!(next.session.view.styles_pane_dock, wordcraft_engine::StylesPaneDock::Floating);
+        assert_eq!(next.ui.styles_pane_float, Some(rect));
+
+        let mut junk = app();
+        junk.apply_prefs(serde_json::from_str(r#"{"stylesPaneDock": "top", "stylesPaneFloat": [1, "x", 3, 4], "navPane": true}"#).unwrap());
+        assert_eq!(junk.session.view.styles_pane_dock, wordcraft_engine::StylesPaneDock::Right, "junk reads as the default");
+        assert_eq!(junk.ui.styles_pane_float, None);
+        assert!(junk.session.view.nav_pane, "the rest of the file still loads");
     }
 
-    /// #1756: the mouse gestures. Dragging a docked pane's title onto the page floats it there;
-    /// dropping the floating pane at a window edge docks it on that side; dragging a docked
-    /// title to the opposite edge docks it there in one drag.
+    /// A pointer drag on a pane's resize edge leaves no keyboard focus behind, so Ctrl and
+    /// F-key shortcuts run right after it, docked or floating. A resize edge focused from the
+    /// keyboard takes the arrow keys until Escape (#1756).
     #[test]
-    fn styles_pane_title_drags_out_to_float_and_to_an_edge_to_dock() {
-        use wordcraft_engine::StylesPaneDock;
+    fn shortcuts_run_after_a_pane_resize() {
+        use egui_kittest::kittest::Queryable;
         type H = egui_kittest::Harness<'static, WordApp>;
-        /// Drags the pane by its title to `to` and lets go.
-        fn drag(h: &mut H, to: egui::Pos2) {
-            let from = title(h);
-            let press =
-                |pos, pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE };
+        fn key(h: &mut H, key: egui::Key, modifiers: egui::Modifiers) {
+            h.event(egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers });
+            h.run_steps(2);
+        }
+        fn drag(h: &mut H, from: egui::Pos2, by: egui::Vec2) {
+            let button =
+                |pos, pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
             h.event(egui::Event::PointerMoved(from));
             h.step();
-            h.event(press(from, true));
+            h.event(button(from, true));
             h.step();
-            for i in 1..=6 {
-                h.event(egui::Event::PointerMoved(from + (to - from) * (i as f32 / 6.0)));
+            for t in [0.5, 1.0] {
+                h.event(egui::Event::PointerMoved(from + by * t));
                 h.step();
             }
-            h.event(press(to, false));
-            h.run_steps(4);
+            h.event(button(from + by, false));
+            h.run_steps(2);
         }
-        // The pane's "Styles" title: the label just above "Manage Styles…", lined up with it
-        // (the ribbon's Styles group label is elsewhere).
-        fn title(h: &H) -> egui::Pos2 {
-            let m = h.get_by_label("Manage Styles…").rect();
-            let found = h.query_all_by_label("Styles").map(|n| n.rect()).filter(|r| r.max.y < m.min.y && (r.min.x - m.min.x).abs() < 24.0);
-            found.max_by(|a, b| a.min.y.total_cmp(&b.min.y)).unwrap_or_else(|| panic!("no Styles title above {m:?}")).center()
+        // Ctrl+H opens Replace; Escape closes it again.
+        fn replace_opens(h: &mut H) -> bool {
+            key(h, egui::Key::H, egui::Modifiers::COMMAND);
+            let opened = h.state().dialog.as_ref().map(|d| d.name()) == Some("replace");
+            key(h, egui::Key::Escape, egui::Modifiers::NONE);
+            opened && h.state().dialog.is_none()
         }
-        let dock = |h: &H| h.state().session.view.styles_pane_dock;
         let mut a = app();
         a.run("view.stylesPane", json!({"value": true})).unwrap();
         let mut h = harness(a);
         h.run_steps(4);
-        assert_eq!(dock(&h), StylesPaneDock::Right);
-        // Out of the right-hand pane onto the page: floating where it was dropped.
-        let to = egui::pos2(700.0, 450.0);
-        drag(&mut h, to);
-        assert_eq!(dock(&h), StylesPaneDock::Floating);
-        let r = h.get_by_label("Manage Styles…").rect();
-        assert!(r.min.x > 600.0 && r.max.x < 1100.0, "floats near the drop: {r:?}");
-        // The floating pane dropped against the left edge: docked left.
-        drag(&mut h, egui::pos2(8.0, 450.0));
-        assert_eq!(dock(&h), StylesPaneDock::Left);
-        assert!(h.get_by_label("Manage Styles…").rect().max.x < 340.0);
-        // Floated again, then dropped against the right edge: docked right.
-        drag(&mut h, to);
-        assert_eq!(dock(&h), StylesPaneDock::Floating);
-        drag(&mut h, egui::pos2(1436.0, 450.0));
-        assert_eq!(dock(&h), StylesPaneDock::Right);
-        // A docked title dragged all the way to the other edge: docked there, in one drag.
-        drag(&mut h, egui::pos2(6.0, 450.0));
-        assert_eq!(dock(&h), StylesPaneDock::Left);
-        assert!(h.get_by_label("Manage Styles…").rect().max.x < 340.0);
+
+        let edge = h.get_by_label("Resize Pane").rect();
+        // On the pane's side of the edge: the document's scroll bar lies under its outer half.
+        drag(&mut h, edge.center() + egui::vec2(1.5, 0.0), egui::vec2(-40.0, 0.0));
+        let width = h.state().ui.styles_pane_width.unwrap_or_default();
+        assert!((width - 290.0).abs() <= 2.0, "the drag widened the docked pane: {width}");
+        assert!(replace_opens(&mut h), "Ctrl+H runs after the drag");
+
+        h.get_by_label("Resize Pane").focus();
+        h.run_steps(2);
+        key(&mut h, egui::Key::ArrowLeft, egui::Modifiers::NONE);
+        assert!(h.state().ui.styles_pane_width.is_some_and(|w| w > width), "arrow keys move the focused edge");
+        key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+        assert_eq!(h.ctx.memory(|m| m.focused()), None, "Escape leaves the edge");
+        assert!(replace_opens(&mut h), "Ctrl+H runs after Escape");
+
+        h.state_mut().run("view.stylesPaneDock", json!({"dock": "float"})).unwrap();
+        h.run_steps(3);
+        // The bottom-right grip.
+        let corner = |r: &egui::Rect| r.max.x + r.max.y;
+        let grip = h.get_all_by_label("Resize Pane").map(|n| n.rect()).max_by(|a, b| corner(a).total_cmp(&corner(b))).unwrap();
+        let before = h.state().ui.styles_pane_float;
+        drag(&mut h, grip.center(), egui::vec2(30.0, 30.0));
+        assert_ne!(h.state().ui.styles_pane_float, before, "the drag resized the floating pane");
+        assert!(replace_opens(&mut h), "Ctrl+H runs after the floating pane's resize");
     }
 
     #[test]
@@ -10021,13 +10061,14 @@ mod tests {
         h.step();
         assert!(h.state().session.view.focus_mode);
         assert!(!shown(&h, "Ruler") && !shown(&h, "Focus"), "the ribbon is hidden");
-        assert!(!shown(&h, "Navigation"), "and so is the Navigation pane");
+        // The pane's title bar: the only pane open is Navigation.
+        assert!(!shown(&h, "Move Pane: Navigation"), "and so is the Navigation pane");
         h.event(egui::Event::Key { key: egui::Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::NONE });
         h.step();
         h.step();
         assert!(!h.state().session.view.focus_mode, "Escape leaves Focus");
         assert!(shown(&h, "Ruler"), "and the ribbon is back");
-        assert!(shown(&h, "Navigation"), "with the pane");
+        assert!(shown(&h, "Move Pane: Navigation"), "with the pane");
         // Immersive Reader is Read Mode, not Focus: its status bar stays.
         h.state_mut().run("view.immersive", json!({})).unwrap();
         h.step();

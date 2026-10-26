@@ -507,7 +507,7 @@ impl LocalImages {
         left.map(|_| ())
     }
 
-    /// The canonical path `src` names, if it's inside the folder.
+    /// The canonical path `src` names, if it's inside the folder and may be read.
     fn resolve(&self, src: &str) -> Option<std::path::PathBuf> {
         let src = src.split(['#', '?']).next().unwrap_or("");
         if src.is_empty() || src.starts_with("//") || src.split_once(':').is_some_and(|(scheme, _)| !scheme.contains('/')) {
@@ -521,6 +521,9 @@ impl LocalImages {
         let dir = self.dir.as_ref()?;
         // Canonical paths have `..` and symlinks resolved, so this keeps both inside the folder.
         let path = std::fs::canonicalize(dir.join(rel)).ok()?;
+        // The folder is the one the HTML path names, which may be a link from outside the
+        // automation read root; the picture itself must be inside it (#3736).
+        crate::file_access::check_read(&path.to_string_lossy()).ok()?;
         path.starts_with(dir).then_some(path)
     }
 }
