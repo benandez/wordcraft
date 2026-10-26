@@ -1107,6 +1107,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "craft-window"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=b926b5c03e256c86ca10934f58d03f628810b5b7#b926b5c03e256c86ca10934f58d03f628810b5b7"
+dependencies = [
+ "egui",
+ "objc2 0.6.5",
+ "objc2-app-kit 0.3.2",
+ "wayland-client",
+]
+
+[[package]]
 name = "craft-winprint-gdi"
 version = "0.1.0"
 source = "git+https://github.com/storytold/winprint.rs?rev=417ac3c4d14d3da5485a99c7d5ce8f05664ec312#417ac3c4d14d3da5485a99c7d5ce8f05664ec312"
@@ -6906,6 +6917,7 @@ dependencies = [
  "craft-i18n",
  "craft-ui",
  "craft-update",
+ "craft-window",
  "egui",
  "egui_kittest",
  "image",

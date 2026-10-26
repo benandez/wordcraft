@@ -298,6 +298,8 @@ impl PaneContent<Pane> for Content<'_> {
     }
 }
 
+/// The pane host's name. Its focus and drag state is per window ([`WordApp::window_id`]); where
+/// each pane sits is the app's.
 const HOST: &str = "task_panes";
 
 /// Whether a dialog, file browser, colors dialog, content-control popup, Zotero alert, keytips
@@ -332,7 +334,7 @@ fn route_f6(app: &WordApp, ctx: &egui::Context) {
         });
     });
     if let Some(reverse) = cycle {
-        craft_ui::panes::focus_next(ctx, egui::Id::unique(HOST), reverse);
+        craft_ui::panes::focus_next(ctx, app.window_id(HOST), reverse);
     }
 }
 
@@ -345,7 +347,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
     }
     route_f6(app, ui.ctx());
     let states: Vec<(Pane, PaneState)> = open.iter().map(|pane| (*pane, pane_state(app, *pane))).collect();
-    let out = PaneHost::new(egui::Id::unique(HOST))
+    let out = PaneHost::new(app.window_id(HOST))
         .policy(SidePolicy::Columns)
         .f6(false)
         .labels(labels())
@@ -448,7 +450,7 @@ fn close(app: &mut WordApp, pane: Pane) {
 
 /// Draws the Navigation pane: search box and tabs, page list, find results and heading outline.
 fn nav(app: &mut WordApp, ui: &mut Ui) {
-    let qid = egui::Id::unique("nav_query");
+    let qid = app.window_id("nav_query");
     let mut q = ui.data(|d| d.get_temp::<String>(qid)).unwrap_or_default();
     // Ctrl+F with text selected searches for it, as Word does (a selection within one line).
     let focus = std::mem::take(&mut app.nav_search_focus);
@@ -759,6 +761,8 @@ fn comments(app: &mut WordApp, ui: &mut Ui) {
     ui.separator();
     let list = app.session.run("review.comments", &json!({})).unwrap_or_default();
     let t = Tokens::get(ui.ctx());
+    // Comment ids are the document's own; another window's document has the same ones.
+    let document = app.session.document_id();
     egui::ScrollArea::vertical().show(ui, |ui| {
         for c in list.as_array().cloned().unwrap_or_default() {
             let id = c.get("id").and_then(Value::as_u64).unwrap_or(0);
@@ -778,7 +782,7 @@ fn comments(app: &mut WordApp, ui: &mut Ui) {
                 });
                 // Editable comment text (one undo step per edit, like the balloons).
                 comment_editor(app, ui, id as u32, None, false);
-                let open_key = egui::Id::unique(("comment_reply_open", id));
+                let open_key = egui::Id::unique(("comment_reply_open", document, id));
                 let mut replying = ui.data(|d| d.get_temp::<bool>(open_key)).unwrap_or(false);
                 ui.horizontal(|ui| {
                     if ui.small_button(tl!("Go to")).clicked()
@@ -789,7 +793,7 @@ fn comments(app: &mut WordApp, ui: &mut Ui) {
                     if ui.small_button(tl!("Reply")).clicked() {
                         replying = true;
                         ui.data_mut(|d| d.insert_temp(open_key, true));
-                        ui.data_mut(|d| d.insert_temp(egui::Id::unique(("comment_reply_focus", id)), true));
+                        ui.data_mut(|d| d.insert_temp(egui::Id::unique(("comment_reply_focus", document, id)), true));
                     }
                     let resolved = c.get("resolved").and_then(Value::as_bool).unwrap_or(false);
                     if ui.small_button(if resolved { tl!("Reopen") } else { tl!("Resolve") }).clicked() {
@@ -800,7 +804,7 @@ fn comments(app: &mut WordApp, ui: &mut Ui) {
                     }
                 });
                 if replying {
-                    let focus = ui.data_mut(|d| d.remove_temp::<bool>(egui::Id::unique(("comment_reply_focus", id)))).unwrap_or(false);
+                    let focus = ui.data_mut(|d| d.remove_temp::<bool>(egui::Id::unique(("comment_reply_focus", document, id)))).unwrap_or(false);
                     if reply_editor(app, ui, id as u32, None, focus) {
                         ui.data_mut(|d| d.remove::<bool>(open_key));
                     }
@@ -831,6 +835,11 @@ impl CommentDrafts {
             self.document = document;
         }
         self
+    }
+
+    /// Nothing typed and not yet written.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.edits.is_empty() && self.replies.is_empty()
     }
 }
 

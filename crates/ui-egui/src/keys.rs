@@ -259,10 +259,14 @@ pub fn canvas_events(app: &mut WordApp, ctx: &egui::Context) {
         return;
     }
     let events = ctx.input(|i| i.events.clone());
+    let window = app.windows.shown();
     if app.session.view.read_mode {
         // Read Mode is for navigation and selection, not typing into the document. The ribbon's
         // Edit Document button or Escape returns to Print Layout before editing.
         for e in &events {
+            if app.windows.shown() != window {
+                break;
+            }
             match e {
                 // Not while a dialog or menu that takes Escape is open.
                 egui::Event::Key { key: Key::Escape, pressed: true, .. } if app.escape_free => {
@@ -316,6 +320,11 @@ pub fn canvas_events(app: &mut WordApp, ctx: &egui::Context) {
         app.canvas.paste_mods = Some(held);
     }
     for e in events {
+        // A key closed the window (Mod+W) or brought another forward: the frame's other keys
+        // were typed in this one and are dropped.
+        if app.windows.shown() != window {
+            break;
+        }
         interrupted_preedit |= std::mem::take(&mut app.canvas.ime_interrupted_preedit);
         let stale_composition_event = if interrupted_preedit {
             match &e {
@@ -1487,7 +1496,12 @@ pub fn global_shortcuts(app: &mut WordApp, ctx: &egui::Context) {
         return;
     }
     let events = ctx.input(|i| i.events.clone());
+    let window = app.windows.shown();
     for e in events {
+        // The rest of the keys were pressed in a window that closed or went to the back.
+        if app.windows.shown() != window {
+            break;
+        }
         if let egui::Event::Key { key, pressed: true, modifiers, .. } = e {
             if leave_full_screen(app, ctx, key, modifiers, false) {
                 continue;
