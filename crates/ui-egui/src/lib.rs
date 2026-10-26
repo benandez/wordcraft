@@ -2958,9 +2958,9 @@ impl WordApp {
                 ribbon_blur::set_drawing(ctx, false);
                 if let Some((_, r)) = glass.as_mut() {
                     r.max.y = ui.available_rect_before_wrap().min.y;
-                if moved(self) {
-                    return;
-                }
+                    if moved(self) {
+                        return;
+                    }
                 }
                 chrome::status_bar(self, ui);
                 panes::show(self, ui);
