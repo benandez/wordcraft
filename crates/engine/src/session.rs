@@ -135,6 +135,10 @@ pub struct ViewState {
     pub table_gridlines: bool,
     pub nav_pane: bool,
     pub styles_pane: bool,
+    /// Where the Styles pane sits: docked right (the default) or left, or floating (#1756).
+    /// Kept in the user's preferences, not the document.
+    #[serde(default)]
+    pub styles_pane_dock: StylesPaneDock,
     /// Style Inspector pane (Home › Styles).
     #[serde(default)]
     pub style_inspector: bool,
@@ -215,6 +219,38 @@ pub struct ViewState {
     pub full_screen: bool,
 }
 
+/// Where the Styles pane sits (`view.stylesPaneDock`, #1756).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StylesPaneDock {
+    #[default]
+    Right,
+    Left,
+    /// A window of its own over the document, which can be moved and resized.
+    #[serde(rename = "float")]
+    Floating,
+}
+
+impl StylesPaneDock {
+    /// `left`, `right` or `float`; anything else is `None`.
+    pub fn parse(name: &str) -> Option<Self> {
+        match name {
+            "right" => Some(Self::Right),
+            "left" => Some(Self::Left),
+            "float" => Some(Self::Floating),
+            _ => None,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Right => "right",
+            Self::Left => "left",
+            Self::Floating => "float",
+        }
+    }
+}
+
 fn on() -> bool {
     true
 }
@@ -252,6 +288,7 @@ impl Default for ViewState {
             table_gridlines: true,
             nav_pane: false,
             styles_pane: false,
+            styles_pane_dock: StylesPaneDock::Right,
             style_inspector: false,
             comments_pane: false,
             clipboard_pane: false,
@@ -721,6 +758,7 @@ fn typed_range(text: &str, off: usize) -> Option<(usize, usize)> {
     text.get(start..off)?.chars().any(char::is_alphanumeric).then_some((start, end))
 }
 
+/// The name of `doc`'s bibliography style, APA when it names none we know.
 fn doc_bib_style(doc: &Document) -> String {
     doc.settings.bib_style.as_deref().and_then(crate::cmd::citations::find_style).map_or("APA", |st| st.name).to_string()
 }
@@ -747,10 +785,14 @@ impl Session {
 
     /// Save the custom dictionary through [`Session::user_dict_path`], if the host wired one up,
     /// with `removed` (words just taken out) left out of the merge with the file. A failed save
-    /// keeps the words in memory and never fails the command (#40).
+    /// keeps the words in memory and never fails the command (#40), as does a file outside the
+    /// automation roots in force: it is read, then replaced beside itself (#3737).
     pub(crate) fn persist_user_dictionary(&self, removed: &[String]) {
-        if let Some(path) = self.user_dict_path.as_deref()
-            && let Err(e) = wordcraft_proof::save_user_dictionary(path, removed)
+        let Some(path) = self.user_dict_path.as_deref() else { return };
+        let name = path.to_string_lossy();
+        if let Err(e) = crate::file_access::check_read(&name)
+            .and_then(|()| crate::file_access::check_write(&name))
+            .and_then(|()| wordcraft_proof::save_user_dictionary(path, removed).map_err(|e| e.to_string()))
         {
             log::warn!("custom dictionary: save failed: {e}");
         }
