@@ -249,6 +249,33 @@ fn custom_dictionary_words_persist_through_their_file() {
 }
 
 #[test]
+fn confined_sessions_neither_save_the_dictionary_nor_choose_folders_outside_their_roots() {
+    // #3737 (findings 34 and WC-35): the custom dictionary file and the folder settings are
+    // held to the automation roots like any other path.
+    let base = scratch_dir("dict-roots");
+    for d in ["in", "out", "outside"] {
+        std::fs::create_dir_all(base.join(d)).unwrap();
+    }
+    let roots = crate::file_access::AutomationRoots::new(Some(&base.join("in")), Some(&base.join("out"))).unwrap();
+    let mut s = s();
+    let outside = base.join("outside/custom-dictionary.txt");
+    s.user_dict_path = Some(outside.clone());
+    let confined = |s: &mut Session, cmd: &str, v: serde_json::Value| crate::file_access::confine(roots.as_ref(), || s.run(cmd, &v));
+    assert!(confined(&mut s, "review.addToDictionary", json!({"word": "zxqengconfined"})).is_ok());
+    assert!(wordcraft_proof::user_dictionary().contains(&"zxqengconfined".to_string()), "kept in memory");
+    assert!(!outside.exists(), "nothing written outside the write root");
+    for key in ["dictionariesFolder", "userTemplatesFolder"] {
+        assert!(confined(&mut s, "file.options", json!({key: base.join("outside").to_string_lossy()})).is_err(), "{key}");
+    }
+    assert_eq!((s.prefs.dictionaries_folder.as_deref(), s.prefs.user_templates_folder.as_deref()), (None, None));
+    // A folder inside the read root is still taken.
+    let inside = base.join("in");
+    assert!(confined(&mut s, "file.options", json!({"userTemplatesFolder": inside.to_string_lossy()})).is_ok());
+    let _ = std::fs::remove_dir_all(&base);
+    assert_eq!(s.prefs.user_templates_folder.as_deref(), Some(inside.to_string_lossy().as_ref()));
+}
+
+#[test]
 fn add_to_dictionary_takes_only_words_the_file_keeps() {
     // #40: the same rule as loading the dictionary file, so nothing added is dropped on the next load.
     let mut s = s();
@@ -3954,6 +3981,36 @@ fn failed_command_leaves_document_unchanged() {
     assert_eq!(text(&s), before);
 }
 
+/// Review of #3692: the line cap on typed paragraphs is the engine's, so a control-channel or
+/// CLI `text.insert` is held to it as the MCP tool is. At the cap every line goes in as one undo
+/// step; one line more is refused before anything is typed.
+#[test]
+fn typed_paragraphs_are_capped_for_every_caller() {
+    use crate::CmdError;
+    use crate::cmd::text::MAX_TYPED_PARAGRAPHS;
+    let mut s = s();
+    run(&mut s, "text.insert", json!({"text": "keep"}));
+    let (before, depth) = (body_texts(&s), s.undo_depth());
+    // "x\n" repeated ends in an empty line: one over the cap. A lone "\r" counts as a break too.
+    for over in ["x\n".repeat(MAX_TYPED_PARAGRAPHS), format!("{}x", "x\r\n".repeat(MAX_TYPED_PARAGRAPHS - 1)) + "\rx"] {
+        match s.run("text.insert", &json!({"text": over, "paragraphs": true})) {
+            Err(CmdError::Params(m)) => assert!(m.contains("10001 lines") && m.contains("at most 10000"), "{m}"),
+            r => panic!("not refused: {r:?}"),
+        }
+        assert_eq!(body_texts(&s), before, "nothing typed");
+        assert_eq!(s.undo_depth(), depth, "no undo step");
+    }
+    let at_cap = vec!["y"; MAX_TYPED_PARAGRAPHS].join("\r\n");
+    run(&mut s, "text.insert", json!({"text": at_cap, "paragraphs": true}));
+    let paras = body_texts(&s);
+    assert_eq!(paras.len(), MAX_TYPED_PARAGRAPHS);
+    // Each break is Enter's own, AutoCorrect included: the first sentence gets its capital.
+    assert_eq!((paras.first().map(String::as_str), paras.last().map(String::as_str)), (Some("Keepy"), Some("y")));
+    assert!(s.undo(), "undo");
+    assert_eq!(body_texts(&s).len(), 1, "one undo step takes every line back out");
+    assert!(!body_texts(&s).iter().any(|p| p.contains('y')));
+}
+
 #[test]
 fn hostile_params_never_panic() {
     let reg = cmd::registry();
@@ -4590,10 +4647,10 @@ fn document_id_changes_only_when_the_document_is_replaced() {
     assert_ne!(s.document_id(), second);
 }
 
-/// Envelopes, Labels and Finish & Merge make a new, untitled document, as Word does, and like New
-/// its undo history starts afresh. Undo/Redo across the swap put the wrong document under a file
-/// (Undo, Save As, Redo, Save wrote the envelope over the saved file), so it isn't offered; the UI
-/// asks to save the replaced document first.
+/// Envelopes, Labels and Finish & Merge open a new, untitled document beside the main one, as Word
+/// does, and like New its undo history starts afresh. Undo/Redo across documents would put the
+/// wrong document under a file (Undo, Save As, Redo, Save wrote the envelope over the saved file),
+/// so it isn't offered. The main document stays open as it was, with no undo step for the command.
 #[test]
 fn mailings_results_are_new_untitled_documents() {
     let dir = std::env::temp_dir().join(format!("wordcraft-engine-mailings-{}", std::process::id()));
@@ -4613,10 +4670,13 @@ fn mailings_results_are_new_untitled_documents() {
         let before = text(&s);
         let document = s.document_id();
 
+        let undo_steps = s.undo_labels().len();
         run(&mut s, id, json!({}));
         let result = text(&s);
-        assert_ne!(result, before, "{id}: the result replaced the document");
+        assert_ne!(result, before, "{id}: the result is the active document");
         assert_ne!(s.document_id(), document, "{id}: a different document");
+        let main = s.with_document(document, |s| (text(s), s.undo_labels().len())).unwrap();
+        assert_eq!(main, (before.clone(), undo_steps), "{id}: the main document stays open as it was");
         assert_eq!(s.path, None, "{id}: the result is untitled");
         assert_eq!(run(&mut s, "file.save", json!({}))["saved"], false, "{id}: Save asks where (Save As)");
         assert_eq!(std::fs::read(&original).unwrap(), on_disk, "{id}: the original file is untouched");
@@ -4771,6 +4831,29 @@ fn html_pictures_through_a_symlink_out_of_the_folder_are_not_loaded() {
     assert!(doc.plain_text(StoryRef::Body).contains("Link"));
 }
 
+#[cfg(unix)]
+#[test]
+fn html_pictures_load_only_from_inside_the_read_root() {
+    // #3736: the HTML file is checked through its link, but its pictures load from beside the
+    // link. Opened through a link outside the read root, they must not come from there.
+    let root = scratch_dir("html-img-root");
+    for d in ["in", "outside"] {
+        std::fs::create_dir_all(root.join(d)).unwrap();
+    }
+    std::fs::write(root.join("in/page.html"), r#"<p><img src="pic.png" alt="Pic"></p>"#).unwrap();
+    std::fs::write(root.join("in/pic.png"), tiny_png()).unwrap();
+    std::fs::write(root.join("outside/pic.png"), tiny_png()).unwrap();
+    std::os::unix::fs::symlink(root.join("in/page.html"), root.join("outside/page.html")).unwrap();
+    let roots = crate::file_access::AutomationRoots::new(Some(&root.join("in")), None).unwrap();
+    let through_link = crate::file_access::confine(roots.as_ref(), || crate::io::open_path(&root.join("outside/page.html")));
+    let direct = crate::file_access::confine(roots.as_ref(), || crate::io::open_path(&root.join("in/page.html")));
+    let _ = std::fs::remove_dir_all(&root);
+    let through_link = through_link.unwrap();
+    assert!(through_link.media.is_empty(), "no picture from outside the read root");
+    assert!(through_link.plain_text(StoryRef::Body).contains("Pic"));
+    assert_eq!(direct.unwrap().media.len(), 1, "pictures inside the root still load");
+}
+
 /// `file.open` on a path reads only a regular file: a named pipe blocked until a writer came, and
 /// `/dev/zero` read until memory ran out.
 #[cfg(unix)]
@@ -4796,7 +4879,7 @@ fn opening_a_named_pipe_or_device_is_refused_without_blocking() {
     let got = rx.recv_timeout(std::time::Duration::from_secs(10));
     if got.is_err() {
         // Unblock the stuck reader so the thread ends, then fail.
-        let _ = std::fs::OpenOptions::new().write(true).open(&fifo);
+        let _ = std::os::unix::fs::OpenOptionsExt::custom_flags(std::fs::OpenOptions::new().write(true), libc::O_NONBLOCK).open(&fifo);
     }
     let _ = std::fs::remove_dir_all(&dir);
     let [pipe, device] = got.expect("opening a named pipe blocked");
@@ -4825,7 +4908,7 @@ fn html_picture_that_is_a_named_pipe_is_skipped_without_blocking() {
     let got = rx.recv_timeout(std::time::Duration::from_secs(10));
     if got.is_err() {
         // Unblock the stuck reader so the thread ends, then fail.
-        let _ = std::fs::OpenOptions::new().write(true).open(&fifo);
+        let _ = std::os::unix::fs::OpenOptionsExt::custom_flags(std::fs::OpenOptions::new().write(true), libc::O_NONBLOCK).open(&fifo);
     }
     let _ = std::fs::remove_dir_all(&dir);
     let doc = got.expect("opening the HTML file blocked on a named pipe").unwrap();
@@ -4855,13 +4938,99 @@ fn insert_picture_from_a_named_pipe_is_refused_without_blocking() {
     let got = rx.recv_timeout(std::time::Duration::from_secs(10));
     if got.is_err() {
         // Unblock the stuck reader so the thread ends, then fail.
-        let _ = std::fs::OpenOptions::new().write(true).open(&fifo);
+        let _ = std::os::unix::fs::OpenOptionsExt::custom_flags(std::fs::OpenOptions::new().write(true), libc::O_NONBLOCK).open(&fifo);
     }
     let _ = std::fs::remove_dir_all(&dir);
     assert!(got.expect("reading a picture path blocked on a named pipe").is_err(), "a pipe is not a file to read");
     if std::path::Path::new("/dev/zero").exists() {
         assert!(crate::io::read_file("/dev/zero").is_err(), "a device is not a file to read");
     }
+}
+
+/// #3666: `read_file_capped` (fonts, citation sources, `read_file`) and `read_file_head` (the
+/// Word 2003 check on saving to an `.xml` path) read only a regular file. A named pipe must be
+/// refused, not opened: opening one blocks until a writer appears.
+#[cfg(unix)]
+#[test]
+fn file_head_and_capped_reads_refuse_a_named_pipe_without_blocking() {
+    let dir = scratch_dir("read-helpers-fifo");
+    let fifo = dir.join("pipe.xml");
+    let made = std::process::Command::new("mkfifo").arg(&fifo).status();
+    if !made.is_ok_and(|s| s.success()) {
+        let _ = std::fs::remove_dir_all(&dir);
+        eprintln!("mkfifo unavailable; skipping");
+        return;
+    }
+    let (tx, rx) = std::sync::mpsc::channel();
+    let path = fifo.to_string_lossy().into_owned();
+    std::thread::spawn(move || {
+        let head = crate::io::read_file_head(&path, 64 * 1024).map(|_| ());
+        let capped = crate::io::read_file_capped(&path, 1 << 20, "font file").map(|_| ());
+        let _ = tx.send([head, capped]);
+    });
+    let got = rx.recv_timeout(std::time::Duration::from_secs(10));
+    if got.is_err() {
+        // Unblock the stuck reader (twice: each helper may be stuck in turn) so the thread ends, then
+        // fail. Non-blocking: with no reader left the open fails at once instead of hanging the test.
+        let _ = std::os::unix::fs::OpenOptionsExt::custom_flags(std::fs::OpenOptions::new().write(true), libc::O_NONBLOCK).open(&fifo);
+        let _ = std::os::unix::fs::OpenOptionsExt::custom_flags(std::fs::OpenOptions::new().write(true), libc::O_NONBLOCK).open(&fifo);
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    let [head, capped] = got.expect("reading a named pipe blocked");
+    assert!(head.unwrap_err().contains("not a file"));
+    assert!(capped.unwrap_err().contains("not a file"));
+}
+
+/// #3666: a folder is not a file to read, whichever helper reads it.
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn file_head_and_capped_reads_refuse_a_folder() {
+    let dir = scratch_dir("read-helpers-dir");
+    let path = dir.to_string_lossy().into_owned();
+    let head = crate::io::read_file_head(&path, 64);
+    let capped = crate::io::read_file_capped(&path, 1 << 20, "font file");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(head.unwrap_err().contains("not a file"));
+    assert!(capped.unwrap_err().contains("not a file"));
+}
+
+/// #3666: `read_file_capped` reads a file of up to `max` bytes whole and refuses a larger one;
+/// `read_file_head` returns at most `max` bytes.
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn file_capped_read_refuses_content_over_the_cap() {
+    let dir = scratch_dir("read-helpers-cap");
+    let file = dir.join("data.bin");
+    std::fs::write(&file, vec![7u8; 100]).unwrap();
+    let path = file.to_string_lossy().into_owned();
+    let exact = crate::io::read_file_capped(&path, 100, "file");
+    let over = crate::io::read_file_capped(&path, 99, "file");
+    let head = crate::io::read_file_head(&path, 10);
+    let whole = crate::io::read_file_head(&path, 1000);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(exact.unwrap().len(), 100);
+    assert!(over.unwrap_err().contains("larger than"));
+    assert_eq!(head.unwrap(), vec![7u8; 10]);
+    assert_eq!(whole.unwrap().len(), 100);
+}
+
+/// #3666: `read_regular_file_within` (Paste Special's copied picture file) reads a file of up to
+/// `limit` bytes whole and refuses one whose handle reports more, before reading any of it.
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn regular_file_read_within_a_limit_refuses_a_larger_file() {
+    let dir = scratch_dir("read-within");
+    let file = dir.join("data.bin");
+    std::fs::write(&file, vec![7u8; 100]).unwrap();
+    let big = dir.join("big.bin");
+    std::fs::File::create(&big).unwrap().set_len(64 << 20).unwrap();
+    let exact = crate::io::read_regular_file_within(&file, 100);
+    let over = crate::io::read_regular_file_within(&file, 99);
+    let large = crate::io::read_regular_file_within(&big, 1 << 20);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(exact.map(|b| b.len()), Some(100));
+    assert_eq!(over, None);
+    assert_eq!(large, None);
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -4949,6 +5118,31 @@ fn styles_apply_pane_is_not_an_edit() {
     s.view.styles_pane = false;
     run(&mut s, "styles.apply", json!({}));
     assert!(s.view.styles_pane);
+}
+
+/// #1756: the Styles pane docks on the right (the default), on the left, or floats.
+#[test]
+fn styles_pane_docks_left_right_or_floats() {
+    let mut s = s();
+    run(&mut s, "text.insert", json!({"text": "Hello"}));
+    s.dirty = false;
+    let undo = s.undo_labels();
+    assert_eq!(run(&mut s, "view.state", json!({}))["stylesPaneDock"], "right");
+    assert_eq!(run(&mut s, "view.stylesPaneDock", json!({})), json!({"dock": "right"}), "no dock reads it");
+    for dock in ["left", "float", "right"] {
+        assert_eq!(run(&mut s, "view.stylesPaneDock", json!({"dock": dock})), json!({"dock": dock}));
+        assert_eq!(run(&mut s, "view.stylesPaneDock", json!({})), json!({"dock": dock}));
+        assert_eq!(run(&mut s, "view.state", json!({}))["stylesPaneDock"], dock);
+    }
+    run(&mut s, "view.stylesPaneDock", json!({"dock": "left"}));
+    for junk in [json!({"dock": "top"}), json!({"dock": 1}), json!({"dock": null}), json!({"dock": ["left"]}), json!({"dock": "LEFT "})] {
+        assert!(s.run("view.stylesPaneDock", &junk).is_err(), "{junk} is an error");
+        assert_eq!(run(&mut s, "view.stylesPaneDock", json!({})), json!({"dock": "left"}), "{junk} changes nothing");
+    }
+    // A view setting: no undo step, the document isn't changed, and the pane's visibility stays.
+    assert_eq!(s.undo_labels(), undo);
+    assert!(!s.dirty);
+    assert!(!s.view.styles_pane);
 }
 
 #[test]
@@ -5683,6 +5877,8 @@ fn one_page_is_restored_when_the_document_is_reopened() {
     // A percentage is restored as a percentage, the fit mode dropped.
     run(&mut other, "view.zoom", json!({"value": 80}));
     run(&mut other, "file.save", json!({}));
+    // Opening an open file only shows it: close it first to read it again.
+    run(&mut s, "file.closeDocument", json!({}));
     run(&mut s, "file.open", json!({"path": path}));
     assert!(s.view.fit.is_empty() && !s.view.single_column);
     assert!((s.view.zoom - 0.8).abs() < 1e-6);
@@ -9666,9 +9862,10 @@ fn a_rejected_comparison_keeps_the_current_versions() {
     assert_eq!(s.file_name.as_deref(), Some("original.docx"));
 }
 
-/// A rejected mailing result must keep the source document's save target and versions.
+/// A mailing result opens beside a protected source document, which keeps its save target,
+/// versions, password and text.
 #[test]
-fn a_rejected_mailing_result_keeps_the_current_file_identity() {
+fn a_mailing_result_beside_a_protected_document_keeps_its_file_identity() {
     use wordcraft_doc::{CharProps, InlineObject};
 
     let mut s = Session::new(wordcraft_doc::Document::from_text("Protected source."));
@@ -9686,7 +9883,9 @@ fn a_rejected_mailing_result_keeps_the_current_file_identity() {
     s.password = Some(crate::io::Password::new("synthetic file password"));
     s.bib_style = "Chicago".into();
 
-    assert!(s.run("mailings.envelopes", &json!({"delivery": "Recipient"})).is_err());
+    s.run("mailings.envelopes", &json!({"delivery": "Recipient"})).unwrap();
+    assert_ne!(s.document_id(), before_id, "the envelope is a new document");
+    s.activate(before_id).unwrap();
     assert_eq!(s.doc, before);
     assert_eq!(s.versions.len(), 1);
     assert_eq!(s.path.as_deref(), Some(std::path::Path::new("source.docx")));
@@ -10646,6 +10845,115 @@ fn export_png_refuses_a_path_that_is_not_png() {
         assert!(std::fs::read(&target).unwrap().starts_with(b"\x89PNG"), "{name} is not a PNG");
     }
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The body's IME replacement epoch advances when the whole body is swapped (setText, Undo/Redo)
+/// and stays put for ordinary edits; an equation editing session cannot ride across a replacement.
+#[test]
+fn ime_body_epoch_marks_body_replacements_not_edits() {
+    let mut s = s();
+    run(&mut s, "text.insert", json!({"text": "one"}));
+    let first = s.ime_body_epoch();
+    run(&mut s, "text.insert", json!({"text": " two"}));
+    assert_eq!(s.ime_body_epoch(), first, "typing is not a replacement");
+
+    run(&mut s, "document.setText", json!({"text": "same text"}));
+    let replaced = s.ime_body_epoch();
+    assert!(replaced > first, "setText replaces the body under the same document id");
+    assert_eq!(s.document_id(), 1, "the document id itself is unchanged");
+
+    // The same text again still replaces the body: a composition must not survive on content
+    // equality.
+    run(&mut s, "document.setText", json!({"text": "same text"}));
+    assert!(s.ime_body_epoch() > replaced);
+
+    // Undo swaps the body back.
+    let before_undo = s.ime_body_epoch();
+    assert!(s.undo());
+    assert!(s.ime_body_epoch() > before_undo, "Undo replaces the body");
+}
+
+/// Replacing the document body while an equation is being edited ends that equation editing
+/// session.
+#[test]
+fn a_body_replacement_ends_equation_editing() {
+    let mut s = s();
+    run(&mut s, "insert.equation", json!({"linear": "x+y"}));
+    assert!(s.math.is_some());
+    run(&mut s, "document.setText", json!({"text": "x+y"}));
+    assert!(s.math.is_none(), "the old equation's editing session is gone");
+}
+
+/// A failed command that cleared the equation session puts it back with the document.
+#[test]
+fn a_failed_replacement_keeps_equation_editing() {
+    let mut s = s();
+    run(&mut s, "insert.equation", json!({"linear": "x+y"}));
+    let session = s.math.as_ref().map(|m| m.session);
+    assert!(session.is_some());
+    // Missing `text` is rejected before any mutation.
+    assert!(s.run("document.setText", &json!({})).is_err());
+    assert_eq!(s.math.as_ref().map(|m| m.session), session);
+}
+
+/// Track Changes: deleting a range whose text is already marked deleted is a real no-op. It
+/// creates no revision record, no undo-visible change and no IME revision.
+#[test]
+fn deleting_an_already_deleted_tracked_range_is_a_classified_noop() {
+    let mut s = s();
+    run(&mut s, "text.insert", json!({"text": "abc"}));
+    run(&mut s, "review.trackChanges", json!({"value": true}));
+    s.sel = crate::Selection { anchor: Pos::body(0, 0), focus: Pos::body(0, 1) };
+    run(&mut s, "text.backspace", json!({}));
+    let revisions = s.doc.revisions.len();
+    let revision = s.ime_state_revision().expect("an IME revision");
+    s.sel = crate::Selection { anchor: Pos::body(0, 0), focus: Pos::body(0, 1) };
+    run(&mut s, "text.backspace", json!({}));
+    let outcome = s.ime_edit_outcome();
+    assert!(outcome.classified, "{outcome:?}");
+    assert!(!outcome.content_changed && !outcome.state_changed, "{outcome:?}");
+    assert_eq!(s.doc.revisions.len(), revisions, "no unused Delete revision is appended");
+    assert_eq!(s.ime_state_revision(), Some(revision), "the no-op did not move the settled caret");
+    s.sel = crate::Selection { anchor: Pos::body(0, 0), focus: Pos::body(0, 1) };
+    assert!(s.ime_state_revision() > Some(revision), "re-selecting moves the caret, not the document");
+}
+
+/// `text.insert` classifies the automatic rewrites its own handler performs: smart quotes,
+/// list autoformat and AutoCorrect are `transformed`, not the IME's literal insert.
+#[test]
+fn text_insert_marks_automatic_rewrites_as_transformed() {
+    let mut session = s();
+    run(&mut session, "text.insert", json!({"text": "\""}));
+    assert!(session.ime_edit_outcome().transformed, "smart quote: {:?}", session.ime_edit_outcome());
+    assert_eq!(text(&session), "\u{201C}");
+
+    let mut session = s();
+    for c in ["W", "o", "r", "d", " ", "(", "c", ")", " "] {
+        run(&mut session, "text.insert", json!({"text": c}));
+    }
+    assert!(session.ime_edit_outcome().transformed, "AutoCorrect: {:?}", session.ime_edit_outcome());
+
+    let mut session = s();
+    run(&mut session, "text.insert", json!({"text": "*"}));
+    run(&mut session, "text.insert", json!({"text": " "}));
+    assert!(session.ime_edit_outcome().transformed, "list AutoFormat: {:?}", session.ime_edit_outcome());
+
+    let mut session = s();
+    run(&mut session, "text.insert", json!({"text": "A--b"}));
+    run(&mut session, "text.insert", json!({"text": " "}));
+    assert!(session.ime_edit_outcome().transformed, "dash AutoFormat: {:?}", session.ime_edit_outcome());
+    assert_eq!(text(&session), "A\u{2014}b ");
+
+    let mut session = s();
+    run(&mut session, "tools.autocorrect", json!({"doubleSpacePeriod": true}));
+    for c in "Hello  ".chars() {
+        run(&mut session, "text.insert", json!({"text": c.to_string()}));
+    }
+    let outcome = session.ime_edit_outcome();
+    assert!(outcome.transformed && outcome.content_changed && outcome.state_changed, "double-space period: {outcome:?}");
+    assert_eq!(text(&session), "Hello. ");
+    run(&mut session, "edit.undo", json!({}));
+    assert_eq!(text(&session), "Hello  ", "undo restores the spaces in one step");
 }
 
 #[test]
