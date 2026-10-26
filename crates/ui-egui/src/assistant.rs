@@ -532,7 +532,7 @@ fn draw(app: &mut WordApp, ctx: &egui::Context) {
         app.assistant.set_pose(Pose::Idle);
     }
     let pose = app.assistant.pose;
-    let area = egui::Area::new(egui::Id::new("wc_assistant_nib")).order(Order::Foreground).fixed_pos(rect.min).interactable(true);
+    let area = egui::Area::new(egui::Id::unique("wc_assistant_nib")).order(Order::Foreground).fixed_pos(rect.min).interactable(true);
     let mut menu_action = None;
     area.show(ctx, |ui| {
         let (r, resp) = ui.allocate_exact_size(NIB, Sense::click_and_drag());
@@ -598,8 +598,12 @@ fn balloon(app: &mut WordApp, ctx: &egui::Context, nib: Rect, t: &Tokens) {
     let agent = matches!(b.content, Content::Agent { .. });
     let mut clicked = None;
     let mut dont_show = b.dont_show;
-    let area =
-        egui::Area::new(egui::Id::new("wc_assistant_balloon")).order(Order::Foreground).pivot(pivot).fixed_pos(at).constrain(true).interactable(true);
+    let area = egui::Area::new(egui::Id::unique("wc_assistant_balloon"))
+        .order(Order::Foreground)
+        .pivot(pivot)
+        .fixed_pos(at)
+        .constrain(true)
+        .interactable(true);
     area.show(ctx, |ui| {
         let stroke = if agent { Stroke::new(2.0, t.accent) } else { Stroke::new(1.0, t.border_strong) };
         let frame = egui::Frame::new().fill(t.menu).stroke(stroke).corner_radius(CornerRadius::same(10)).inner_margin(egui::Margin::same(10));
