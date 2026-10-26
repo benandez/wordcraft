@@ -2885,9 +2885,9 @@ impl WordApp {
         }
         let enter = ctx.animate_bool_responsive(egui::Id::unique("backstage_enter"), self.ui.backstage);
         let enter = egui::emath::easing::cubic_out(enter);
-        self.paint_window(ui, &ctx, t, enter);
+        self.paint_window(ui, &ctx, t, enter, window);
         if !moved(self) {
-            self.show_overlays(ui, &ctx, enter);
+            self.show_overlays(ui, &ctx, enter, window);
         }
         if !moved(self) {
             self.sync_title_and_frame(&ctx, t0);
@@ -2925,7 +2925,8 @@ impl WordApp {
     }
 
     /// Draw the File page, the empty-window chrome, or the normal document window.
-    fn paint_window(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, t: theme::Tokens, enter: f32) {
+    fn paint_window(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, t: theme::Tokens, enter: f32, window: u64) {
+        let moved = |app: &WordApp| app.windows.shown() != window;
         if self.ui.backstage && enter >= 1.0 {
             backstage::show(self, ui, enter);
         } else if !self.has_document() {
@@ -2982,7 +2983,8 @@ impl WordApp {
     }
 
     /// Dialogs, panes and other overlays drawn over the window.
-    fn show_overlays(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, enter: f32) {
+    fn show_overlays(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, enter: f32, window: u64) {
+        let moved = |app: &WordApp| app.windows.shown() != window;
         if enter > 0.0 && enter < 1.0 {
             let mut over = ui.new_child(egui::UiBuilder::new().max_rect(ctx.content_rect()));
             backstage::show(self, &mut over, enter);
