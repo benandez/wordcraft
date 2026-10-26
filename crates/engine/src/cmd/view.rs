@@ -132,6 +132,9 @@ pub fn specs() -> Vec<CommandSpec> {
             sel_result(s)
         })
         .pure(),
+        CommandSpec::new("view.switchWindows", "Switch Windows", "View › Window", switch_windows)
+            .params(r#"{"id"?: n (make this open document the active one)} → {"documents": [{"id", "title", "path", "dirty", "active"}]} in the order they were opened"#)
+            .pure(),
         CommandSpec::new("view.split", "Split", "View › Window", |s, _| {
             s.push_ui_request(json!({"toggle": "split"}));
             sel_result(s)
@@ -303,4 +306,13 @@ fn zoom(s: &mut Session, v: &Value) -> CmdResult {
         }
     }
     Ok(json!({"zoom": s.view.zoom, "fit": s.view.fit}))
+}
+
+/// View › Window › Switch Windows: the open documents, or make one of them active.
+fn switch_windows(s: &mut Session, v: &Value) -> CmdResult {
+    if let Some(x) = v.get("id").filter(|x| !x.is_null()) {
+        let id = x.as_u64().ok_or_else(|| CmdError::Params("`id` must be an open document's id".into()))?;
+        s.activate(id)?;
+    }
+    Ok(json!({"documents": s.documents()}))
 }

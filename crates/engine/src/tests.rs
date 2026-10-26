@@ -4647,10 +4647,10 @@ fn document_id_changes_only_when_the_document_is_replaced() {
     assert_ne!(s.document_id(), second);
 }
 
-/// Envelopes, Labels and Finish & Merge make a new, untitled document, as Word does, and like New
-/// its undo history starts afresh. Undo/Redo across the swap put the wrong document under a file
-/// (Undo, Save As, Redo, Save wrote the envelope over the saved file), so it isn't offered; the UI
-/// asks to save the replaced document first.
+/// Envelopes, Labels and Finish & Merge open a new, untitled document beside the main one, as Word
+/// does, and like New its undo history starts afresh. Undo/Redo across documents would put the
+/// wrong document under a file (Undo, Save As, Redo, Save wrote the envelope over the saved file),
+/// so it isn't offered. The main document stays open as it was, with no undo step for the command.
 #[test]
 fn mailings_results_are_new_untitled_documents() {
     let dir = std::env::temp_dir().join(format!("wordcraft-engine-mailings-{}", std::process::id()));
@@ -4670,10 +4670,13 @@ fn mailings_results_are_new_untitled_documents() {
         let before = text(&s);
         let document = s.document_id();
 
+        let undo_steps = s.undo_labels().len();
         run(&mut s, id, json!({}));
         let result = text(&s);
-        assert_ne!(result, before, "{id}: the result replaced the document");
+        assert_ne!(result, before, "{id}: the result is the active document");
         assert_ne!(s.document_id(), document, "{id}: a different document");
+        let main = s.with_document(document, |s| (text(s), s.undo_labels().len())).unwrap();
+        assert_eq!(main, (before.clone(), undo_steps), "{id}: the main document stays open as it was");
         assert_eq!(s.path, None, "{id}: the result is untitled");
         assert_eq!(run(&mut s, "file.save", json!({}))["saved"], false, "{id}: Save asks where (Save As)");
         assert_eq!(std::fs::read(&original).unwrap(), on_disk, "{id}: the original file is untouched");
@@ -5874,6 +5877,8 @@ fn one_page_is_restored_when_the_document_is_reopened() {
     // A percentage is restored as a percentage, the fit mode dropped.
     run(&mut other, "view.zoom", json!({"value": 80}));
     run(&mut other, "file.save", json!({}));
+    // Opening an open file only shows it: close it first to read it again.
+    run(&mut s, "file.closeDocument", json!({}));
     run(&mut s, "file.open", json!({"path": path}));
     assert!(s.view.fit.is_empty() && !s.view.single_column);
     assert!((s.view.zoom - 0.8).abs() < 1e-6);
@@ -9857,9 +9862,10 @@ fn a_rejected_comparison_keeps_the_current_versions() {
     assert_eq!(s.file_name.as_deref(), Some("original.docx"));
 }
 
-/// A rejected mailing result must keep the source document's save target and versions.
+/// A mailing result opens beside a protected source document, which keeps its save target,
+/// versions, password and text.
 #[test]
-fn a_rejected_mailing_result_keeps_the_current_file_identity() {
+fn a_mailing_result_beside_a_protected_document_keeps_its_file_identity() {
     use wordcraft_doc::{CharProps, InlineObject};
 
     let mut s = Session::new(wordcraft_doc::Document::from_text("Protected source."));
@@ -9877,7 +9883,9 @@ fn a_rejected_mailing_result_keeps_the_current_file_identity() {
     s.password = Some(crate::io::Password::new("synthetic file password"));
     s.bib_style = "Chicago".into();
 
-    assert!(s.run("mailings.envelopes", &json!({"delivery": "Recipient"})).is_err());
+    s.run("mailings.envelopes", &json!({"delivery": "Recipient"})).unwrap();
+    assert_ne!(s.document_id(), before_id, "the envelope is a new document");
+    s.activate(before_id).unwrap();
     assert_eq!(s.doc, before);
     assert_eq!(s.versions.len(), 1);
     assert_eq!(s.path.as_deref(), Some(std::path::Path::new("source.docx")));
