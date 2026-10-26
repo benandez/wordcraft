@@ -109,10 +109,21 @@ impl Linked {
 /// Header rows are re-placed on every page a table spills onto, so a table is O(header items ×
 /// pages) placed items — and an exact-height header row keeps all its overflowing text without
 /// growing, so a few KB of document could otherwise fill memory. Once this many items (a row
-/// counts at least one) have been repeated across a table, later pages carry no header rows;
+/// counts at least one) have been repeated across the whole layout (every table together), later pages carry no header rows;
 /// pagination still finishes. Far above any real table (three ordinary header rows over some
 /// 5 000 pages).
 pub(crate) const MAX_HEADER_ITEMS: usize = 500_000;
+
+/// What re-placing `it` costs against [`MAX_HEADER_ITEMS`]: one, and for a clipped group (a
+/// floating Drawing Canvas) its members' too, as placing clones them all. Groups nested deeper
+/// than this count their members as one each.
+pub(crate) fn placed_cost(it: &Placed, depth: usize) -> usize {
+    match it {
+        Placed::Clip { items, .. } if depth < 8 => items.iter().map(|m| placed_cost(m, depth + 1)).fold(1, usize::saturating_add),
+        Placed::Clip { items, .. } => items.len().saturating_add(1),
+        _ => 1,
+    }
+}
 
 /// Header tables can displace a non-overlapping body table. Page-positioned drawings keep
 /// their own wrapping rules, so only table areas are retained from the header layout.

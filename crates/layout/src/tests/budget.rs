@@ -1,6 +1,7 @@
 //! Hostile documents whose layout work or memory would otherwise grow far past their size: each
 //! is bounded by a cap, and real documents stay well under it.
 
+use crate::ctx::Outlines;
 use crate::*;
 use wordcraft_doc::props::HeightRule;
 use wordcraft_doc::table::{MAX_COLS, Table};
@@ -36,10 +37,11 @@ fn text_box(d: &mut Document, para: usize, text: &str, w: f32, h: f32) -> u32 {
 }
 
 #[test]
-fn a_linked_chain_lays_its_story_out_at_a_bounded_number_of_widths() {
+fn a_linked_chain_lays_its_story_out_for_a_bounded_amount_of_work() {
     // Forty linked boxes, each a line deep and each a different width, over a long story: every
-    // width would lay the whole story out again. Past the cap, later boxes reuse the nearest
-    // width already laid out, so every box still shows its share of the story.
+    // width would lay the whole story out again. Past the work cap, later boxes reuse the
+    // nearest width already laid out, so every box still shows its share of the story.
+    textbox::FLOW_WORK_CAP.with(|c| c.set(2000));
     let n = 40;
     let mut d = Document::from_text(&vec!["p"; n].join("\n"));
     let story = "Words that run on and on through every box of the chain. ".repeat(200);
@@ -56,7 +58,25 @@ fn a_linked_chain_lays_its_story_out_at_a_bounded_number_of_widths() {
         lines.iter().filter_map(|it| if let Placed::Lines { para, .. } = it { Some(Arc::as_ptr(para) as usize) } else { None }).collect();
     widths.sort_unstable();
     widths.dedup();
-    assert!(widths.len() <= textbox::MAX_FLOW_WIDTHS, "{} widths laid the story out", widths.len());
+    textbox::FLOW_WORK_CAP.with(|c| c.set(textbox::MAX_FLOW_WORK));
+    assert!(widths.len() < n / 2, "{} widths laid the story out", widths.len());
+}
+
+#[test]
+fn twenty_distinct_widths_of_an_ordinary_story_all_keep_their_width() {
+    // A real chain of 20 boxes, 100, 105, ... 195 pt wide: each is laid out at its own width.
+    let n = 20;
+    let mut d = Document::from_text(&vec!["p"; n].join("\n"));
+    let story = "Words that run on and on through every box of the chain. ".repeat(200);
+    let ids: Vec<u32> = (0..n).map(|i| text_box(&mut d, i, if i == 0 { &story } else { "" }, 100.0 + 5.0 * i as f32, 28.0)).collect();
+    for w in ids.windows(2) {
+        d.parts.get_mut(&w[0]).unwrap().body.next = Some(w[1]);
+    }
+    let mut widths = story_layouts(&lay(&d), ids[0]);
+    assert_eq!(widths.len(), n, "every box shows the story");
+    widths.sort_unstable();
+    widths.dedup();
+    assert_eq!(widths.len(), n, "every box has a layout at its own width");
 }
 
 /// The paragraph layouts (by address) showing story `head` across the document.
@@ -95,7 +115,8 @@ fn stacked_boxes_of_any_width_share_a_layout() {
 fn past_the_cap_a_box_takes_a_layout_in_its_own_direction() {
     // The cap is full of horizontal widths when a vertical box comes: it lays the story out
     // its own way rather than showing a horizontal layout.
-    let n = textbox::MAX_FLOW_WIDTHS + 1;
+    textbox::FLOW_WORK_CAP.with(|c| c.set(2000));
+    let n = 17;
     let mut d = Document::from_text(&vec!["p"; n].join("\n"));
     let story = "Words that run on and on through every box of the chain. ".repeat(200);
     let ids: Vec<u32> = (0..n).map(|i| text_box(&mut d, i, if i == 0 { &story } else { "" }, 100.0 + 3.0 * i as f32, 28.0)).collect();
@@ -109,7 +130,8 @@ fn past_the_cap_a_box_takes_a_layout_in_its_own_direction() {
     assert_eq!(widths.len(), n, "every box shows the story");
     widths.sort_unstable();
     widths.dedup();
-    assert_eq!(widths.len(), n, "the vertical box has a layout of its own");
+    textbox::FLOW_WORK_CAP.with(|c| c.set(textbox::MAX_FLOW_WORK));
+    assert!(widths.len() > 1 && widths.len() < n, "{} layouts: the vertical box has its own, the rest are shared", widths.len());
 }
 
 #[test]
@@ -276,7 +298,7 @@ fn a_picture_refused_for_the_budget_is_not_cached_across_layouts() {
     assert!(outlines.is_empty(), "the refusal isn't kept");
     let mut fresh = contour::Alphas::default();
     assert!(picture_outline(&mut outlines, &mut fresh, key.clone(), &disc, [0.0; 4]).is_some());
-    assert!(outlines.get(&key).is_some_and(|(_, o)| o.is_some()), "the outline is kept");
+    assert!(outlines.get(&key).is_some_and(|(_, o, _)| o.is_some()), "the outline is kept");
 }
 
 /// The outline cache outlives the documents it is used with and tells pictures apart by their
@@ -288,9 +310,80 @@ fn a_kept_outline_holds_on_to_its_pictures_allocation() {
     let mut outlines = HashMap::new();
     let key = ("p".to_string(), Arc::as_ptr(&disc) as usize, disc.len(), [0; 4]);
     assert!(picture_outline(&mut outlines, &mut contour::Alphas::default(), key.clone(), &disc, [0.0; 4]).is_some());
-    let Some((weak, _)) = outlines.get(&key) else { panic!("the outline is kept") };
+    let Some((weak, ..)) = outlines.get(&key) else { panic!("the outline is kept") };
     assert!(std::ptr::eq(weak.as_ptr(), Arc::as_ptr(&disc)), "the entry refers to its own picture's bytes");
     assert_eq!((Arc::strong_count(&disc), Arc::weak_count(&disc)), (1, 1), "a weak reference: the document still owns the bytes");
     drop(disc);
     assert!(weak.upgrade().is_none(), "the bytes are freed with the document; only their allocation is kept");
+}
+
+/// A floating Drawing Canvas in a header cell is one `Clip` holding its members, and re-placing
+/// the header clones every one of them: they all count against the repeat budget.
+#[test]
+fn a_clipped_group_costs_its_members_when_a_header_repeats() {
+    let rule = || Placed::Rule { x0: 0.0, y0: 0.0, x1: 1.0, y1: 0.0, border: Default::default() };
+    let clip = |items: Vec<Placed>| Placed::Clip { rect: Rect::new(0.0, 0.0, 10.0, 10.0), spin: Default::default(), items };
+    assert_eq!(placed_cost(&rule(), 0), 1);
+    assert_eq!(placed_cost(&clip((0..1000).map(|_| rule()).collect()), 0), 1001);
+    // Nested groups count too, and nesting deep enough to overflow a stack is bounded.
+    assert_eq!(placed_cost(&clip(vec![clip(vec![rule(), rule()]), rule()]), 0), 5);
+    let mut deep = rule();
+    for _ in 0..100_000 {
+        deep = clip(vec![deep]);
+    }
+    assert!(placed_cost(&deep, 0) <= 10);
+    std::mem::forget(deep);
+}
+
+#[test]
+fn repeated_header_items_are_capped_across_all_the_tables_of_a_layout() {
+    // Each table's repeats used to have a budget of their own: a hundred tables, a hundred times
+    // the cap.
+    let table = || {
+        let mut t = Table::new(201, 1, 468.0);
+        t.rows[0].props.header = true;
+        t.rows[0].props.height = Some(20.0);
+        t.rows[0].props.height_rule = HeightRule::Exact;
+        t.rows[0].cells[0].blocks = (0..3000).map(|_| para_block(Paragraph::with_text("x", Default::default()))).collect();
+        for row in t.rows.iter_mut().skip(1) {
+            row.props.height = Some(600.0);
+            row.props.height_rule = HeightRule::Exact;
+        }
+        t
+    };
+    let mut d = Document::from_text("");
+    d.insert_block(StoryRef::Body, &Path::top(1), Block::Table(table())).unwrap();
+    d.insert_block(StoryRef::Body, &Path::top(2), Block::Table(table())).unwrap();
+    d.insert_block(StoryRef::Body, &Path::top(3), Block::Table(table())).unwrap();
+    let l = lay(&d);
+    let items: usize = l.pages.iter().map(|p| p.items.len()).sum();
+    assert!(items <= MAX_HEADER_ITEMS + 3 * 3000 + 50 * l.pages.len(), "{items} items placed");
+}
+
+/// Which pictures wrap by their outline must not depend on what the cache already holds: a
+/// picture's outline kept from an earlier layout is charged to the budget like a decoded one.
+#[test]
+fn cold_and_warm_caches_give_the_same_outlines() {
+    let (a, b) = (Arc::new(disc_png(64)), Arc::new(disc_png(64)));
+    let key = |bytes: &Arc<Vec<u8>>, n: &str| (n.to_string(), Arc::as_ptr(bytes) as usize, bytes.len(), [0; 4]);
+    // Room for one of the two pictures.
+    let pass = |outlines: &mut Outlines| {
+        let mut alphas = contour::Alphas::default();
+        alphas.decoded = contour::MAX_DECODED_PIXELS - 64 * 64;
+        let got = [(&a, "a"), (&b, "b")].map(|(p, n)| picture_outline(outlines, &mut alphas, key(p, n), p, [0.0; 4]).is_some());
+        (got, alphas.decoded)
+    };
+    let mut roomy = contour::Alphas::default();
+    let mut warm = Outlines::new();
+    for (p, n) in [(&a, "a"), (&b, "b")] {
+        assert!(picture_outline(&mut warm, &mut roomy, key(p, n), p, [0.0; 4]).is_some());
+    }
+    assert_eq!(warm.len(), 2, "both outlines are kept");
+    let (cold, cold_spent) = pass(&mut Outlines::new());
+    assert_eq!(cold, [true, false], "the first picture fits, the second wraps as its rectangle");
+    let (warmed, warm_spent) = pass(&mut warm);
+    assert_eq!(warmed, cold, "the same pictures get outlines with the cache warm");
+    assert_eq!(warm_spent, cold_spent);
+    // And again: a layout after a layout.
+    assert_eq!(pass(&mut warm).0, cold);
 }
