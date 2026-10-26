@@ -132,7 +132,7 @@ pub(crate) fn place_table(ctx: &mut Ctx, pb: &mut PageBuilder, t: &wordcraft_doc
     let header_cost = header_rows
         .iter()
         .filter_map(|i| tl.rows.get(*i))
-        .map(|r| r.items.iter().map(|it| placed_cost(it, 0)).fold(0, usize::saturating_add).max(1))
+        .map(|r| r.items.iter().map(|it| placed_cost(it, MAX_HEADER_ITEMS)).fold(0, usize::saturating_add).max(1))
         .fold(0, usize::saturating_add);
     // Resolve kept chains once; nested paragraphs cannot keep their enclosing row.
     let mut kept: Vec<(usize, f32)> = (0..tl.rows.len()).map(|i| (i, 0.0)).collect();

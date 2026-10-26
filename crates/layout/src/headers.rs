@@ -114,14 +114,37 @@ impl Linked {
 /// 5 000 pages).
 pub(crate) const MAX_HEADER_ITEMS: usize = 500_000;
 
-/// What re-placing `it` costs against [`MAX_HEADER_ITEMS`]: one, and for a clipped group (a
-/// floating Drawing Canvas) its members' too, as placing clones them all. Groups nested deeper
-/// than this count their members as one each.
-pub(crate) fn placed_cost(it: &Placed, depth: usize) -> usize {
-    match it {
-        Placed::Clip { items, .. } if depth < 8 => items.iter().map(|m| placed_cost(m, depth + 1)).fold(1, usize::saturating_add),
-        Placed::Clip { items, .. } => items.len().saturating_add(1),
-        _ => 1,
+/// What re-placing `it` costs against [`MAX_HEADER_ITEMS`] (and laying it out against
+/// [`textbox::MAX_FLOW_WORK`]): one, and for a clipped group (a floating Drawing Canvas) every
+/// member below it, nested groups included, as placing clones them all. Counted with an explicit
+/// stack, and counting stops once the total passes `limit` (the result is then just over it), so
+/// neither deep nesting nor a huge group makes the count itself costly.
+pub(crate) fn placed_cost(it: &Placed, limit: usize) -> usize {
+    let mut count = 0usize;
+    let mut stack: Vec<std::slice::Iter<Placed>> = Vec::new();
+    let mut next = Some(it);
+    loop {
+        let cur = match next.take() {
+            Some(c) => c,
+            None => loop {
+                match stack.last_mut() {
+                    None => return count,
+                    Some(iter) => match iter.next() {
+                        Some(c) => break c,
+                        None => {
+                            stack.pop();
+                        }
+                    },
+                }
+            },
+        };
+        count = count.saturating_add(1);
+        if count > limit {
+            return count;
+        }
+        if let Placed::Clip { items, .. } = cur {
+            stack.push(items.iter());
+        }
     }
 }
 

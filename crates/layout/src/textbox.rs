@@ -231,9 +231,14 @@ fn flow_work_cap() -> usize {
     MAX_FLOW_WORK
 }
 
-/// What laying `items` out cost: its lines and other items.
-fn flow_work(items: &[Placed]) -> usize {
-    items.iter().map(|it| if let Placed::Lines { l0, l1, .. } = it { l1.saturating_sub(*l0).max(1) } else { 1 }).fold(0, usize::saturating_add)
+/// What laying `items` out cost: its lines and other items (a clipped group's members, nested
+/// ones too, each count).
+pub(crate) fn flow_work(items: &[Placed]) -> usize {
+    let cap = flow_work_cap();
+    items
+        .iter()
+        .map(|it| if let Placed::Lines { l0, l1, .. } = it { l1.saturating_sub(*l0).max(1) } else { super::placed_cost(it, cap) })
+        .fold(0, usize::saturating_add)
 }
 
 /// Line lengths are told apart to a twentieth of a point (a twip): resized boxes a hair apart

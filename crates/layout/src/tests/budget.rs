@@ -328,16 +328,37 @@ fn a_kept_outline_holds_on_to_its_pictures_allocation() {
 fn a_clipped_group_costs_its_members_when_a_header_repeats() {
     let rule = || Placed::Rule { x0: 0.0, y0: 0.0, x1: 1.0, y1: 0.0, border: Default::default() };
     let clip = |items: Vec<Placed>| Placed::Clip { rect: Rect::new(0.0, 0.0, 10.0, 10.0), spin: Default::default(), items };
-    assert_eq!(placed_cost(&rule(), 0), 1);
-    assert_eq!(placed_cost(&clip((0..1000).map(|_| rule()).collect()), 0), 1001);
-    // Nested groups count too, and nesting deep enough to overflow a stack is bounded.
-    assert_eq!(placed_cost(&clip(vec![clip(vec![rule(), rule()]), rule()]), 0), 5);
-    let mut deep = rule();
-    for _ in 0..100_000 {
+    let big = usize::MAX;
+    assert_eq!(placed_cost(&rule(), big), 1);
+    assert_eq!(placed_cost(&clip((0..1000).map(|_| rule()).collect()), big), 1001);
+    // Nested groups count too, however deep: every descendant is charged.
+    assert_eq!(placed_cost(&clip(vec![clip(vec![rule(), rule()]), rule()]), big), 5);
+    let mut deep = clip((0..1000).map(|_| rule()).collect());
+    for _ in 0..20 {
         deep = clip(vec![deep]);
     }
-    assert!(placed_cost(&deep, 0) <= 10);
-    std::mem::forget(deep);
+    assert_eq!(placed_cost(&deep, big), 1021, "members below the eighth level still cost one each");
+    // Counting stops once past the limit, so a huge or very deep group is cheap to count.
+    assert_eq!(placed_cost(&deep, 10), 11);
+    let mut deeper = rule();
+    for _ in 0..100_000 {
+        deeper = clip(vec![deeper]);
+    }
+    assert_eq!(placed_cost(&deeper, 50), 51);
+    assert_eq!(placed_cost(&deeper, big), 100_001);
+    std::mem::forget(deeper);
+}
+
+/// The linked-box work budget counts a clipped group's members, nested groups included.
+#[test]
+fn flow_work_counts_clip_members() {
+    let rule = || Placed::Rule { x0: 0.0, y0: 0.0, x1: 1.0, y1: 0.0, border: Default::default() };
+    let clip = |items: Vec<Placed>| Placed::Clip { rect: Rect::new(0.0, 0.0, 10.0, 10.0), spin: Default::default(), items };
+    let mut deep = clip((0..100).map(|_| rule()).collect());
+    for _ in 0..12 {
+        deep = clip(vec![deep, rule()]);
+    }
+    assert_eq!(textbox::flow_work(&[rule(), deep]), 1 + 100 + 1 + 12 * 2);
 }
 
 #[test]
