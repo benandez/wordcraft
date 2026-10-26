@@ -753,6 +753,7 @@ mod tests {
             for label in ["Save As", "Blank document"] {
                 let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Services::default());
                 a.run("text.insert", json!({"text": "Keep this draft"})).unwrap();
+                let original_document = a.session.document_id();
                 a.ui.backstage = true;
                 let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
                     |ui, app: &mut WordApp| {
@@ -777,8 +778,11 @@ mod tests {
                 if label == "Save As" {
                     assert_eq!(h.state().ui.backstage_page, if active { "saveAs" } else { "home" });
                 } else {
-                    assert_eq!(h.state().dialog.is_some(), active, "only an active template asks to replace the draft");
-                    assert!(h.state().session.dirty, "the existing draft stays unsaved");
+                    assert_eq!(h.state().session.document_id() != original_document, active, "only an active template opens a document");
+                    assert!(
+                        h.state().session.documents().iter().any(|doc| doc.id == original_document && doc.dirty),
+                        "the existing draft stays open and unsaved"
+                    );
                 }
             }
         }
