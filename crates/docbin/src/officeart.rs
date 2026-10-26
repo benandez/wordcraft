@@ -245,13 +245,6 @@ fn dib_to_png(dib: &[u8], limit: usize, work: &mut Decode) -> Option<Blip> {
     let masks = if header == 40 && (compression == 3 || compression == 6) { if compression == 3 { 12 } else { 16 } } else { 0 };
     let off_bits = 14usize.checked_add(header)?.checked_add(colors * entry)?.checked_add(masks)?;
     let file_size = 14usize.checked_add(dib.len()).filter(|&size| size <= limit)?;
-    let mut bmp = Vec::with_capacity(file_size);
-    bmp.extend_from_slice(b"BM");
-    bmp.extend_from_slice(&u32::try_from(file_size).ok()?.to_le_bytes());
-    bmp.extend_from_slice(&[0, 0, 0, 0]);
-    bmp.extend_from_slice(&u32::try_from(off_bits).ok()?.to_le_bytes());
-    bmp.extend_from_slice(dib);
-    let placeholder = |bmp| Some(Blip { bytes: bmp, ext: "bmp", placeholder: true });
     // The declared size is what decoding allocates, however small the (RLE) data is.
     let (w, h) = if header == 12 {
         (u64::from(u16_at(dib, 4)?), u64::from(u16_at(dib, 6)?))
@@ -259,7 +252,21 @@ fn dib_to_png(dib: &[u8], limit: usize, work: &mut Decode) -> Option<Blip> {
         (u64::from(u32_at(dib, 4)?), u64::from((u32_at(dib, 8)? as i32).unsigned_abs()))
     };
     let cost = w.saturating_mul(h).saturating_mul(4).try_into().unwrap_or(usize::MAX);
-    if !work.charge(cost, "bitmap") {
+    // Copying the DIB into a BMP is work too, however few pixels it declares: it is charged
+    // before the copy is made (#3871). A bitmap whose pixels don't fit still keeps its BMP
+    // bytes as a placeholder, if the copy fits.
+    let decode = work.charge(cost.max(dib.len()), "bitmap");
+    if !decode && !work.charge(dib.len(), "bitmap") {
+        return None;
+    }
+    let mut bmp = Vec::with_capacity(file_size);
+    bmp.extend_from_slice(b"BM");
+    bmp.extend_from_slice(&u32::try_from(file_size).ok()?.to_le_bytes());
+    bmp.extend_from_slice(&[0, 0, 0, 0]);
+    bmp.extend_from_slice(&u32::try_from(off_bits).ok()?.to_le_bytes());
+    bmp.extend_from_slice(dib);
+    let placeholder = |bmp| Some(Blip { bytes: bmp, ext: "bmp", placeholder: true });
+    if !decode {
         return placeholder(bmp);
     }
     let mut reader = image::ImageReader::new(std::io::Cursor::new(&bmp));

@@ -471,11 +471,12 @@ fn dib_decoding_is_charged_its_declared_pixels() {
     let one = blip_of(&one_pixel_dib());
     let (one, _) = officeart::record(&one).unwrap();
     let mut work = officeart::Decode::new(3);
-    assert_eq!(officeart::blip(&one, 512, &mut work).map(|b| (b.ext, b.placeholder)), Some(("bmp", true)));
+    assert!(officeart::blip(&one, 512, &mut work).is_none(), "not even the copy fits: nothing is copied");
     assert_eq!(work.left, 3, "nothing decoded, nothing charged");
-    let mut work = officeart::Decode::new(4);
+    let dib_len = one.body.len() - 17;
+    let mut work = officeart::Decode::new(dib_len);
     assert_eq!(officeart::blip(&one, 512, &mut work).map(|b| (b.ext, b.placeholder)), Some(("png", false)));
-    assert_eq!(work.left, 0);
+    assert_eq!(work.left, 0, "the copy is charged, not just 4 bytes a pixel");
 
     // 8-bit RLE declaring 16384 × 16384 (1 GiB decoded) in a few bytes.
     let mut big = [40u32, 16_384, 16_384].iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>();
@@ -491,7 +492,7 @@ fn dib_decoding_is_charged_its_declared_pixels() {
     let (big, _) = officeart::record(&big).unwrap();
     let mut work = officeart::Decode::new(512 << 20);
     assert_eq!(officeart::blip(&big, 1 << 20, &mut work).map(|b| (b.ext, b.placeholder)), Some(("bmp", true)));
-    assert_eq!(work.left, 512 << 20);
+    assert_eq!(work.left, (512 << 20) - (big.body.len() - 17), "only the copy of the DIB was charged, not its declared pixels");
 }
 
 /// An EMF `OfficeArtBlip` record (compressed) with `raw` as its stream, claiming `cb_size`.
@@ -595,4 +596,22 @@ fn the_decode_budget_scales_with_the_input_but_still_caps_bombs() {
         assert!(officeart::blip(&rec_bomb, 64 << 20, &mut work).unwrap().placeholder);
     }
     assert!(work.left <= crate::media::decode_work(20 * bomb.len(), floor), "nothing was refunded or invented");
+}
+
+/// #3871 review: the copy of a DIB into a BMP is charged before it is made, however few pixels
+/// the header declares; with the budget spent nothing is copied at all.
+#[test]
+fn a_dib_with_a_large_tail_is_charged_for_its_copy() {
+    let big = dib_record(&dib_1bpp(1, 1 << 20)); // 1 pixel declared, 1 MB of trailing bytes
+    let (big, _) = officeart::record(&big).unwrap();
+    let dib_len = big.body.len() - 17;
+    let mut work = officeart::Decode::new(10 << 20);
+    assert!(!officeart::blip(&big, 64 << 20, &mut work).unwrap().placeholder);
+    assert_eq!(10 << 20, work.left + dib_len, "charged for the bytes, not just 4 per pixel");
+    // Room for the copy: decoded. Not even that: nothing is copied.
+    let mut work = officeart::Decode::new(dib_len + 1);
+    assert!(officeart::blip(&big, 64 << 20, &mut work).is_some());
+    let mut work = officeart::Decode::new(dib_len - 1);
+    assert!(officeart::blip(&big, 64 << 20, &mut work).is_none());
+    assert_eq!(work.left, dib_len - 1);
 }

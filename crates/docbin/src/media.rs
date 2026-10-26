@@ -22,9 +22,10 @@ pub(crate) const MAX_MEDIA_BYTES: usize = 256 << 20;
 /// `MAX_MEDIA_BYTES` (#3711, #3712).
 const MAX_DECODE_WORK: usize = 512 << 20;
 /// The decode budget grows with the input: up to this many bytes per byte of the WordDocument
-/// and Data streams. A legitimate DIB declares at most 32 bytes of pixels per file byte (1 bit
-/// per pixel, 4 bytes charged each), so 64 passes any real picture; a decompression bomb
-/// (ratios around 1e6) still hits the cap.
+/// and Data streams. An uncompressed DIB declares at most 32 bytes of pixels per file byte (1
+/// bit per pixel, 4 bytes charged each), so 64 passes any such picture. RLE8/RLE4 bitmaps
+/// reach about 510 times that and rely on the `MAX_DECODE_WORK` floor instead; a decompression
+/// bomb (ratios around 1e6) still hits the cap.
 const DECODE_WORK_PER_INPUT_BYTE: usize = 64;
 /// The most the decode budget grows to, whatever the input.
 const MAX_DECODE_WORK_CEILING: usize = 2 << 30;
