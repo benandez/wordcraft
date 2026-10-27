@@ -80,6 +80,65 @@ fn twenty_distinct_widths_of_an_ordinary_story_all_keep_their_width() {
     assert_eq!(widths.len(), n, "every box has a layout at its own width");
 }
 
+/// How many times story layouts ran while `doc` was laid out with the chain work cap at `cap`.
+fn chain_layouts(d: &Document, cap: usize) -> usize {
+    textbox::FLOW_WORK_CAP.with(|c| c.set(cap));
+    textbox::FLOW_LAYOUTS.with(|c| c.set(0));
+    lay(d);
+    textbox::FLOW_WORK_CAP.with(|c| c.set(textbox::MAX_FLOW_WORK));
+    textbox::FLOW_LAYOUTS.with(|c| c.get())
+}
+
+/// `n` linked boxes `w0`, `w0 + 0.1`, ... pt wide (each its own layout) and a line deep, the
+/// first holding `blocks`; the first box's id.
+fn hairline_chain(d: &mut Document, n: usize, w0: f32, blocks: Vec<Arc<Block>>) -> u32 {
+    let ids: Vec<u32> = (0..n).map(|i| text_box(d, i, "", w0 + 0.1 * i as f32, 28.0)).collect();
+    for w in ids.windows(2) {
+        d.parts.get_mut(&w[0]).unwrap().body.next = Some(w[1]);
+    }
+    d.parts.get_mut(&ids[0]).unwrap().blocks = blocks;
+    ids[0]
+}
+
+#[test]
+fn a_chain_whose_story_shows_little_still_pays_for_its_text() {
+    // All 256 boxes a hair apart in width, each showing one short visible line of a story that
+    // hides about 1 MB of text between them: each layout gives some 300 lines but works through
+    // the whole story. Charged by its lines alone, every width was laid out (256 times the story).
+    let n = wordcraft_doc::MAX_LINKED_BOXES;
+    let mut d = Document::from_text(&vec!["p"; n].join("\n"));
+    let hidden = "Hidden words that never show. ".repeat(3500 / 30);
+    let hide = wordcraft_doc::props::CharProps { hidden: Some(true), ..Default::default() };
+    let story = (0..300)
+        .map(|k| {
+            let shown = format!("Line {k}.");
+            let mut p = Paragraph::with_text(&format!("{shown}{hidden}"), Default::default());
+            p.runs = vec![
+                wordcraft_doc::para::Run { len: shown.len(), props: Default::default() },
+                wordcraft_doc::para::Run { len: hidden.len(), props: hide.clone() },
+            ];
+            p.touch();
+            para_block(p)
+        })
+        .collect();
+    hairline_chain(&mut d, n, 300.0, story);
+    // Ordinary stories of this many lines keep all 256 widths under this cap.
+    let layouts = chain_layouts(&d, 100_000);
+    assert!(layouts <= 8, "{layouts} layouts of a 1 MB story");
+}
+
+#[test]
+fn a_chain_of_wide_boxes_pays_for_a_long_paragraph() {
+    // 256 wide boxes a hair apart over one long paragraph: few lines per layout, but each
+    // layout shapes all of it.
+    let n = wordcraft_doc::MAX_LINKED_BOXES;
+    let mut d = Document::from_text(&vec!["p"; n].join("\n"));
+    let story = "Words that run on and on through every box of the chain. ".repeat(64 * 1024 / 58);
+    hairline_chain(&mut d, n, 1500.0, vec![para_block(Paragraph::with_text(&story, Default::default()))]);
+    let layouts = chain_layouts(&d, 2000);
+    assert!(layouts <= 4, "{layouts} layouts of a 64 KB story");
+}
+
 /// The paragraph layouts (by address) showing story `head` across the document.
 fn story_layouts(l: &DocLayout, head: u32) -> Vec<usize> {
     l.pages
@@ -359,6 +418,20 @@ fn flow_work_counts_clip_members() {
         deep = clip(vec![deep, rule()]);
     }
     assert_eq!(textbox::flow_work(&[rule(), deep]), 1 + 100 + 1 + 12 * 2);
+}
+
+/// Lines inside a clipped group (a text box on a canvas) cost each line, as they do outside one.
+#[test]
+fn flow_work_counts_each_line_in_a_clip() {
+    let l = lay(&Document::from_text(&"Words that run on and on. ".repeat(200)));
+    let lines = l.pages.iter().flat_map(|p| &p.items).find(|it| matches!(it, Placed::Lines { .. })).cloned().unwrap();
+    let (l0, l1) = match &lines {
+        Placed::Lines { l0, l1, .. } => (*l0, *l1),
+        _ => (0, 0),
+    };
+    assert!(l1 - l0 > 1);
+    let clip = Placed::Clip { rect: Rect::new(0.0, 0.0, 10.0, 10.0), spin: Default::default(), items: vec![lines] };
+    assert_eq!(textbox::flow_work(&[clip]), 1 + (l1 - l0));
 }
 
 #[test]

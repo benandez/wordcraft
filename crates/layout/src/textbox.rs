@@ -208,20 +208,29 @@ struct Cut {
     byte: usize,
 }
 
-/// Most work (lines, and other items, summed over the layouts) a chain's story is laid out for.
-/// Each distinct line length (and text direction) lays the whole story out again and is kept
-/// while the chain is split, so a chain of boxes that each differ in width multiplies its
-/// story's layout work and memory by its widths. Within this every box of an ordinary story
-/// (even all [`wordcraft_doc::MAX_LINKED_BOXES`]) keeps its exact width; past it, a box whose
-/// length isn't among those laid out takes the nearest narrower one laid out in its text
-/// direction, so its lines still fit across it (they stop short of its far edge), else the
-/// narrowest, whose lines are longer than the box. Only a huge story gets there.
+/// Most work a chain's story is laid out for, summed over its layouts. Each distinct line length
+/// (and text direction) lays the whole story out again and is kept while the chain is split, so
+/// a chain of boxes that each differ in width multiplies its story's layout work and memory by
+/// its widths. A layout costs the lines and other items it gives, or its story's text at
+/// [`STORY_BYTES_PER_WORK`] bytes a unit, whichever is more: text that gives few lines (hidden,
+/// deleted, very wide lines, or cut by a box inside) still costs what shaping it does. So the
+/// layouts of a chain shape at most about 64 MB of text, plus the one that crosses the cap and
+/// the first in each other direction. Within this every box of an ordinary story (even all
+/// [`wordcraft_doc::MAX_LINKED_BOXES`]) keeps its exact width; past it, a box whose length isn't
+/// among those laid out takes the nearest narrower one laid out in its text direction, so its
+/// lines still fit across it (they stop short of its far edge), else the narrowest, whose lines
+/// are longer than the box. Only a huge story gets there.
 pub(crate) const MAX_FLOW_WORK: usize = 1_000_000;
+
+/// Bytes of story text that cost one unit of [`MAX_FLOW_WORK`]: about a line's worth.
+pub(crate) const STORY_BYTES_PER_WORK: usize = 64;
 
 #[cfg(test)]
 thread_local! {
     /// A smaller cap for tests, so a short story can reach it.
     pub(crate) static FLOW_WORK_CAP: std::cell::Cell<usize> = const { std::cell::Cell::new(MAX_FLOW_WORK) };
+    /// How many times chains' stories have been laid out, for tests.
+    pub(crate) static FLOW_LAYOUTS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 fn flow_work_cap() -> usize {
@@ -232,13 +241,32 @@ fn flow_work_cap() -> usize {
 }
 
 /// What laying `items` out cost: its lines and other items (a clipped group's members, nested
-/// ones too, each count).
+/// ones too, each count, its lines each).
 pub(crate) fn flow_work(items: &[Placed]) -> usize {
     let cap = flow_work_cap();
-    items
-        .iter()
-        .map(|it| if let Placed::Lines { l0, l1, .. } = it { l1.saturating_sub(*l0).max(1) } else { super::placed_cost(it, cap) })
-        .fold(0, usize::saturating_add)
+    items.iter().map(|it| super::placed_cost_by(it, cap, line_count)).fold(0, usize::saturating_add)
+}
+
+/// One for an item, or its lines for a run of lines.
+fn line_count(it: &Placed) -> usize {
+    match it {
+        Placed::Lines { l0, l1, .. } => l1.saturating_sub(*l0).max(1),
+        _ => 1,
+    }
+}
+
+/// The work laying `blocks` out costs whatever it gives (see [`MAX_FLOW_WORK`]): its text's
+/// bytes, tables' cells too, over [`STORY_BYTES_PER_WORK`].
+fn story_work(blocks: &Blocks) -> usize {
+    let mut bytes = 0usize;
+    let mut stack: Vec<&Arc<Block>> = blocks.iter().collect();
+    while let Some(b) = stack.pop() {
+        match &**b {
+            Block::Para(p) => bytes = bytes.saturating_add(p.text.len()),
+            Block::Table(t) => stack.extend(t.rows.iter().flat_map(|r| &r.cells).flat_map(|c| &c.blocks)),
+        }
+    }
+    bytes / STORY_BYTES_PER_WORK
 }
 
 /// Line lengths are told apart to a twentieth of a point (a twip): resized boxes a hair apart
@@ -264,6 +292,7 @@ fn flow(ctx: &mut Ctx, chain: &[u32], depth: usize) -> Vec<Vec<Placed>> {
     let mut layouts: Vec<((i32, TextVert), Vec<Placed>)> = Vec::new();
     // Work done by the layouts so far (see `MAX_FLOW_WORK`).
     let mut work = 0usize;
+    let floor = story_work(&blocks);
     let mut out = Vec::with_capacity(chain.len());
     // Where the next box's text starts: `Some(None)` at the beginning, `None` when all is shown.
     let mut start: Option<Option<Cut>> = Some(None);
@@ -287,7 +316,9 @@ fn flow(ctx: &mut Ctx, chain: &[u32], depth: usize) -> Vec<Vec<Placed>> {
                 (ctx.counters, ctx.eq_count) = (snap.0.clone(), snap.1);
                 let items = lay(ctx, head, &blocks, len, body.vert, depth);
                 after.get_or_insert_with(|| (ctx.counters.clone(), ctx.eq_count));
-                work = work.saturating_add(flow_work(&items));
+                #[cfg(test)]
+                FLOW_LAYOUTS.with(|c| c.set(c.get().saturating_add(1)));
+                work = work.saturating_add(flow_work(&items).max(floor));
                 layouts.push((key, items.clone()));
                 items
             }

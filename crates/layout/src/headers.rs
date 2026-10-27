@@ -120,6 +120,11 @@ pub(crate) const MAX_HEADER_ITEMS: usize = 500_000;
 /// stack, and counting stops once the total passes `limit` (the result is then just over it), so
 /// neither deep nesting nor a huge group makes the count itself costly.
 pub(crate) fn placed_cost(it: &Placed, limit: usize) -> usize {
+    placed_cost_by(it, limit, |_| 1)
+}
+
+/// [`placed_cost`] with each item (the group itself and every member) costing `cost` of it.
+pub(crate) fn placed_cost_by(it: &Placed, limit: usize, cost: impl Fn(&Placed) -> usize) -> usize {
     let mut count = 0usize;
     let mut stack: Vec<std::slice::Iter<Placed>> = Vec::new();
     let mut next = Some(it);
@@ -138,7 +143,7 @@ pub(crate) fn placed_cost(it: &Placed, limit: usize) -> usize {
                 }
             },
         };
-        count = count.saturating_add(1);
+        count = count.saturating_add(cost(cur));
         if count > limit {
             return count;
         }
