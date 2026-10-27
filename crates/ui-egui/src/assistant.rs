@@ -537,7 +537,10 @@ fn draw(app: &mut WordApp, ctx: &egui::Context) {
     area.show(ctx, |ui| {
         let (r, resp) = ui.allocate_exact_size(NIB, Sense::click_and_drag());
         nib::paint(ui.painter(), r, pose, if animate { clock } else { 0.0 }, if animate { since } else { 10.0 }, &t);
-        let resp = resp.on_hover_cursor(egui::CursorIcon::Grab).on_hover_text(tl!("Nib, your assistant. Drag to move; right-click for options."));
+        let hint = tl!("Nib, your assistant. Drag to move; right-click for options.");
+        // A screen reader reaches Nib as a button named by its tooltip (#959 review).
+        resp.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, hint));
+        let resp = resp.on_hover_cursor(egui::CursorIcon::Grab).on_hover_text(hint);
         if resp.dragged() {
             let p = rect.min + resp.drag_delta();
             app.ui.assistant.position = Some([p.x, p.y]);
@@ -636,7 +639,10 @@ fn balloon(app: &mut WordApp, ctx: &egui::Context, nib: Rect, t: &Tokens) {
                 Content::Offer(o) => offer_text(o),
                 Content::Agent { text, .. } => text.clone(),
             };
-            ui.add(egui::Label::new(text).wrap());
+            let said = ui.add(egui::Label::new(text).wrap());
+            // A live region: screen readers announce the words when the Balloon opens or they
+            // change, without moving the user's focus from the document (#959 review).
+            ctx.accesskit_node_builder(said.id, |n| n.set_live(egui::accesskit::Live::Polite));
             ui.add_space(4.0);
             ui.horizontal_wrapped(|ui| match &b.content {
                 Content::Intro => {

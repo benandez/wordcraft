@@ -484,3 +484,19 @@ fn idle_nib_doesnt_keep_the_window_busy() {
         assert!(wait.is_finite() && (fast..=1.0).contains(&wait), "{now}: {wait}");
     }
 }
+
+/// A screen reader reaches Nib (a button named by its tooltip) and hears the Balloon: its text
+/// is a polite live region, announced when it appears (#959 review).
+#[test]
+fn screen_readers_reach_nib_and_hear_the_balloon() {
+    use egui_kittest::kittest::NodeT as _;
+    let mut a = app();
+    a.run("ui.assistant", json!({"show": true})).unwrap();
+    a.run("ui.assistantSay", json!({"text": "Still here!"})).unwrap();
+    let mut h = harness(a);
+    h.run_steps(4);
+    let nib = h.get_by_label("Nib, your assistant. Drag to move; right-click for options.");
+    assert_eq!(nib.accesskit_node().role(), egui::accesskit::Role::Button);
+    let said = h.get_by_label("Still here!");
+    assert_eq!(said.accesskit_node().live(), egui::accesskit::Live::Polite);
+}
