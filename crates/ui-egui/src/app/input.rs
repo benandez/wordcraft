@@ -41,7 +41,7 @@ impl WordApp {
     }
 
     /// Whether this pass's input came from the control channel (`ui.click`, `ui.key`, `ui.drag`,
-    /// `ui.text`…, which MCP's `click`, `key` and `type` tools send). Decisions that are only the
+    /// `ui.text`…; MCP's `click` and `key` tools send `ui.click` and `ui.key`). Decisions that are only the
     /// user's ignore it: letting agent messages through again, and answering an agent's question
     /// (#959 review). A real click in the same frame as a control step is ignored too, which errs
     /// the safe way.
