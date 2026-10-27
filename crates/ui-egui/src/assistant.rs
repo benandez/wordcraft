@@ -188,15 +188,30 @@ impl Assistant {
         self.pose_since = self.now;
     }
 
-    /// Close the Balloon; an unanswered agent message is answered with nothing.
+    /// Close the Balloon; an unanswered agent message is answered with nothing, and the
+    /// Introduction closed any way but "Keep me around" (×, Hide) is declined, as "Not now".
     fn close(&mut self, prefs: &mut Prefs) {
         let Some(b) = self.balloon.take() else { return };
         match b.content {
             Content::Agent { id, .. } => self.answer(id, None),
             Content::Offer(o) if b.dont_show && o.kind == Kind::Tip => dismiss(prefs, o.id),
+            Content::Intro => return self.answer_intro(prefs, false),
             _ => {}
         }
         self.set_pose(Pose::Idle);
+    }
+
+    /// Answer the Introduction: `keep` turns Nib on, otherwise it stays off. Either way it never
+    /// asks again (`introduced` is saved with the other settings). Every way the Introduction
+    /// closes comes here.
+    fn answer_intro(&mut self, prefs: &mut Prefs, keep: bool) {
+        if matches!(self.balloon, Some(Balloon { content: Content::Intro, .. })) {
+            self.balloon = None;
+        }
+        prefs.introduced = true;
+        prefs.visible = keep;
+        self.welcomed = true;
+        self.set_pose(if keep { Pose::Idle } else { Pose::Bow });
     }
 
     fn answer(&mut self, id: u64, choice: Option<String>) {
@@ -283,7 +298,9 @@ pub(crate) fn command(app: &mut WordApp, id: &str, p: &Value) -> Option<Result<V
                 a.set_pose(Pose::Wave);
             }
             // Turning Nib on or off answers the Introduction too.
-            if matches!(a.balloon, Some(Balloon { content: Content::Intro, .. })) || (!show && !a.agent_showing()) {
+            if matches!(a.balloon, Some(Balloon { content: Content::Intro, .. })) {
+                a.answer_intro(prefs, show);
+            } else if !show && !a.agent_showing() {
                 a.close(prefs);
             }
             prefs.visible = show;
@@ -730,13 +747,7 @@ fn balloon(app: &mut WordApp, ctx: &egui::Context, nib: Rect, t: &Tokens) -> boo
             }
             app.assistant.set_pose(Pose::Idle);
         }
-        Clicked::Intro(keep) => {
-            app.assistant.balloon = None;
-            app.ui.assistant.introduced = true;
-            app.ui.assistant.visible = keep;
-            app.assistant.welcomed = true;
-            app.assistant.set_pose(if keep { Pose::Idle } else { Pose::Bow });
-        }
+        Clicked::Intro(keep) => app.assistant.answer_intro(&mut app.ui.assistant, keep),
     }
     true
 }

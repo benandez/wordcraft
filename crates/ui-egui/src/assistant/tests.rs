@@ -238,6 +238,34 @@ fn the_introduction_runs_once() {
     assert!(showing(h.state()).is_none());
 }
 
+/// The Introduction's × declines it as "Not now" does: it never comes back, this run or the next
+/// (#959 review: × closed it without remembering, so it reopened on the next frame).
+#[test]
+fn closing_the_introduction_declines_it() {
+    let mut a = app();
+    a.assistant.automatic = true;
+    let mut h = harness(a);
+    h.run_steps(4);
+    assert!(matches!(showing(h.state()), Some(Content::Intro)));
+    h.get_by_label("×").click();
+    h.run_steps(4);
+    for _ in 0..10 {
+        h.step();
+        assert!(showing(h.state()).is_none(), "the Introduction stays closed");
+    }
+    assert!(h.state().ui.assistant.introduced && !h.state().ui.assistant.visible, "× counts as Not now");
+    // After a restart too.
+    let saved = serde_json::to_vec(&h.state().ui).unwrap();
+    let mut b = app();
+    b.assistant.automatic = true;
+    b.apply_prefs(crate::UiState::from_json(&saved).unwrap());
+    let mut h = harness(b);
+    for _ in 0..10 {
+        h.step();
+        assert!(showing(h.state()).is_none(), "still declined after a restart");
+    }
+}
+
 #[test]
 fn hidden_nib_stays_silent() {
     let mut a = chatty();
