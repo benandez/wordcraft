@@ -448,7 +448,7 @@ fn next_balloon(app: &mut WordApp) {
     }
     if !app.assistant.welcomed && !offer_open {
         app.assistant.welcomed = true;
-        let daily = engine::tip_of_the_day(wordcraft_engine::cmd::now_unix() / 86_400);
+        let daily = engine::tip_of_the_day(&app.session, wordcraft_engine::cmd::now_unix() / 86_400);
         if !app.ui.assistant.dismissed_tips.iter().any(|d| d == daily.id) {
             app.assistant.open(Content::Offer(daily), Pose::Wave);
         }

@@ -426,7 +426,7 @@ fn nib_draws_nothing_untranslated() {
     offers.extend(engine::tips(&s, &typed));
     let used = |source| Used { id: "format.bold".into(), source, at: 0.0 };
     offers.extend(engine::tips(&s, &Observation { recent: vec![used(Source::Ribbon); 3], ..Default::default() }));
-    offers.push(engine::tip_of_the_day(0));
+    offers.push(engine::tip_of_the_day(&s, 0));
     offers.extend(engine::sayings(&s, &Observation { deleted: 500, ..Default::default() }));
     let mut contents: Vec<Content> = offers.into_iter().map(Content::Offer).collect();
     contents.push(Content::Intro);

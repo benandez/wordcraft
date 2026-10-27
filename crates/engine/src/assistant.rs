@@ -151,7 +151,7 @@ const SAVE: &str = "Save";
 pub fn texts() -> impl Iterator<Item = &'static str> {
     [LETTER, LIST_STARTED, SHORTCUT, SAVE_REMINDER, ENVELOPES, LETTER_TEMPLATE, RESTART_AT_1, SAVE]
         .into_iter()
-        .chain(DAILY.iter().map(|(_, text)| *text))
+        .chain(DAILY.iter().map(|(_, _, text)| *text))
         .chain(IDLE)
         .chain(MASS_DELETE)
         .chain(SAVE_SPAM)
@@ -202,37 +202,53 @@ pub fn tips(s: &Session, o: &Observation) -> Vec<Offer> {
 
 /// A key as the platform writes it (`⌘⇧K` on macOS, `Ctrl+Shift+K` elsewhere).
 fn key_text(key: &str) -> String {
-    if cfg!(target_os = "macos") {
+    key_text_on(key, cfg!(target_os = "macos"))
+}
+
+fn key_text_on(key: &str, mac: bool) -> String {
+    if mac {
         key.replace("Mod+", "⌘").replace("Shift+", "⇧").replace("Alt+", "⌥").replace("Ctrl+", "⌃")
     } else {
         key.replace("Mod+", "Ctrl+")
     }
 }
 
-/// General Tips, one at a time ("tip of the day").
-const DAILY: [(&str, &str); 10] = [
-    ("daily.search", "Can't find a command? Press Alt+Q and type what you want to do."),
-    ("daily.pageBreak", "Ctrl+Enter starts a new page. Much tidier than pressing Enter until it happens."),
-    ("daily.marks", "Show/Hide ¶ (Ctrl+Shift+8) shows the spaces, tabs and breaks hiding in your text."),
-    ("daily.repeat", "F4 repeats your last action. Formatting ten headings is suddenly one click and nine taps."),
-    ("daily.lineBreak", "Shift+Enter starts a new line without starting a new paragraph."),
-    ("daily.wordCount", "Ctrl+Shift+G counts your words, characters and paragraphs."),
-    ("daily.spelling", "F7 checks the spelling and grammar of the whole document."),
-    ("daily.link", "Ctrl+K turns the selected text into a link."),
-    ("daily.findReplace", "Ctrl+H finds and replaces text, formatting and special characters."),
-    ("daily.focus", "View › Focus hides everything but your words. I'll wait outside."),
+/// General Tips, one at a time ("tip of the day"): id, the command whose key `{key}` names, text.
+/// The key comes from the user's key map, as the shortcut Tip's does.
+const DAILY: [(&str, Option<&str>, &str); 10] = [
+    ("daily.search", Some("tools.search"), "Can't find a command? Press {key} and type what you want to do."),
+    ("daily.pageBreak", Some("text.pageBreak"), "{key} starts a new page. Much tidier than pressing Enter until it happens."),
+    ("daily.marks", Some("view.marks"), "Show/Hide ¶ ({key}) shows the spaces, tabs and breaks hiding in your text."),
+    ("daily.repeat", Some("edit.repeat"), "{key} repeats your last action. Formatting ten headings is suddenly one click and nine taps."),
+    ("daily.lineBreak", Some("text.lineBreak"), "{key} starts a new line without starting a new paragraph."),
+    ("daily.wordCount", Some("review.wordCount"), "{key} counts your words, characters and paragraphs."),
+    ("daily.spelling", Some("review.spelling"), "{key} checks the spelling and grammar of the whole document."),
+    ("daily.link", Some("insert.link"), "{key} turns the selected text into a link."),
+    ("daily.findReplace", Some("edit.findReplace"), "{key} finds and replaces text, formatting and special characters."),
+    ("daily.focus", None, "View › Focus hides everything but your words. I'll wait outside."),
 ];
 
-/// A tip of the day, chosen by `n` (the UI rotates it).
-pub fn tip_of_the_day(n: u64) -> Offer {
+/// A tip of the day, chosen by `n` (the UI rotates it). A Tip whose command has no key now (none
+/// on this platform, or removed in Customize Keyboard) gives way to the next one.
+pub fn tip_of_the_day(s: &Session, n: u64) -> Offer {
+    daily_tip(s, n, cfg!(target_os = "macos"))
+}
+
+fn daily_tip(s: &Session, n: u64, mac: bool) -> Offer {
     let len = DAILY.len() as u64;
-    let (id, text) = DAILY.get((n % len) as usize).or(DAILY.first()).copied().unwrap_or(("daily.search", ""));
-    Offer::tip(id, text)
+    for i in 0..len {
+        let Some(&(id, command, text)) = DAILY.get(((n % len + i) % len) as usize) else { continue };
+        let Some(command) = command else { return Offer::tip(id, text) };
+        if let Some(first) = s.keymap.keys_for(&s.registry, command).first() {
+            return Offer::tip(id, text).arg("key", key_text_on(first, mac));
+        }
+    }
+    Offer::tip("daily.focus", DAILY.last().map_or("", |d| d.2))
 }
 
 /// Every Tip id the UI may remember as dismissed (for "Reset tips" and tests).
 pub fn tip_ids() -> impl Iterator<Item = &'static str> {
-    ["letter", "listStarted", "shortcut", "saveReminder"].into_iter().chain(DAILY.iter().map(|(id, _)| *id))
+    ["letter", "listStarted", "shortcut", "saveReminder"].into_iter().chain(DAILY.iter().map(|(id, _, _)| *id))
 }
 
 /// Saying lines per Trigger. Original, light, never about the user's writing being bad.
@@ -440,13 +456,37 @@ mod tests {
 
     #[test]
     fn tips_of_the_day_rotate_and_ids_are_unique() {
-        assert_ne!(tip_of_the_day(0).id, tip_of_the_day(1).id);
-        assert_eq!(tip_of_the_day(0).id, tip_of_the_day(DAILY.len() as u64).id);
+        let s = Session::new(wordcraft_doc::Document::new());
+        assert_ne!(tip_of_the_day(&s, 0).id, tip_of_the_day(&s, 1).id);
+        assert_eq!(tip_of_the_day(&s, 0).id, tip_of_the_day(&s, DAILY.len() as u64).id);
+        for n in 0..DAILY.len() as u64 {
+            assert!(!tip_of_the_day(&s, n).english().contains("{key}"), "{}", tip_of_the_day(&s, n).english());
+        }
+        assert!(tip_of_the_day(&s, u64::MAX).id.starts_with("daily."));
         let ids: Vec<_> = tip_ids().collect();
         let mut sorted = ids.clone();
         sorted.sort_unstable();
         sorted.dedup();
         assert_eq!(sorted.len(), ids.len());
+    }
+
+    #[test]
+    fn tips_of_the_day_follow_customize_keyboard_and_the_platform() {
+        let mut s = Session::new(wordcraft_doc::Document::new());
+        let reg = s.registry.clone();
+        let link = DAILY.iter().position(|d| d.0 == "daily.link").unwrap() as u64;
+        // Link moved to Mod+Shift+K: the Tip names it as this platform writes it, not the old key.
+        for k in s.keymap.keys_for(&reg, "insert.link") {
+            s.keymap.remove(&reg, "insert.link", &k).unwrap();
+        }
+        s.keymap.assign(&reg, "insert.link", "Mod+Shift+K").unwrap();
+        assert_eq!(daily_tip(&s, link, false).english(), "Ctrl+Shift+K turns the selected text into a link.");
+        assert_eq!(daily_tip(&s, link, true).english(), "⌘⇧K turns the selected text into a link.");
+        // No key left: the next Tip shows instead of one naming a key that does nothing.
+        s.keymap.remove(&reg, "insert.link", "Mod+Shift+K").unwrap();
+        let t = daily_tip(&s, link, false);
+        assert_ne!(t.id, "daily.link");
+        assert!(!t.english().contains("{key}"), "{}", t.english());
     }
 
     #[test]
@@ -468,7 +508,7 @@ mod tests {
         s.autosave = false;
         offers.extend(tips(&s, &Observation { unsaved_for: 25.0 * 60.0, ..Default::default() }));
         assert_eq!(ids(&offers), ["letter", "listStarted", "shortcut", "saveReminder"]);
-        offers.extend((0..DAILY.len() as u64).map(tip_of_the_day));
+        offers.extend((0..DAILY.len() as u64).map(|n| tip_of_the_day(&s, n)));
         for seed in 0..6 {
             let undo = Used { id: "edit.undo".into(), source: Source::Keyboard, at: 0.0 };
             let o = Observation { deleted: 500, idle: 300.0, recent: vec![undo; 5], seed, ..Default::default() };
