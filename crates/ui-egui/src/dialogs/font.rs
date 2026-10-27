@@ -77,12 +77,8 @@ pub(super) fn font_sample_box(
     let (w, h) = (ui.available_width().clamp(120.0, 400.0), 56.0);
     let ppp = ui.ctx().pixels_per_point();
     let text = tl!("AaBbYyZz");
-    let key = format!(
-        "fontsample:{text}:{props:?}:{mark:?}:{paper:?}:{display_paper:?}:{dark}:{w}:{ppp}"
-    );
-    let tex = app.previews.get_or(ui.ctx(), &key, || {
-        crate::previews::font_sample(text, props, mark, w, h, ppp, paper, dark)
-    });
+    let key = format!("fontsample:{text}:{props:?}:{mark:?}:{paper:?}:{display_paper:?}:{dark}:{w}:{ppp}");
+    let tex = app.previews.get_or(ui.ctx(), &key, || crate::previews::font_sample(text, props, mark, w, h, ppp, paper, dark));
     let (r, _) = ui.allocate_exact_size(vec2(w + 4.0, h + 2.0), egui::Sense::hover());
     let t = crate::theme::Tokens::get(ui.ctx());
     let page = crate::theme::c32(display_paper);
