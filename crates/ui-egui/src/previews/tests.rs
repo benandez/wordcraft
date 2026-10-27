@@ -401,9 +401,5 @@ fn font_sample_shows_small_caps_and_the_script_mark() {
         draw(&plain, sup, false),
         "the mark is drawn"
     );
-    assert_ne!(
-        draw(&plain, None, false),
-        draw(&plain, None, true),
-        "Switch Modes transforms the preview"
-    );
+    assert_ne!(draw(&plain, None, false), draw(&plain, None, true), "Switch Modes transforms the preview");
 }
