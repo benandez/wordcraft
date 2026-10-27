@@ -234,9 +234,9 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                     ui.add_space(8.0);
                     ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                         // The tabs that don't fit go into a » menu at the end of the strip (#897, #2026).
-                        for (i, ((tab, custom), _)) in tabs.iter().zip(&plan.fits).enumerate().filter(|(_, ((tab, _), fits))| {
-                            **fits || ghosts.iter().any(|(n, ..)| n == tab)
-                        }) {
+                        for (i, ((tab, custom), _)) in
+                            tabs.iter().zip(&plan.fits).enumerate().filter(|(_, ((tab, _), fits))| **fits || ghosts.iter().any(|(n, ..)| n == tab))
+                        {
                             let (tab, custom) = (tab.as_str(), *custom);
                             let contextual = !custom && wordcraft_engine::ribbon::CONTEXTUAL_TABS.contains(&tab);
                             // A custom tab's name is the user's own text: shown as typed.
