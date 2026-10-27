@@ -1,0 +1,135 @@
+use super::*;
+
+impl WordApp {
+    pub fn status(&mut self, s: impl Into<String>) {
+        self.status_msg = Some((s.into(), now_ms()));
+    }
+
+    /// Document title for the title bar (and the suggested file name). An untitled document is
+    /// named in the interface language, as `Document1` is in English.
+    pub fn title_stem(&self) -> String {
+        match &self.session.path {
+            Some(p) => p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| tl!("Document1").into()),
+            None => match &self.session.file_name {
+                Some(name) => name.clone(),
+                None if self.session.doc.core.title.is_empty() => {
+                    documents::untitled_title(&self.session.resolved_filenames().0).unwrap_or_else(|| tl!("Document1").into())
+                }
+                None => self.session.doc.core.title.clone(),
+            },
+        }
+    }
+
+    /// Tell the host whether the document has unsaved changes ([`Services::on_dirty`]).
+    pub(super) fn report_dirty(&self) {
+        if let Some(f) = &self.services.on_dirty {
+            f(self.session.dirty || panes::has_comment_drafts(self));
+        }
+    }
+
+    /// Draw the File page, the empty-window chrome, or the normal document window.
+    pub(super) fn paint_window(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, t: theme::Tokens, enter: f32, window: u64) {
+        let moved = |app: &WordApp| app.windows.shown() != window;
+        if self.ui.backstage && enter >= 1.0 {
+            backstage::show(self, ui, enter);
+        } else if !self.has_document() {
+            // No document open (#1129): the ribbon greyed out but for Help, and no page.
+            chrome::title_bar(self, ui);
+            ribbon::show(self, ui);
+            chrome::status_bar(self, ui);
+            egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.canvas)).show(ui, |_| {});
+        } else {
+            let screen = chrome::Screen::of(&self.session.view);
+            let mut glass = None;
+            // Focus and Full Screen (#1678) take the whole screen, with only their slim bar.
+            self.focus_ribbon &= screen == chrome::Screen::Focus;
+            if screen != chrome::Screen::Normal {
+                chrome::screen_bar(self, ui, screen);
+            } else {
+                // The blur is painted after the page, into a slot kept under the title bar and ribbon.
+                let before = ui.available_rect_before_wrap();
+                glass = self.ribbon_glass().then(|| (ui.painter().add(egui::Shape::Noop), before));
+                chrome::title_bar(self, ui);
+                ribbon_blur::set_drawing(ctx, self.ribbon_glass());
+                let menu_fill = ctx.global_style().visuals.window_fill;
+                if glass.is_some() {
+                    ctx.global_style_mut(|s| s.visuals.window_fill = ribbon_blur::menu_glass(menu_fill, s.visuals.dark_mode));
+                }
+                ribbon::show(self, ui);
+                if glass.is_some() {
+                    ctx.global_style_mut(|s| s.visuals.window_fill = menu_fill);
+                }
+                ribbon_blur::set_drawing(ctx, false);
+                if let Some((_, r)) = glass.as_mut() {
+                    r.max.y = ui.available_rect_before_wrap().min.y;
+                    if moved(self) {
+                        return;
+                    }
+                }
+                chrome::status_bar(self, ui);
+                panes::show(self, ui);
+            }
+            if moved(self) {
+                return;
+            }
+            let fill = if screen == chrome::Screen::Focus { chrome::FOCUS_CANVAS } else { t.canvas };
+            egui::CentralPanel::default().frame(egui::Frame::NONE.fill(fill)).show(ui, |ui| {
+                canvas::show(self, ui);
+            });
+            if let Some((slot, rect)) = glass {
+                ribbon_blur::paint(self, ui, slot, rect, self.canvas.view_top);
+            }
+            if self.focus_ribbon && !moved(self) {
+                chrome::focus_ribbon(self, ctx);
+            }
+        }
+    }
+
+    /// Dialogs, panes and other overlays drawn over the window.
+    pub(super) fn show_overlays(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, enter: f32, window: u64) {
+        let moved = |app: &WordApp| app.windows.shown() != window;
+        if enter > 0.0 && enter < 1.0 {
+            let mut over = ui.new_child(egui::UiBuilder::new().max_rect(ctx.content_rect()));
+            backstage::show(self, &mut over, enter);
+        }
+        content_controls::popup(self, ctx);
+        dialogs::show(self, ctx);
+        if moved(self) {
+            return;
+        }
+        updates_ui::show(self, ctx);
+        #[cfg(not(target_arch = "wasm32"))]
+        file_browser::show(self, ctx);
+        colors::show(self, ctx);
+        zotero::show_alert(self, ctx);
+        read_aloud::show(self, ctx);
+        crate::keytips::show(self, ctx, ui);
+        if moved(self) {
+            return;
+        }
+        keys::global_shortcuts(self, ctx);
+        if moved(self) {
+            return;
+        }
+        self.refocus_after_chrome_click(ctx);
+        if let Some(url) = self.canvas.open_url.take() {
+            ctx.open_url(egui::OpenUrl::new_tab(url));
+        }
+    }
+
+    /// Keep the window title and full-screen state in sync, then record this frame's time.
+    pub(super) fn sync_title_and_frame(&mut self, ctx: &egui::Context, t0: f64) {
+        // With native windows the viewport driver gives the window its title.
+        let title = self.window_title();
+        if title != self.sent_title {
+            if !self.windows.driven() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+            }
+            self.sent_title = title;
+        }
+        self.sync_full_screen(ctx);
+        self.frame_ms = now_ms() - t0;
+        // Typing and formatting land here, after `logic` has reported.
+        self.report_dirty();
+    }
+}
