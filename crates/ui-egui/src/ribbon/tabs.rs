@@ -158,7 +158,12 @@ const CONTENT_SWITCH_SECS: f64 = 0.16;
 pub(super) const CONTENT_SWITCH_SLIDE: f32 = 14.0;
 
 #[derive(Clone, Debug, PartialEq)]
-struct Underline { tab: String, from: (f32, f32), to: (f32, f32), start: f64 }
+struct Underline {
+    tab: String,
+    from: (f32, f32),
+    to: (f32, f32),
+    start: f64,
+}
 
 fn underline_at(u: &Underline, now: f64) -> (f32, f32) {
     let e = ease_out_cubic(((now - u.start) / UNDERLINE_SLIDE_SECS) as f32);
@@ -175,27 +180,49 @@ pub(super) fn slide_underline(ui: &egui::Ui, tab: &str, target: egui::Rect, colo
         _ => snap,
     };
     let (x, width) = underline_at(&next, now);
-    if next.from != next.to && now - next.start < UNDERLINE_SLIDE_SECS { ui.ctx().request_repaint(); }
+    if next.from != next.to && now - next.start < UNDERLINE_SLIDE_SECS {
+        ui.ctx().request_repaint();
+    }
     ui.ctx().data_mut(|d| d.insert_temp(id, next));
     ui.painter().rect_filled(egui::Rect::from_center_size(egui::pos2(x, target.center().y), egui::vec2(width, target.height())), 2.0, color);
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct TabChange { tab: String, index: usize, start: f64, dir: f32 }
+struct TabChange {
+    tab: String,
+    index: usize,
+    start: f64,
+    dir: f32,
+}
 
 pub(super) fn tab_content_entry(ctx: &egui::Context, tab: &str, index: usize, now: f64, animate: bool) -> (f32, f32) {
     let id = egui::Id::unique("ribbon_tab_change");
     let prev: Option<TabChange> = ctx.data(|d| d.get_temp(id));
     let next = match prev {
-        Some(p) if p.tab != tab => TabChange { tab: tab.to_owned(), index, start: now,
-            dir: if !animate || p.index == index { 0.0 } else if index > p.index { 1.0 } else { -1.0 } },
+        Some(p) if p.tab != tab => TabChange {
+            tab: tab.to_owned(),
+            index,
+            start: now,
+            dir: if !animate || p.index == index {
+                0.0
+            } else if index > p.index {
+                1.0
+            } else {
+                -1.0
+            },
+        },
         Some(p) => p,
         None => TabChange { tab: tab.to_owned(), index, start: f64::MIN, dir: 0.0 },
     };
     let p = ((now - next.start) / CONTENT_SWITCH_SECS).clamp(0.0, 1.0) as f32;
     let dir = next.dir;
     ctx.data_mut(|d| d.insert_temp(id, next));
-    if p < 1.0 && dir != 0.0 { ctx.request_repaint(); (ease_out_cubic(p), dir) } else { (1.0, 0.0) }
+    if p < 1.0 && dir != 0.0 {
+        ctx.request_repaint();
+        (ease_out_cubic(p), dir)
+    } else {
+        (1.0, 0.0)
+    }
 }
 
 /// Track contextual tabs between frames and return those still animating out.
@@ -392,8 +419,16 @@ mod transition_tests {
         let ctx = egui::Context::default();
         let draw = |tab: &str, x: f32, now: f64| {
             ctx.run_ui(egui::RawInput { time: now, ..Default::default() }, |ui| {
-                slide_underline(ui, tab, egui::Rect::from_min_size(egui::pos2(x - 25.0, 10.0), egui::vec2(50.0, 3.0)), egui::Color32::WHITE, now, true);
-            }).drop_without_applying_deltas();
+                slide_underline(
+                    ui,
+                    tab,
+                    egui::Rect::from_min_size(egui::pos2(x - 25.0, 10.0), egui::vec2(50.0, 3.0)),
+                    egui::Color32::WHITE,
+                    now,
+                    true,
+                );
+            })
+            .drop_without_applying_deltas();
         };
         draw("Home", 40.0, 1.0);
         draw("Insert", 140.0, 2.0);
