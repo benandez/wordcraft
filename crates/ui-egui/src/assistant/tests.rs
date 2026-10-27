@@ -360,6 +360,11 @@ fn agents_cant_unmute_themselves_or_speak_as_nib() {
         let r = execute(&mut a, "ui.assistantSay", json!({"text": "Hi", "from": from}));
         assert_eq!(r["ok"], false, "{from}: {r}");
     }
+    // Padding past the 40 characters the Balloon keeps can't hide the name it would show.
+    let padded = format!("Nib{}x", " ".repeat(40));
+    a.assistant.now += 5.0;
+    let r = execute(&mut a, "ui.assistantSay", json!({"text": "Hi", "from": padded}));
+    assert_eq!(r["ok"], false, "{r}");
     a.assistant.now += 5.0;
     assert_eq!(execute(&mut a, "ui.assistantSay", json!({"text": "Hi", "from": "Claude Code"}))["ok"], true);
     // Names that only share letters with the reserved ones still pass.

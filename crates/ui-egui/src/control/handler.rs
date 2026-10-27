@@ -123,8 +123,11 @@ fn agent_refused(id: &str, p: &Value) -> Option<&'static str> {
     // Letters and digits only, so invisible or punctuation characters can't slip past, with
     // lookalikes of the names' letters folded to them (Cyrillic `і` in `Nіb`).
     let reserved = |from: &str| {
-        let folded: String = from.chars().flat_map(char::to_lowercase).filter(|c| c.is_alphanumeric()).map(fold_lookalike).collect();
-        ["wordcraft", "nib"].contains(&folded.as_str())
+        let fold = |s: &str| -> String { s.chars().flat_map(char::to_lowercase).filter(|c| c.is_alphanumeric()).map(fold_lookalike).collect() };
+        // The name as sent and as the Balloon shows it (cut to its length), so padding past the
+        // cut can't hide `Nib`.
+        let shown = crate::assistant::shown_from(from).unwrap_or_default();
+        [fold(from), fold(&shown)].iter().any(|f| ["wordcraft", "nib"].contains(&f.as_str()))
     };
     match id {
         "ui.assistantMute" if p.get("value") == Some(&Value::Bool(false)) => {

@@ -258,6 +258,13 @@ fn clip(s: &str, max: usize) -> String {
     s.chars().filter(|c| !c.is_control() || *c == '\n').take(max).collect()
 }
 
+/// The sender name an agent message shows for `from`: trimmed, without control characters, at
+/// most [`FROM_MAX`] characters; `None` when nothing is left. The control channel checks this
+/// name, not the raw one, for WordCraft and Nib.
+pub(crate) fn shown_from(from: &str) -> Option<String> {
+    Some(clip(from.trim(), FROM_MAX).trim().to_string()).filter(|s| !s.is_empty())
+}
+
 /// The `ui.assistant*` commands; `None` for other ids.
 pub(crate) fn command(app: &mut WordApp, id: &str, p: &Value) -> Option<Result<Value, String>> {
     let a = &mut app.assistant;
@@ -348,7 +355,7 @@ fn say(a: &mut Assistant, prefs: &Prefs, p: &Value) -> Result<Value, String> {
         }
         Some(_) => return Err(format!("`choices` must be a list of at most {CHOICES_MAX} strings")),
     };
-    let from = p.get("from").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(|s| clip(s, FROM_MAX));
+    let from = p.get("from").and_then(Value::as_str).and_then(shown_from);
     if a.queue.len() >= QUEUE {
         return Err("queue full: wait for the user to see the earlier messages".into());
     }
