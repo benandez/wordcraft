@@ -283,10 +283,12 @@ fn assistant(app: &mut WordApp, ui: &mut Ui) {
         }
     });
     let mut muted = app.ui.assistant.agent_messages_muted;
+    // Only the user changes it here: a click or key from the control channel is ignored (#959).
     if ui
         .checkbox(&mut muted, tl!("Mute agent messages"))
         .on_hover_text(tl!("Agents connected to WordCraft can show you messages through the Assistant. Muted, they're told you'd rather not."))
         .changed()
+        && !app.input_from_control(ui.ctx())
     {
         let _ = app.run("ui.assistantMute", json!({"value": muted}));
     }

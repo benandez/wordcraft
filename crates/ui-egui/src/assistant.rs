@@ -540,6 +540,7 @@ fn draw(app: &mut WordApp, ctx: &egui::Context) {
         app.assistant.set_pose(Pose::Idle);
     }
     let pose = app.assistant.pose;
+    let from_control = app.input_from_control(ctx);
     let area = egui::Area::new(nib_area()).order(Order::Foreground).fixed_pos(rect.min).interactable(true);
     let mut menu_action = None;
     let mut touched = false;
@@ -571,7 +572,8 @@ fn draw(app: &mut WordApp, ctx: &egui::Context) {
                 }
             });
             let mut muted = app.ui.assistant.agent_messages_muted;
-            if ui.checkbox(&mut muted, tl!("Mute agent messages")).clicked() {
+            // Only the user mutes or unmutes here; agents mute with `ui.assistantMute`.
+            if ui.checkbox(&mut muted, tl!("Mute agent messages")).clicked() && !from_control {
                 menu_action = Some(("ui.assistantMute", json!({"value": muted})));
             }
             if ui.button(tl!("Reset tips")).clicked() {
@@ -711,6 +713,11 @@ fn balloon(app: &mut WordApp, ctx: &egui::Context, nib: Rect, t: &Tokens) -> boo
         open.dont_show = dont_show;
     }
     let Some(c) = clicked else { return false };
+    // Only the user answers an agent's question: a click the control channel made (an agent
+    // through MCP's `click`, say) leaves it open, as if it hadn't happened.
+    if matches!(c, Clicked::Choose(_)) && app.input_from_control(ctx) {
+        return true;
+    }
     match c {
         Clicked::Close => app.assistant.close(&mut app.ui.assistant),
         Clicked::Run(id, params) => {

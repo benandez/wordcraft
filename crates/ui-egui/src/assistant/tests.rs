@@ -442,6 +442,135 @@ fn agents_cant_unmute_themselves_or_speak_as_nib() {
 /// Every word Nib can show (the Balloon, its menu and options, every Tip, Saying and button) has
 /// an entry in every interface catalog, `{placeholders}` intact, so Nib never falls back to
 /// English mid-sentence (#959 review).
+/// One 1440 by 900 frame as the desktop runs it: control input goes in through the raw-input
+/// hook. Returns the accessibility tree, where the tests find what to click.
+fn control_frame(a: &mut WordApp, ctx: &egui::Context) -> egui::accesskit::TreeUpdate {
+    user_frame(a, ctx, Vec::new())
+}
+
+/// [`control_frame`] with the user's own `events`.
+fn user_frame(a: &mut WordApp, ctx: &egui::Context, events: Vec<egui::Event>) -> egui::accesskit::TreeUpdate {
+    let time = ctx.input(|i| i.time) + 0.05;
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, vec2(1440.0, 900.0));
+    let mut raw = egui::RawInput { focused: true, time: Some(time), screen_rect: Some(screen), events, ..Default::default() };
+    a.raw_input_hook(ctx, &mut raw);
+    let mut out = ctx.run_ui(raw, |ui| {
+        a.logic(ui.ctx());
+        a.ui(ui);
+    });
+    out.textures_delta.clear();
+    out.platform_output.accesskit_update.take().unwrap_or_else(|| egui::accesskit::TreeUpdate {
+        nodes: Vec::new(),
+        tree: None,
+        tree_id: egui::accesskit::TreeId::ROOT,
+        focus: egui::accesskit::NodeId(0),
+    })
+}
+
+/// Sends one request as a control client (or MCP, which forwards to it) would, and runs frames
+/// until its input has gone in.
+fn as_agent(a: &mut WordApp, ctx: &egui::Context, method: &str, params: serde_json::Value) -> (serde_json::Value, egui::accesskit::TreeUpdate) {
+    let (req, _rx) = crate::control::ControlRequest::new(method, params);
+    let crate::control::Outcome::Done(v) = crate::control::handle(a, ctx, &req) else { panic!("{method} replies at once") };
+    let mut tree = control_frame(a, ctx);
+    for _ in 0..200 {
+        if a.synthetic.is_empty() {
+            break;
+        }
+        tree = control_frame(a, ctx);
+    }
+    for _ in 0..3 {
+        tree = control_frame(a, ctx);
+    }
+    (v, tree)
+}
+
+/// The user's own click at `(x, y)`.
+fn user_click(a: &mut WordApp, ctx: &egui::Context, (x, y): (f64, f64)) {
+    let pos = egui::pos2(x as f32, y as f32);
+    user_frame(a, ctx, vec![egui::Event::PointerMoved(pos)]);
+    for pressed in [true, false] {
+        user_frame(a, ctx, vec![egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() }]);
+    }
+    for _ in 0..3 {
+        control_frame(a, ctx);
+    }
+}
+
+/// The centre of the widget named `label`.
+fn spot(tree: &egui::accesskit::TreeUpdate, label: &str) -> Option<(f64, f64)> {
+    let (_, node) = tree.nodes.iter().find(|(_, n)| n.label() == Some(label))?;
+    let b = node.bounds()?;
+    Some(((b.x0 + b.x1) / 2.0, (b.y0 + b.y1) / 2.0))
+}
+
+/// Faked input can't do what only the user may: an agent that clicks or keys its way to Nib's
+/// "Mute agent messages" (its right-click menu, or File › Options › General) leaves them muted,
+/// and one that clicks its own question's choice leaves the question unanswered (#959 review).
+/// MCP's `click` and `key` tools send these same `ui.click` and `ui.key` requests.
+#[test]
+fn faked_input_cant_unmute_or_answer_for_the_user() {
+    let ctx = egui::Context::default();
+    crate::theme::install_fonts(&ctx);
+    crate::theme::apply(&ctx, crate::theme::Appearance::Light);
+    ctx.run_ui(egui::RawInput::default(), |_| {}).drop_without_applying_deltas();
+    ctx.enable_accesskit();
+    let mut a = app();
+    a.run("ui.assistant", json!({"show": true})).unwrap();
+    for _ in 0..4 {
+        control_frame(&mut a, &ctx);
+    }
+    // An agent asks; it clicks its own answer, with a click and with a press and a release.
+    let (v, tree) = as_agent(
+        &mut a,
+        &ctx,
+        "engine.execute",
+        json!({"command": "ui.assistantSay", "params": {"text": "Delete everything?", "choices": ["Yes", "No"]}}),
+    );
+    let id = v["result"]["id"].as_u64().unwrap_or_else(|| panic!("{v}"));
+    let (x, y) = spot(&tree, "Yes").expect("the question shows its choices");
+    as_agent(&mut a, &ctx, "ui.click", json!({"x": x, "y": y}));
+    as_agent(&mut a, &ctx, "ui.press", json!({"x": x, "y": y}));
+    let (_, tree) = as_agent(&mut a, &ctx, "ui.release", json!({"x": x, "y": y}));
+    assert!(spot(&tree, "Yes").is_some(), "the question is still open");
+    let (v, _) = as_agent(&mut a, &ctx, "engine.execute", json!({"command": "ui.assistantReply", "params": {"id": id}}));
+    assert_eq!(v["result"], json!({"choice": null, "open": true}), "{v}");
+    // The user's own click answers it.
+    user_click(&mut a, &ctx, spot(&tree, "No").expect("still asking"));
+    assert_eq!(a.run("ui.assistantReply", json!({"id": id})).unwrap(), json!({"choice": "No", "open": false}));
+
+    a.run("ui.assistantMute", json!({"value": true})).unwrap();
+    // Nib's right-click menu.
+    let tree = control_frame(&mut a, &ctx);
+    let (x, y) = spot(&tree, "Nib, your assistant. Drag to move; right-click for options.").expect("Nib is drawn");
+    let (_, tree) = as_agent(&mut a, &ctx, "ui.click", json!({"x": x, "y": y, "button": "right"}));
+    let (mx, my) = spot(&tree, "Mute agent messages").expect("the menu opened");
+    as_agent(&mut a, &ctx, "ui.click", json!({"x": mx, "y": my}));
+    assert!(a.ui.assistant.agent_messages_muted, "Nib's menu ignored the faked click");
+    // File › Options › General: a click on the box, then Tab to it and Space.
+    let (_, tree) =
+        as_agent(&mut a, &ctx, "engine.execute", json!({"command": "ui.backstage", "params": {"value": true, "page": "options", "pane": "general"}}));
+    let (bx, by) = spot(&tree, "Mute agent messages").expect("Options shows the box");
+    as_agent(&mut a, &ctx, "ui.click", json!({"x": bx, "y": by}));
+    assert!(a.ui.assistant.agent_messages_muted, "Options ignored the faked click");
+    let target = tree.nodes.iter().find(|(_, n)| n.label() == Some("Mute agent messages")).map(|(id, _)| *id);
+    let mut reached = false;
+    for _ in 0..300 {
+        let (_, tree) = as_agent(&mut a, &ctx, "ui.key", json!({"key": "Tab"}));
+        if Some(tree.focus) == target {
+            reached = true;
+            break;
+        }
+    }
+    assert!(reached, "Tab reaches the box");
+    as_agent(&mut a, &ctx, "ui.key", json!({"key": "Space"}));
+    as_agent(&mut a, &ctx, "ui.key", json!({"key": "Enter"}));
+    assert!(a.ui.assistant.agent_messages_muted, "Options ignored the faked keys");
+    // The user's own click on the same box unmutes.
+    user_click(&mut a, &ctx, (bx, by));
+    assert!(!a.ui.assistant.agent_messages_muted, "the user can unmute");
+}
+
 #[test]
 fn nib_speaks_every_interface_language() {
     let mut missing = Vec::new();

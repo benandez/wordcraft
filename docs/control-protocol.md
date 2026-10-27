@@ -136,7 +136,8 @@ Positions are `{"story": "body" | {"part": n}, "path": [block, row, cell, block,
 - `ui.assistant` (`{"show"?: true|false}`; no value toggles Nib, the Assistant, #959)
 - `ui.assistantSayings` (`{"level"?: "off"|"sometimes"|"annoying"}`)
 - `ui.assistantResetTips`
-- `ui.assistantMute` (`{"value"?: true|false}`: mute agent messages; `false` is refused here, so agents can't unmute through the command, though `ui.click`/`ui.key` drive the window as the user would)
+- `ui.assistantMute` (`{"value"?: true|false}`: mute agent messages; `false` is refused here: only the user unmutes)
+  - Only the user decides two things, and synthetic input (`ui.click`, `ui.clickText`, `ui.press`/`ui.release`, `ui.drag`, `ui.key`, `ui.text`, and MCP's `click`, `key` and `type`, which send them) is ignored there: the "Mute agent messages" boxes (Nib's right-click menu and File › Options › General; neither ticks nor unticks), and the choices of an agent's question (`ui.assistantReply` stays `{"choice": null, "open": true}`). The rest of Nib still takes it: closing a message (its answer is then `null`), Hide, Sayings, Reset tips, Options. A real click in the same frame as a synthetic step is ignored too.
 - `ui.assistantSay` (`{"text", "choices"?: [≤3 strings], "from"?: string}` → `{"id"}`: show the user a message through Nib, labelled "From <from>"; `from` can't be WordCraft or Nib; ≤280 characters of plain text, choices ≤40; one every 3 s, at most 3 waiting; an error when the user muted agent messages)
 - `ui.assistantReply` (`{"id"}` → `{"choice": string|null, "open": bool}`)
 - `ui.focusRibbon` (`{"value": true|false}`; no value toggles it; in Focus, true drops the ribbon down over the page, as the bar's ⋯ does, and false puts it away, as a click on the page does; outside Focus it stays put away, #1678)
