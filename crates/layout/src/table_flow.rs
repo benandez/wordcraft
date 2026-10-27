@@ -94,7 +94,7 @@ fn row_keeps_next(row: &table::RowLayout) -> bool {
         .unwrap_or(false)
 }
 
-pub(super) fn row_can_start(row: &wordcraft_doc::Row, laid: &table::RowLayout, room: f32, page_height: f32) -> bool {
+fn row_can_start(row: &wordcraft_doc::Row, laid: &table::RowLayout, room: f32, page_height: f32) -> bool {
     if laid.height + laid.edge <= room + 0.01 {
         return true;
     }
@@ -362,4 +362,51 @@ pub(crate) fn below(excl: &[WrapArea], mut y: f32, x0: f32, x1: f32) -> f32 {
         y = bottom;
     }
     y
+}
+
+#[cfg(test)]
+mod tests {
+    use super::row_can_start;
+    use crate::{DocLayout, LayoutCache, LayoutOptions, Placed, layout};
+    use wordcraft_doc::props::TextDirection;
+    use wordcraft_doc::{Document, Table};
+
+    fn lay(doc: &Document) -> DocLayout {
+        let mut c = LayoutCache::new();
+        layout(doc, &mut c, &LayoutOptions::default())
+    }
+
+    #[test]
+    fn minimum_start_uses_insets() {
+        use crate::table::{CellPart, RowLayout};
+        use wordcraft_doc::props::HeightRule;
+        let l = lay(&Document::from_text("Line"));
+        let Some(Placed::Lines { story, path, para, .. }) = l.pages[0].items.iter().find(|it| matches!(it, Placed::Lines { .. })).cloned() else {
+            panic!("no line")
+        };
+        let line = |y| Placed::Lines { story, path: path.clone(), para: para.clone(), l0: 0, l1: 1, x: 0.0, y, turn: TextDirection::Horizontal };
+        let mut table = Table::new(1, 1, 400.0);
+        let row = &mut table.rows[0];
+        row.props.height = Some(200.0);
+        row.props.height_rule = HeightRule::AtLeast;
+        for (floor, room, page_height, expected) in [
+            (200.0, 205.0, 288.0, true),
+            (220.0, 205.0, 288.0, false),
+            (220.0, 225.0, 288.0, true),
+            (220.0, 195.0, 210.0, true),
+            (220.0, 195.0, 230.0, false),
+        ] {
+            let inset = (floor - 200.0) / 2.0;
+            let laid = RowLayout {
+                height: 400.0,
+                min_height: floor,
+                edge: 0.0,
+                items: vec![line(inset), line(350.0 + inset)],
+                bottom: inset,
+                cells: vec![CellPart { top: inset, items: 0..2, end: Some(370.0 + inset) }],
+            };
+            assert!(crate::table::split_row(&laid, room).is_some(), "the minimum guard alone distinguishes these cases");
+            assert_eq!(row_can_start(row, &laid, room, page_height), expected, "floor={floor}, room={room}, page_height={page_height}");
+        }
+    }
 }

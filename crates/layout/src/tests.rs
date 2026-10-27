@@ -1,5 +1,4 @@
 use super::*;
-use crate::table_flow::row_can_start;
 use wordcraft_doc::fill::Fill;
 use wordcraft_doc::para::InlineObject;
 use wordcraft_doc::props::{Align, Border, BorderStyle, Borders, ParaProps, TextDirection};
@@ -11751,40 +11750,6 @@ fn minimum_insets_move_rows() {
             let floor = minimum + 2.0 * inset;
             assert!(parts.iter().skip(1).all(|(_, r)| r.h >= floor - 0.01), "continuations retain {floor}: {parts:?}");
         }
-    }
-}
-
-#[test]
-fn minimum_start_uses_insets() {
-    use crate::table::{CellPart, RowLayout};
-    use wordcraft_doc::props::HeightRule;
-    let l = lay(&Document::from_text("Line"));
-    let Some(Placed::Lines { story, path, para, .. }) = l.pages[0].items.iter().find(|it| matches!(it, Placed::Lines { .. })).cloned() else {
-        panic!("no line")
-    };
-    let line = |y| Placed::Lines { story, path: path.clone(), para: para.clone(), l0: 0, l1: 1, x: 0.0, y, turn: TextDirection::Horizontal };
-    let mut table = Table::new(1, 1, 400.0);
-    let row = &mut table.rows[0];
-    row.props.height = Some(200.0);
-    row.props.height_rule = HeightRule::AtLeast;
-    for (floor, room, page_height, expected) in [
-        (200.0, 205.0, 288.0, true),
-        (220.0, 205.0, 288.0, false),
-        (220.0, 225.0, 288.0, true),
-        (220.0, 195.0, 210.0, true),
-        (220.0, 195.0, 230.0, false),
-    ] {
-        let inset = (floor - 200.0) / 2.0;
-        let laid = RowLayout {
-            height: 400.0,
-            min_height: floor,
-            edge: 0.0,
-            items: vec![line(inset), line(350.0 + inset)],
-            bottom: inset,
-            cells: vec![CellPart { top: inset, items: 0..2, end: Some(370.0 + inset) }],
-        };
-        assert!(crate::table::split_row(&laid, room).is_some(), "the minimum guard alone distinguishes these cases");
-        assert_eq!(row_can_start(row, &laid, room, page_height), expected, "floor={floor}, room={room}, page_height={page_height}");
     }
 }
 
