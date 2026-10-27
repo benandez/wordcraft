@@ -131,10 +131,10 @@ fn past_the_cap_a_box_takes_a_layout_in_its_own_direction() {
     assert_eq!(widths.len(), n, "every box shows the story");
     widths.sort_unstable();
     widths.dedup();
-    textbox::FLOW_WORK_CAP.with(|c| c.set(textbox::MAX_FLOW_WORK));
     assert!(widths.len() > 1 && widths.len() < n, "{} layouts: the vertical box has its own, the rest are shared", widths.len());
-    // The vertical box's layout is none of the horizontal boxes'.
+    // The vertical box's layout is none of the horizontal boxes', still past the cap.
     let mut all = story_layouts(&lay(&d), ids[0]);
+    textbox::FLOW_WORK_CAP.with(|c| c.set(textbox::MAX_FLOW_WORK));
     let vertical = all.pop();
     assert!(vertical.is_some_and(|v| !all.contains(&v)), "the vertical box shares a horizontal layout");
 }
