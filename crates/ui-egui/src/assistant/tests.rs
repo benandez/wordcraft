@@ -151,6 +151,73 @@ fn typing_with_the_balloon_open_reaches_the_document() {
     assert!(h.state().session.doc.plain_text(wordcraft_doc::StoryRef::Body).contains("Hello again"));
 }
 
+/// Every touch on Nib hands the keyboard back to the page, not only the Balloon's buttons:
+/// ticking "Don't show me this tip again", clicking or dragging Nib, its right-click menu and the
+/// Balloon's background each left focus nowhere, so the next keystrokes were lost (#959 review).
+#[test]
+fn touching_nib_keeps_typing_in_the_document() {
+    let body = |h: &egui_kittest::Harness<'static, WordApp>| h.state().session.doc.plain_text(wordcraft_doc::StoryRef::Body);
+    let typed = |h: &mut egui_kittest::Harness<'static, WordApp>, text: &str| {
+        h.event(egui::Event::Text(text.into()));
+        h.run_steps(4);
+    };
+    let mut a = chatty();
+    a.run("text.insert", json!({"text": "Dear Kim,"})).unwrap();
+    next_balloon(&mut a);
+    assert_eq!(offer_id(&a), Some("letter"));
+    let mut h = harness(a);
+    h.run_steps(4);
+    typed(&mut h, " one");
+    assert!(body(&h).ends_with(" one"), "{:?}", body(&h));
+    h.get_by_label("Don't show me this tip again").click();
+    h.run_steps(4);
+    assert!(h.state().assistant.balloon.as_ref().is_some_and(|b| b.dont_show), "the box is ticked");
+    typed(&mut h, " two");
+    assert!(body(&h).ends_with(" two"), "after ticking the box: {:?}", body(&h));
+    // The Balloon's background, beside its words.
+    let words = h.get_by_label_contains("Envelopes").rect();
+    h.event(egui::Event::PointerMoved(egui::pos2(words.right() - 2.0, words.top() - 4.0)));
+    h.run_steps(1);
+    let at = egui::pos2(words.right() - 2.0, words.top() - 4.0);
+    for pressed in [true, false] {
+        h.event(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() });
+        h.run_steps(1);
+    }
+    h.run_steps(3);
+    typed(&mut h, " three");
+    assert!(body(&h).ends_with(" three"), "after a click on the Balloon: {:?}", body(&h));
+    let hint = "Nib, your assistant. Drag to move; right-click for options.";
+    h.get_by_label(hint).click();
+    h.run_steps(4);
+    typed(&mut h, " four");
+    assert!(body(&h).ends_with(" four"), "after clicking Nib: {:?}", body(&h));
+    // Dragging Nib somewhere else.
+    let from = h.get_by_label(hint).rect().center();
+    let to = from - vec2(200.0, 150.0);
+    h.event(egui::Event::PointerMoved(from));
+    h.run_steps(1);
+    h.event(egui::Event::PointerButton { pos: from, button: egui::PointerButton::Primary, pressed: true, modifiers: Default::default() });
+    h.run_steps(1);
+    for i in 1..=5 {
+        h.event(egui::Event::PointerMoved(from + (to - from) * (i as f32 / 5.0)));
+        h.run_steps(1);
+    }
+    h.event(egui::Event::PointerButton { pos: to, button: egui::PointerButton::Primary, pressed: false, modifiers: Default::default() });
+    h.run_steps(4);
+    assert!(h.state().ui.assistant.position.is_some(), "Nib moved");
+    typed(&mut h, " five");
+    assert!(body(&h).ends_with(" five"), "after dragging Nib: {:?}", body(&h));
+    // An item in its right-click menu.
+    // Its tooltip carries the same words; Nib is the button.
+    use egui_kittest::kittest::NodeT as _;
+    h.get_all_by_label(hint).find(|n| n.accesskit_node().role() == egui::accesskit::Role::Button).unwrap().click_secondary();
+    h.run_steps(4);
+    h.get_by_label("Reset tips").click();
+    h.run_steps(4);
+    typed(&mut h, " six");
+    assert!(body(&h).ends_with(" six"), "after the right-click menu: {:?}", body(&h));
+}
+
 #[test]
 fn the_introduction_runs_once() {
     let mut a = app();

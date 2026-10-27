@@ -10,7 +10,8 @@
 //! Introduction, Tips and Sayings run only when the host sets [`Assistant::automatic`] (the
 //! desktop app does); tests, `ui_shot` and headless runs stay quiet unless a command shows Nib.
 //! Agent messages work whenever there is a window, and can be muted. Nothing typed is ever lost:
-//! the Balloon never takes keyboard focus, and a click on it hands focus back to the document.
+//! Nib and its Balloon never take keyboard focus: a click or drag on either, or a choice in its
+//! menu, hands focus back to the document.
 
 mod nib;
 
@@ -539,8 +540,9 @@ fn draw(app: &mut WordApp, ctx: &egui::Context) {
         app.assistant.set_pose(Pose::Idle);
     }
     let pose = app.assistant.pose;
-    let area = egui::Area::new(egui::Id::unique("wc_assistant_nib")).order(Order::Foreground).fixed_pos(rect.min).interactable(true);
+    let area = egui::Area::new(nib_area()).order(Order::Foreground).fixed_pos(rect.min).interactable(true);
     let mut menu_action = None;
+    let mut touched = false;
     area.show(ctx, |ui| {
         let (r, resp) = ui.allocate_exact_size(NIB, Sense::click_and_drag());
         nib::paint(ui.painter(), r, pose, if animate { clock } else { 0.0 }, if animate { since } else { 10.0 }, &t);
@@ -552,6 +554,7 @@ fn draw(app: &mut WordApp, ctx: &egui::Context) {
             let p = rect.min + resp.drag_delta();
             app.ui.assistant.position = Some([p.x, p.y]);
         }
+        touched |= resp.clicked() || resp.drag_stopped();
         if resp.clicked() && app.assistant.balloon.is_none() && app.ui.assistant.visible {
             // A click says hello: today's tip again.
             app.assistant.welcomed = false;
@@ -579,12 +582,34 @@ fn draw(app: &mut WordApp, ctx: &egui::Context) {
             }
         });
     });
+    touched |= menu_action.is_some();
     if let Some((id, params)) = menu_action {
         let _ = app.run(id, params);
     }
     if app.assistant.balloon.is_some() {
-        balloon(app, ctx, rect, &t);
+        touched |= balloon(app, ctx, rect, &t);
     }
+    // Nib never keeps the keyboard: a click or drag anywhere on it or its Balloon, or a choice in
+    // its menu, hands it back to the page, as a click on the ribbon does. egui drops the page's
+    // focus on any click outside it, and Nib floats over the page, where the chrome check doesn't
+    // look (#959 review). A right-click that opens the menu leaves the keyboard to the menu, and a
+    // dialog or the File page a button opened keeps it.
+    let on_nib = ctx
+        .input(|i| if i.pointer.any_click() { i.pointer.interact_pos() } else { None })
+        .and_then(|p| ctx.layer_id_at(p))
+        .is_some_and(|l| l.id == nib_area() || l.id == balloon_area());
+    let menu_open = egui::Popup::is_any_open(ctx);
+    if (touched || (on_nib && !menu_open)) && app.dialog.is_none() && !app.ui.backstage {
+        app.give_the_page_the_keyboard(ctx);
+    }
+}
+
+/// Nib's and its Balloon's areas.
+fn nib_area() -> egui::Id {
+    egui::Id::unique("wc_assistant_nib")
+}
+fn balloon_area() -> egui::Id {
+    egui::Id::unique("wc_assistant_balloon")
 }
 
 /// What a click in the Balloon asked for.
@@ -595,7 +620,8 @@ enum Clicked {
     Intro(bool),
 }
 
-fn balloon(app: &mut WordApp, ctx: &egui::Context, nib: Rect, t: &Tokens) {
+/// Draws the Balloon and does what its buttons ask; whether one was pressed.
+fn balloon(app: &mut WordApp, ctx: &egui::Context, nib: Rect, t: &Tokens) -> bool {
     let screen = ctx.content_rect();
     // Beside Nib, on the side with room, its bottom level with Nib's middle.
     let left = nib.min.x - BALLOON_W - 8.0 >= screen.min.x;
@@ -604,16 +630,11 @@ fn balloon(app: &mut WordApp, ctx: &egui::Context, nib: Rect, t: &Tokens) {
     } else {
         (Align2::LEFT_BOTTOM, Pos2::new(nib.max.x + 6.0, nib.center().y))
     };
-    let Some(b) = app.assistant.balloon.clone() else { return };
+    let Some(b) = app.assistant.balloon.clone() else { return false };
     let agent = matches!(b.content, Content::Agent { .. });
     let mut clicked = None;
     let mut dont_show = b.dont_show;
-    let area = egui::Area::new(egui::Id::unique("wc_assistant_balloon"))
-        .order(Order::Foreground)
-        .pivot(pivot)
-        .fixed_pos(at)
-        .constrain(true)
-        .interactable(true);
+    let area = egui::Area::new(balloon_area()).order(Order::Foreground).pivot(pivot).fixed_pos(at).constrain(true).interactable(true);
     area.show(ctx, |ui| {
         let stroke = if agent { Stroke::new(2.0, t.accent) } else { Stroke::new(1.0, t.border_strong) };
         let frame = egui::Frame::new().fill(t.menu).stroke(stroke).corner_radius(CornerRadius::same(10)).inner_margin(egui::Margin::same(10));
@@ -689,9 +710,7 @@ fn balloon(app: &mut WordApp, ctx: &egui::Context, nib: Rect, t: &Tokens) {
     if let Some(open) = &mut app.assistant.balloon {
         open.dont_show = dont_show;
     }
-    let Some(c) = clicked else { return };
-    // A click in the Balloon never keeps the keyboard from the document.
-    app.canvas.want_focus = true;
+    let Some(c) = clicked else { return false };
     match c {
         Clicked::Close => app.assistant.close(&mut app.ui.assistant),
         Clicked::Run(id, params) => {
@@ -712,6 +731,7 @@ fn balloon(app: &mut WordApp, ctx: &egui::Context, nib: Rect, t: &Tokens) {
             app.assistant.set_pose(if keep { Pose::Idle } else { Pose::Bow });
         }
     }
+    true
 }
 
 /// Nib's metal: the ArtCraft logo blue (`docs/brand/artcraft-mark.svg`), for light and dark alike.
