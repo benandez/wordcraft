@@ -171,7 +171,7 @@ pub fn tool_definitions() -> Value {
             "Show the person at the keyboard a short message through Nib, WordCraft's Assistant (desktop app only), labelled as coming from you. \
              Plain text, at most 280 characters; up to 3 `choices` (each ≤ 40 characters) make it a question. Returns an `id`: ask \
              `execute ui.assistantReply {id}` later for the answer (`choice`, or null while `open`). One message every 3 seconds, at most 3 waiting; \
-             the user can mute agent messages.",
+             the user can mute agent messages, which drops those still waiting (their reply has `muted`: true).",
             // The limits `ui.assistantSay` enforces (`TEXT_MAX`, `CHOICE_MAX`, `CHOICES_MAX` in
             // crates/ui-egui/src/assistant.rs), so clients can check a message before sending it.
             obj(

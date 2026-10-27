@@ -139,7 +139,9 @@ pub struct Assistant {
     checked: u64,
     balloon: Option<Balloon>,
     queue: VecDeque<Queued>,
-    replies: VecDeque<(u64, Option<String>)>,
+    /// Answered messages: the choice (`None`: closed unanswered), and whether muting dropped it
+    /// unseen.
+    replies: VecDeque<(u64, Option<String>, bool)>,
     next_id: u64,
     now: f64,
     last_activity: f64,
@@ -215,10 +217,22 @@ impl Assistant {
     }
 
     fn answer(&mut self, id: u64, choice: Option<String>) {
+        self.reply(id, choice, false);
+    }
+
+    fn reply(&mut self, id: u64, choice: Option<String>, muted: bool) {
         if self.replies.len() >= REPLIES {
             self.replies.pop_front();
         }
-        self.replies.push_back((id, choice));
+        self.replies.push_back((id, choice, muted));
+    }
+
+    /// Muted: the agent messages still waiting are dropped, never shown (not even after
+    /// unmuting), and each agent's `ui.assistantReply` says so. A message already showing stays.
+    fn drop_waiting(&mut self) {
+        while let Some(q) = self.queue.pop_front() {
+            self.reply(q.id, None, true);
+        }
     }
 
     fn agent_showing(&self) -> bool {
@@ -328,12 +342,18 @@ pub(crate) fn command(app: &mut WordApp, id: &str, p: &Value) -> Option<Result<V
                 Some(Value::Bool(b)) => prefs.agent_messages_muted = *b,
                 Some(_) => return Some(Err("`value` must be true or false".into())),
             }
+            if prefs.agent_messages_muted {
+                a.drop_waiting();
+            }
             Ok(json!({"muted": prefs.agent_messages_muted}))
         }
         "ui.assistantSay" => say(a, prefs, p),
         "ui.assistantReply" => {
             let Some(want) = p.get("id").and_then(Value::as_u64) else { return Some(Err("`id` (a number from ui.assistantSay) is required".into())) };
-            if let Some((_, choice)) = a.replies.iter().find(|(id, _)| *id == want) {
+            if let Some((_, choice, muted)) = a.replies.iter().find(|(id, ..)| *id == want) {
+                if *muted {
+                    return Some(Ok(json!({"choice": null, "open": false, "muted": true})));
+                }
                 return Some(Ok(json!({"choice": choice, "open": false})));
             }
             let open =
@@ -401,6 +421,10 @@ fn busy(app: &WordApp, ctx: &egui::Context) -> bool {
 pub(crate) fn show(app: &mut WordApp, ctx: &egui::Context) {
     let now = ctx.input(|i| i.time);
     app.assistant.now = now;
+    // However it was muted, nothing waiting gets through.
+    if app.ui.assistant.agent_messages_muted {
+        app.assistant.drop_waiting();
+    }
     expire(app);
     let busy = busy(app, ctx);
     if !busy {
@@ -452,6 +476,7 @@ fn next_balloon(app: &mut WordApp) {
     // An agent message may replace a Saying, but waits for a Tip or the Introduction.
     let saying_open = matches!(&app.assistant.balloon, Some(Balloon { content: Content::Offer(o), .. }) if o.kind == Kind::Saying);
     if (app.assistant.balloon.is_none() || saying_open)
+        && !app.ui.assistant.agent_messages_muted
         && let Some(q) = app.assistant.queue.pop_front()
     {
         app.assistant.balloon = None;

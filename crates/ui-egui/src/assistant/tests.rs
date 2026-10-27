@@ -266,6 +266,43 @@ fn closing_the_introduction_declines_it() {
     }
 }
 
+/// Muting drops the agent messages still waiting: none shows once the Tip in front closes, and
+/// each agent hears `muted` instead of waiting for ever (#959 review).
+#[test]
+fn muting_drops_waiting_agent_messages() {
+    let mut a = chatty();
+    a.run("text.insert", json!({"text": "Dear Kim,"})).unwrap();
+    next_balloon(&mut a);
+    assert_eq!(offer_id(&a), Some("letter"));
+    let id = a.run("ui.assistantSay", json!({"text": "Shall I tidy up?", "choices": ["Yes", "No"]})).unwrap()["id"].as_u64().unwrap();
+    let mut h = harness(a);
+    h.run_steps(4);
+    assert_eq!(offer_id(h.state()), Some("letter"), "the message waits behind the Tip");
+    h.state_mut().run("ui.assistantMute", json!({"value": true})).unwrap();
+    h.run_steps(4);
+    assert_eq!(offer_id(h.state()), Some("letter"), "an open Balloon stays");
+    h.get_by_label("OK").click();
+    for _ in 0..10 {
+        h.step();
+        assert!(!matches!(showing(h.state()), Some(Content::Agent { .. })), "no agent message while muted");
+    }
+    assert_eq!(h.state_mut().run("ui.assistantReply", json!({"id": id})).unwrap(), json!({"choice": null, "open": false, "muted": true}));
+    // Unmuting doesn't bring it back.
+    h.state_mut().run("ui.assistantMute", json!({"value": false})).unwrap();
+    for _ in 0..10 {
+        h.step();
+        assert!(!matches!(showing(h.state()), Some(Content::Agent { .. })), "dropped, not held");
+    }
+    // Muted by any other way than the command (a hand-edited setting, say): the frame drops it.
+    let mut a = chatty();
+    let id = a.run("ui.assistantSay", json!({"text": "Hi"})).unwrap()["id"].as_u64().unwrap();
+    a.ui.assistant.agent_messages_muted = true;
+    let mut h = harness(a);
+    h.run_steps(4);
+    assert!(!matches!(showing(h.state()), Some(Content::Agent { .. })));
+    assert_eq!(h.state_mut().run("ui.assistantReply", json!({"id": id})).unwrap()["muted"], true);
+}
+
 #[test]
 fn hidden_nib_stays_silent() {
     let mut a = chatty();
