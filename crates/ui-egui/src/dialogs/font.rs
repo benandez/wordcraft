@@ -62,6 +62,11 @@ pub(super) fn font_sample_box(
     hidden: bool,
 ) {
     use wordcraft_doc::props::VertAlign;
+    let dark = app.session.view.dark_mode;
+    let mut render_options = crate::canvas::screen_render_options();
+    render_options.dark = dark;
+    render_options.dark_paper = wordcraft_render::DARK_PAPER;
+    let display_paper = render_options.paper_of(&app.session.doc);
     let mark = if sup {
         Some(VertAlign::Superscript)
     } else if sub {
@@ -72,11 +77,15 @@ pub(super) fn font_sample_box(
     let (w, h) = (ui.available_width().clamp(120.0, 400.0), 56.0);
     let ppp = ui.ctx().pixels_per_point();
     let text = tl!("AaBbYyZz");
-    let key = format!("fontsample:{text}:{props:?}:{mark:?}:{paper:?}:{w}:{ppp}");
-    let tex = app.previews.get_or(ui.ctx(), &key, || crate::previews::font_sample(text, props, mark, w, h, ppp, paper));
+    let key = format!(
+        "fontsample:{text}:{props:?}:{mark:?}:{paper:?}:{display_paper:?}:{dark}:{w}:{ppp}"
+    );
+    let tex = app.previews.get_or(ui.ctx(), &key, || {
+        crate::previews::font_sample(text, props, mark, w, h, ppp, paper, dark)
+    });
     let (r, _) = ui.allocate_exact_size(vec2(w + 4.0, h + 2.0), egui::Sense::hover());
     let t = crate::theme::Tokens::get(ui.ctx());
-    let page = crate::theme::c32(paper);
+    let page = crate::theme::c32(display_paper);
     ui.painter().rect(r, 6.0, page, egui::Stroke::new(1.0, t.border), egui::StrokeKind::Inside);
     if let Some(tex) = tex {
         let full = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));

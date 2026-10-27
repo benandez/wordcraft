@@ -135,8 +135,12 @@ pub(super) fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 ui.checkbox(underline, tl!("Underline"));
                 ui.checkbox(strike, tl!("Strikethrough"));
                 ui.end_row();
-                ui.checkbox(sup, tl!("Superscript"));
-                ui.checkbox(sub, tl!("Subscript"));
+                if ui.checkbox(sup, tl!("Superscript")).changed() && *sup {
+                    *sub = false;
+                }
+                if ui.checkbox(sub, tl!("Subscript")).changed() && *sub {
+                    *sup = false;
+                }
                 ui.end_row();
                 ui.checkbox(small_caps, tl!("Small caps"));
                 ui.checkbox(caps, tl!("All caps"));
