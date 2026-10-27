@@ -64,6 +64,7 @@ pub(crate) fn layout_pass(
         track_totals: true,
         pct_base: None,
         quiet_marks: Vec::new(),
+        stacked_marks: Vec::new(),
         mirror: false,
         table_keys: Vec::new(),
         fitted: HashMap::new(),
@@ -80,12 +81,16 @@ pub(crate) fn layout_pass(
     let read = opts.view == ViewMode::Read;
     let reflow = web || read;
     ctx.mirror = doc.settings.mirror_margins && !reflow;
-    ctx.quiet_marks = sections
+    // Only the first of a run of such marks is quiet; the rest are stacked (Word, #3907).
+    (ctx.stacked_marks, ctx.quiet_marks) = sections
         .windows(2)
         .filter(|w| w[1].1.start == SectionStart::Continuous)
         .map(|w| w[0].0)
         .filter(|end| doc.body.get(*end).and_then(|b| b.as_para()).is_some_and(|p| p.text.is_empty()))
-        .collect();
+        .partition(|end| {
+            // After a text paragraph closing a section the mark is still quiet, as after any text.
+            end.checked_sub(1).and_then(|i| doc.body.get(i)).and_then(|b| b.as_para()).is_some_and(|p| p.section.is_some() && p.text.is_empty())
+        });
     if !opts.show_hidden {
         ctx.quiet_marks.extend(
             doc.body
@@ -130,6 +135,7 @@ pub(crate) fn layout_pass(
         cols: Vec::new(),
         y: 0.0,
         top: 0.0,
+        page_top: 0.0,
         bottom: 0.0,
         number: 0,
         web,

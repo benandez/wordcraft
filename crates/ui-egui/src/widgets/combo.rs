@@ -307,26 +307,36 @@ fn combo_impl(
         // The list drops from the box's left edge, as in Word, not from the arrow (#535).
         // The font list closes on a chosen entry or a click outside it, not on its headings.
         let close = if search { egui::PopupCloseBehavior::CloseOnClickOutside } else { egui::PopupCloseBehavior::CloseOnClick };
-        egui::Popup::menu(&aresp).anchor(resp.rect.union(ar)).close_behavior(close).show(|ui| {
-            let item = |k: usize| items.get(k);
-            let row = |k: usize| section_row(k, recent, &item);
-            if let Some(v) = list_rows(ui, width, current, section_rows(recent.len(), items.len()), &row, None, None, preview).0 {
-                out = Some(v);
+        let mut menu_field = aresp.clone();
+        menu_field.rect = resp.rect.union(ar);
+        let menu = craft_ui::combo::Menu::new(ui, &menu_field).close_behavior(close).height(420.0);
+        let row_h = if preview.is_some() { COMBO_PREVIEW_ROW_H } else { ui.spacing().interact_size.y };
+        let item = |k: usize| items.get(k);
+        let row = |k: usize| section_row(k, recent, &item);
+        let total = section_rows(recent.len(), items.len());
+        let list = |ui: &mut Ui, range: std::ops::Range<usize>, ()| draw_rows(ui, width, current, range, &row, None, preview, row_h);
+        let footer = |ui: &mut Ui| {
+            let mut picked = None;
+            ui.separator();
+            if ui.button(tl!("Add Font…")).clicked() {
+                picked = Some(ADD_FONT.to_string());
                 ui.close();
             }
-            if search {
-                ui.separator();
-                if ui.button(tl!("Add Font…")).clicked() {
-                    out = Some(ADD_FONT.to_string());
-                    ui.close();
-                }
-                #[cfg(target_arch = "wasm32")]
-                if ui.button(tl!("Load System Installed Fonts…")).clicked() {
-                    out = Some(LOAD_SYSTEM_FONTS.to_string());
-                    ui.close();
-                }
+            #[cfg(target_arch = "wasm32")]
+            if ui.button(tl!("Load System Installed Fonts…")).clicked() {
+                picked = Some(LOAD_SYSTEM_FONTS.to_string());
+                ui.close();
             }
-        });
+            picked
+        };
+        let picked = if search {
+            menu.show_rows_with_header_footer(|_| (), row_h, |()| total, list, footer).map(|(v, f)| v.or(f))
+        } else {
+            menu.show_rows_with_header(|_| (), row_h, |()| total, list)
+        };
+        if let Some(v) = picked.flatten() {
+            out = Some(v);
+        }
         let n = section_rows(recent_shown.len(), s.matches.len());
         if s.open && n > 0 {
             let matches = s.matches.clone();
@@ -449,6 +459,47 @@ fn heading_row(ui: &mut Ui, text: &str, size: egui::Vec2, rule: bool) {
     });
 }
 
+/// The rows `range` of a combo's list, in `ui`'s scroll area. Returns the clicked item.
+fn draw_rows<'a>(
+    ui: &mut Ui,
+    width: f32,
+    current: &str,
+    range: std::ops::Range<usize>,
+    row: &dyn Fn(usize) -> Option<Row<'a>>,
+    highlight: Option<usize>,
+    preview: Option<&dyn Fn(&mut Ui, &str) -> Response>,
+    row_h: f32,
+) -> Option<String> {
+    let mut out = None;
+    let fill = Tokens::get(ui.ctx()).checked;
+    ui.set_min_width(width + 60.0);
+    for k in range {
+        let it = match row(k) {
+            Some(Row::Item(it)) => it,
+            Some(Row::Heading(h)) => {
+                heading_row(ui, h, vec2(width + 60.0, row_h), k > 0);
+                continue;
+            }
+            None => continue,
+        };
+        let lit = highlight == Some(k);
+        let clicked = match preview {
+            Some(p) => {
+                if lit {
+                    let r = Rect::from_min_size(ui.cursor().min, vec2(ui.available_width(), row_h));
+                    ui.painter().rect_filled(r, 3.0, fill);
+                }
+                p(ui, it).clicked()
+            }
+            None => ui.selectable_label(if highlight.is_some() { lit } else { it == current }, it.as_str()).clicked(),
+        };
+        if clicked {
+            out = Some(it.clone());
+        }
+    }
+    out
+}
+
 /// The rows of [`combo_list`], virtualised, for `n` rows fetched by index. With a `highlight`
 /// that row is marked instead of `current`; `scroll` (last frame's offset and visible height)
 /// scrolls the highlight into view. Returns the clicked item, the scroll offset and the height.
@@ -483,32 +534,9 @@ fn list_rows<'a>(
         };
         area = area.vertical_scroll_offset(offset.max(0.0));
     }
-    let fill = Tokens::get(ui.ctx()).checked;
     let shown = area.show_rows(ui, row_h, n, |ui, range| {
-        ui.set_min_width(width + 60.0);
-        for k in range {
-            let it = match row(k) {
-                Some(Row::Item(it)) => it,
-                Some(Row::Heading(h)) => {
-                    heading_row(ui, h, vec2(width + 60.0, row_h), k > 0);
-                    continue;
-                }
-                None => continue,
-            };
-            let lit = highlight == Some(k);
-            let clicked = match preview {
-                Some(p) => {
-                    if lit {
-                        let r = Rect::from_min_size(ui.cursor().min, vec2(ui.available_width(), row_h));
-                        ui.painter().rect_filled(r, 3.0, fill);
-                    }
-                    p(ui, it).clicked()
-                }
-                None => ui.selectable_label(if highlight.is_some() { lit } else { it == current }, it.as_str()).clicked(),
-            };
-            if clicked {
-                out = Some(it.clone());
-            }
+        if let Some(v) = draw_rows(ui, width, current, range, row, highlight, preview, row_h) {
+            out = Some(v);
         }
     });
     (out, shown.state.clamped_offset().y, shown.inner_rect.height())
