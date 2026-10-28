@@ -46,6 +46,7 @@ impl RawWindowState {
             minimized: viewport.and_then(|v| v.minimized),
             fullscreen: viewport.and_then(|v| v.fullscreen),
             on_a_monitor: None,
+            primary_monitor_rect: None,
         }
     }
 
