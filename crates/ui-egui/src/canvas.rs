@@ -911,10 +911,8 @@ fn paint_pages(pass: PagePaint<'_>) -> PagePaintOutput {
         // raster with the object still on it shows for a frame.
         let forced = hidden.as_ref().is_some_and(|(page, _)| *page == i);
         // A page the blurred ribbon would show draws at once, whatever the budget.
-        let blur_needs = app.ribbon_glass()
-            && !app.canvas.thumbs.contains_key(&i)
-            && sr.max.y > ui.clip_rect().min.y - 200.0
-            && sr.min.y < ui.clip_rect().min.y;
+        let blur_needs =
+            app.ribbon_glass() && !app.canvas.thumbs.contains_key(&i) && sr.max.y > ui.clip_rect().min.y - 200.0 && sr.min.y < ui.clip_rect().min.y;
         // A cached page has no thumbnail from before the blur was on: render it again.
         if blur_needs {
             fresh = false;
