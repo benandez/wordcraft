@@ -27,7 +27,7 @@ mod traffic_lights;
 use wordcraft_engine::Session;
 use wordcraft_ui_egui::{
     Services, UiState, WordApp,
-    window_geometry::{RawWindowState, WindowGeometry, take_rescue},
+    window_geometry::{RawWindowState, WindowGeometry, reachable, take_rescue},
 };
 
 /// The app, the restored window geometry (or, with none, the default: no position) until the
@@ -54,7 +54,11 @@ impl eframe::App for App {
         apple_events::poll(&self.5, &mut self.0, ctx);
         self.0.logic(ctx);
         self.3.show(frame);
-        let window = self.4;
+        let mut window = self.4;
+        // Only until the off-screen check below has run: it is the one reader.
+        if self.1.is_some() {
+            window.on_a_monitor = on_a_monitor(frame);
+        }
         // A window that doesn't fit on its screen (the default size on a laptop) shrinks to fit
         // there, so all of the scroll bar can be dragged (#1215). Checked on the frame that first
         // knows the monitor: the off-screen check below takes the pending geometry then.
@@ -124,6 +128,25 @@ impl eframe::App for App {
             key_file.remove();
         }
     }
+}
+
+/// Whether the window can be dragged by its top edge, in physical pixels. `None` where winit
+/// reports no window position or no monitors (Wayland, headless).
+fn on_a_monitor(frame: &eframe::Frame) -> Option<bool> {
+    let w = frame.winit_window()?;
+    let rect = |(x, y): (i32, i32), (width, height): (u32, u32)| {
+        egui::Rect::from_min_size(egui::pos2(x as f32, y as f32), egui::vec2(width as f32, height as f32))
+    };
+    let pos = w.outer_position().ok()?;
+    let size = w.outer_size();
+    let monitors: Vec<egui::Rect> = w
+        .available_monitors()
+        .map(|m| {
+            let (p, s) = (m.position(), m.size());
+            rect((p.x, p.y), (s.width, s.height))
+        })
+        .collect();
+    (!monitors.is_empty()).then(|| reachable(rect((pos.x, pos.y), (size.width, size.height)), &monitors))
 }
 
 /// Quit the way Command-Q does, on the next turn of the main queue.
