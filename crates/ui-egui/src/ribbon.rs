@@ -130,8 +130,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
         }
     }
     let (now, animate) = (ui.input(|i| i.time), app.animations_on());
-    let leaving: Vec<(String, usize, f64)>;
-    {
+    let leaving = {
         let user_names: Vec<&str> = user_tabs.iter().filter(|e| e.custom).map(|e| e.name.as_str()).collect();
         let contextual: Vec<(&str, usize)> = tabs
             .iter()
@@ -139,11 +138,10 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
             .map(|(i, (n, _))| (n.as_str(), i))
             .filter(|(n, _)| wordcraft_engine::ribbon::CONTEXTUAL_TABS.contains(n) && !user_names.contains(n))
             .collect();
-        leaving = note_contextual_tabs(ui.ctx(), &contextual, now, animate);
-    }
-    // A tab that just left stays in its place while it slides and fades away.
+        note_contextual_tabs(ui.ctx(), &contextual, now, animate)
+    };
+    // A tab that just left stays in its former slot while it slides and fades away.
     let ghosts: Vec<(String, usize, f64)> = leaving.iter().filter(|(n, ..)| !tabs.iter().any(|(t, _)| t == n)).cloned().collect();
-    // Keep the exit animation moving even when a departing tab is in the overflow menu.
     if !ghosts.is_empty() {
         ui.ctx().request_repaint();
     }
@@ -245,7 +243,9 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                     ui.add_space(8.0);
                     ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                         // The tabs that don't fit go into a » menu at the end of the strip (#897, #2026).
-                        for (i, ((tab, custom), _)) in tabs.iter().zip(&plan.fits).enumerate().filter(|(_, (_, fits))| **fits) {
+                        for (i, ((tab, custom), _)) in
+                            tabs.iter().zip(&plan.fits).enumerate().filter(|(_, ((tab, _), fits))| **fits || ghosts.iter().any(|(n, ..)| n == tab))
+                        {
                             let (tab, custom) = (tab.as_str(), *custom);
                             let contextual = !custom && wordcraft_engine::ribbon::CONTEXTUAL_TABS.contains(&tab);
                             // A custom tab's name is the user's own text: shown as typed.
@@ -256,7 +256,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                             let (r, resp) = ui.allocate_exact_size(vec2(w, 30.0), if ghost.is_some() { Sense::hover() } else { Sense::click() });
                             if app.ui.keytips == crate::keytips::Phase::Tabs && ghost.is_none() {
                                 crate::keytips::record_tab(r, tab, &app.ui.keytip_prefix, &mut app.keytip_rects);
-                            } else if app.ui.keytips == crate::keytips::Phase::Legacy {
+                            } else if app.ui.keytips == crate::keytips::Phase::Legacy && ghost.is_none() {
                                 // Every tab: they only place the legacy keys' hint (#1697).
                                 crate::keytips::record_tab(r, tab, "", &mut app.keytip_rects);
                             }
@@ -266,9 +266,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                             if hover > 0.0 {
                                 ui.painter().rect_filled(r.shrink2(vec2(0.0, 4.0)), 4.0, egui::Color32::TRANSPARENT.lerp_to_gamma(t.hover, hover));
                             }
-                            // A contextual tab glides in from the left, fast at first and then slowing:
-                            // the eye is drawn to the motion. One that just left glides back out the same
-                            // way, fading, and cannot be clicked.
+                            // Entering and departing contextual tabs move and fade without changing layout.
                             let entry = match ghost {
                                 Some((_, _, left)) => {
                                     ui.ctx().request_repaint();
@@ -278,7 +276,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                                 None => 1.0,
                             };
                             let shift = vec2(-(1.0 - entry) * TAB_ENTRY_SLIDE, 0.0);
-                            let color = if contextual || active { t.accent_text } else { t.text }.gamma_multiply(entry);
+                            let color = (if contextual || active { t.accent_text } else { t.text }).gamma_multiply(entry);
                             if cut {
                                 let mut job = egui::text::LayoutJob::single_section(
                                     shown.to_string(),
@@ -301,7 +299,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                                     color,
                                 );
                             }
-                            let resp = if cut { resp.on_hover_text(shown) } else { resp };
+                            let resp = if cut && ghost.is_none() { resp.on_hover_text(shown) } else { resp };
                             if active {
                                 let u = Rect::from_center_size(pos2(r.center().x + shift.x, r.max.y - 2.0), vec2(w - 16.0, 3.0));
                                 slide_underline(ui, tab, u, t.accent.gamma_multiply(entry), now, animate);
@@ -366,12 +364,12 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                 .inner_margin(egui::Margin { left: 8, right: 8, top: 4, bottom: 4 })
                 .stroke(Stroke::new(1.0, t.border)),
         )
-        .show(ui, |panel| {
-            // A tab change brings the new content in from the side it lies on, fading in.
-            let index = tabs.iter().position(|(n, _)| *n == app.ui.tab).unwrap_or(0);
-            let (settled, dir) = tab_content_entry(panel.ctx(), &app.ui.tab, index, now, animate);
-            let shift = vec2(dir * (1.0 - settled) * CONTENT_SWITCH_SLIDE, 0.0);
-            let mut shifted = panel.new_child(egui::UiBuilder::new().max_rect(panel.max_rect().translate(shift)).layout(*panel.layout()));
+        .show(ui, |ui| {
+            // Bring newly selected ribbon content in from the side of its tab.
+            let index = tabs.iter().position(|(name, _)| name == &app.ui.tab).unwrap_or(0);
+            let (settled, direction) = tab_content_entry(ui.ctx(), &app.ui.tab, index, now, animate);
+            let shift = vec2(direction * (1.0 - settled) * CONTENT_SWITCH_SLIDE, 0.0);
+            let mut shifted = ui.new_child(egui::UiBuilder::new().max_rect(ui.max_rect().translate(shift)).layout(*ui.layout()));
             shifted.set_opacity(0.2 + 0.8 * settled);
             let ui = &mut shifted;
             // Right-click on the ribbon (outside a button): Customize Ribbon. Registered first, so

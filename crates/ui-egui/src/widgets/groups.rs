@@ -42,7 +42,8 @@ pub fn group_titled(ui: &mut Ui, id_title: &str, title: &str, launcher: Option<&
         let r = inner.response.rect;
         let area = Rect::from_min_max(start, pos2(r.max.x, start.y + CONTENT_H + LABEL_H));
         let over = ui.rect_contains_pointer(area);
-        let lit = ui.ctx().animate_bool_responsive(ui.scope_id().with(("group_glow", id_title)), over);
+        // Position is part of identity because duplicate custom group names can appear in tabs.
+        let lit = ui.ctx().animate_bool_responsive(ui.scope_id().with(("group_glow", id_title, position)), over);
         if lit > 0.0 {
             ui.painter().set(glow, group_glow(area, t.accent, lit));
         }
