@@ -55,16 +55,16 @@ impl WordApp {
                 let before = ui.available_rect_before_wrap();
                 glass = self.ribbon_glass().then(|| (ui.painter().add(egui::Shape::Noop), before));
                 chrome::title_bar(self, ui);
-                ribbon_blur::set_drawing(ctx, self.ribbon_glass());
+                crate::ribbon_blur::set_drawing(ctx, self.ribbon_glass());
                 let menu_fill = ctx.global_style().visuals.window_fill;
                 if glass.is_some() {
-                    ctx.global_style_mut(|s| s.visuals.window_fill = ribbon_blur::menu_glass(menu_fill, s.visuals.dark_mode));
+                    ctx.global_style_mut(|s| s.visuals.window_fill = crate::ribbon_blur::menu_glass(menu_fill, s.visuals.dark_mode));
                 }
                 ribbon::show(self, ui);
                 if glass.is_some() {
                     ctx.global_style_mut(|s| s.visuals.window_fill = menu_fill);
                 }
-                ribbon_blur::set_drawing(ctx, false);
+                crate::ribbon_blur::set_drawing(ctx, false);
                 if let Some((_, r)) = glass.as_mut() {
                     r.max.y = ui.available_rect_before_wrap().min.y;
                     if moved(self) {
@@ -82,7 +82,7 @@ impl WordApp {
                 canvas::show(self, ui);
             });
             if let Some((slot, rect)) = glass {
-                ribbon_blur::paint(self, ui, slot, rect, self.canvas.view_top);
+                crate::ribbon_blur::paint(self, ui, slot, rect, self.canvas.view_top);
             }
             if self.focus_ribbon && !moved(self) {
                 chrome::focus_ribbon(self, ctx);

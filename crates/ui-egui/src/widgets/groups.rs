@@ -1,3 +1,4 @@
+use egui::Color32;
 #[cfg(test)]
 use super::TALL_GROUPS;
 use super::buttons::{BIG_ICON_Y, BIG_LABEL_Y, CONTENT_H, DROPDOWN, LABEL_H, bg, label_line};

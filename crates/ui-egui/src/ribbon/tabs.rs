@@ -1,3 +1,4 @@
+use egui::{Rect, pos2, vec2};
 use super::{Stroke, Tokens, Ui, WordApp, json, semibold};
 
 pub const TABS: [&str; 13] = wordcraft_engine::ribbon::TABS;
