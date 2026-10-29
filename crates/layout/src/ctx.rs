@@ -314,11 +314,13 @@ impl Ctx<'_> {
             if float.wrap != Wrap::Inline || float.rot != 0.0 {
                 continue;
             }
+            // Measure and cache at the width stored by paragraph layout.
+            let w = w.clamp(1.0, 4000.0);
             let key = (*id, w.to_bits());
             let h = match self.fitted.get(&key) {
                 Some(h) => *h,
                 None => {
-                    let h = textbox::fitted_height(self, *id, *w);
+                    let h = textbox::fitted_height(self, *id, w);
                     self.fitted.insert(key, h);
                     h
                 }
