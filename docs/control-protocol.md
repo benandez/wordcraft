@@ -145,6 +145,13 @@ the same rule (unsaved changes need `{"force": true}`), and the active window st
 result as **another document beside** the open ones and leave the unsaved one alone, so they
 lose nothing and are never refused.
 
+`file.closeDocument` closes the document its `id` names (the active one when the `id` is
+absent), so it is refused while that document has unsaved work: changes that aren't written to
+a file, a save the browser's picker hasn't finished, or a comment still being typed. Pass
+`{"force": true}` to discard that work and close the document; only a boolean `true` counts as
+`force`. The refusal and the Save Changes prompt ask about the same work, so they cannot
+disagree (#3274).
+
 `app.quit` closes every open document, so it is refused while any of them has unsaved changes:
 the app keeps running and the work stays. Save first, or pass `{"force": true}` to discard the
 changes and quit. Only a boolean `true` counts as `force`.

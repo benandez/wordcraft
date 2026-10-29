@@ -121,6 +121,13 @@ impl WordApp {
         if id == "file.close" {
             return self.close_document(&params);
         }
+        // `file.closeDocument` closes the document its `id` names (the active one by default):
+        // the same unsaved work would go with it, so it needs the same explicit `force` (#3274).
+        if id == "file.closeDocument"
+            && let Some(e) = crate::control::close_refused(self, id, &params)
+        {
+            return Err(e.into());
+        }
         if id == "file.autosave" {
             return self.set_autosave(&params);
         }

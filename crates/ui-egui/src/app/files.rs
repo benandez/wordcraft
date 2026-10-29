@@ -87,7 +87,7 @@ impl WordApp {
     /// bridge), which never prompts, refuses the command instead — so both paths guard the
     /// same work (#1268, #3274).
     pub(crate) fn document_unsaved(&self) -> bool {
-        self.session.dirty || self.save_unconfirmed()
+        self.document_unsaved_by_id(self.session.document_id())
     }
 
     /// The document's name as the Save Changes prompt shows it: its file's name, else its title.
