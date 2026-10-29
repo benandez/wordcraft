@@ -74,6 +74,22 @@ pub struct ObjectHit {
     pub origin: Point,
 }
 
+/// The inputs for a column selection across laid-out lines.
+pub struct ColumnSelection<'a> {
+    /// The selection's first corner.
+    pub start: &'a Pos,
+    /// The selection's opposite corner.
+    pub end: &'a Pos,
+    /// One horizontal edge in page coordinates.
+    pub left: f32,
+    /// The other horizontal edge in page coordinates.
+    pub right: f32,
+    /// The page nearest the selection's starting corner.
+    pub page_hint: usize,
+    /// The maximum number of lines to return.
+    pub max_lines: usize,
+}
+
 impl ObjectHit {
     /// The object's position (its U+FFFC).
     pub fn pos(&self) -> Pos {
@@ -147,17 +163,41 @@ fn text_at(p: &Page, index: usize, x: f32, y: f32) -> Option<StoryRef> {
 struct PartPages<'a> {
     story: StoryRef,
     pages: HashMap<usize, HashMap<&'a Path, Vec<&'a Placed>>>,
+    /// The first page that shows each paragraph, made the first time one is asked for, in one
+    /// walk of the pages (not one walk of them for every paragraph).
+    first: Option<HashMap<&'a Path, usize>>,
 }
 
 impl<'a> PartPages<'a> {
     fn new(story: StoryRef) -> Self {
-        PartPages { story, pages: HashMap::new() }
+        PartPages { story, pages: HashMap::new(), first: None }
+    }
+
+    /// The first page of `lay` that shows a piece of the paragraph at `path`.
+    fn first_page(&mut self, lay: &'a DocLayout, path: &Path) -> Option<usize> {
+        let story = self.story;
+        let first = self.first.get_or_insert_with(|| {
+            let mut first: HashMap<&'a Path, usize> = HashMap::new();
+            for (pi, p) in lay.pages.iter().enumerate() {
+                crate::work::steps(1);
+                for it in items_of(p, story) {
+                    if let Placed::Lines { story: s, path, .. } = it
+                        && *s == story
+                    {
+                        first.entry(path).or_insert(pi);
+                    }
+                }
+            }
+            first
+        });
+        first.get(path).copied()
     }
 
     /// The pieces of the paragraph at `path` on page `pi` of `lay`, as [`DocLayout::pieces_on`]
     /// gives them.
     fn on(&mut self, lay: &'a DocLayout, pi: usize, path: &Path) -> Vec<(usize, &'a Placed)> {
         let Some(p) = lay.pages.get(pi) else { return Vec::new() };
+        crate::work::steps(1);
         let story = self.story;
         let index = self.pages.entry(pi).or_insert_with(|| {
             let mut index: HashMap<&'a Path, Vec<&'a Placed>> = HashMap::new();
@@ -460,21 +500,24 @@ impl DocLayout {
                 .map(|v| v.iter().filter_map(|(pi, ii)| self.pages.get(*pi).and_then(|p| p.items.get(*ii)).map(|it| (*pi, it))).collect())
                 .unwrap_or_default();
         }
-        self.part_pieces(page_hint, &mut |pi| self.pieces_on(pi, story, path))
+        let mut first = || (0..self.pages.len()).find(|pi| !self.pieces_on(*pi, story, path).is_empty());
+        self.part_pieces(page_hint, &mut first, &mut |pi| self.pieces_on(pi, story, path))
     }
 
     /// Pieces of a paragraph of a story part (see [`Self::pieces`]), `on` giving those on a page.
-    fn part_pieces<'a>(&'a self, page_hint: usize, on: &mut dyn FnMut(usize) -> Vec<(usize, &'a Placed)>) -> Vec<(usize, &'a Placed)> {
+    fn part_pieces<'a>(
+        &'a self,
+        page_hint: usize,
+        first: &mut dyn FnMut() -> Option<usize>,
+        on: &mut dyn FnMut(usize) -> Vec<(usize, &'a Placed)>,
+    ) -> Vec<(usize, &'a Placed)> {
         // Headers/footers repeat: prefer the hinted page, else the first that shows the part.
-        let mut order: Vec<usize> = (0..self.pages.len()).collect();
-        if page_hint < order.len() {
-            order.retain(|p| *p != page_hint);
-            order.insert(0, page_hint);
-        }
-        for pi in order {
-            let mut found = on(pi);
+        let hinted = if page_hint < self.pages.len() { on(page_hint) } else { Vec::new() };
+        let start = if hinted.is_empty() { first() } else { Some(page_hint) };
+        if let Some(pi) = start {
+            let mut found = if hinted.is_empty() { on(pi) } else { hinted };
             if found.is_empty() {
-                continue;
+                return found;
             }
             // A note continued over pages has the rest of the paragraph on the pages before or
             // after (a repeated header shows all of it on every page: one page is enough).
@@ -517,7 +560,9 @@ impl DocLayout {
         if pages.story == StoryRef::Body {
             return self.pieces(StoryRef::Body, path, page_hint);
         }
-        self.part_pieces(page_hint, &mut |pi| pages.on(self, pi, path))
+        // The first-page index is made only when the hinted page doesn't show the paragraph.
+        let pages = std::cell::RefCell::new(pages);
+        self.part_pieces(page_hint, &mut || pages.borrow_mut().first_page(self, path), &mut |pi| pages.borrow_mut().on(self, pi, path))
     }
 
     /// Pieces of a paragraph of story part `story` on page `pi`.
@@ -680,8 +725,9 @@ impl DocLayout {
     /// Column (block) selection: the piece of every line from the line holding `a` to the line
     /// holding `b` (document order) that lies between page x `left` and `right`. One `(start,
     /// end)` pair per line, both in the same paragraph; lines shorter than `left` give an empty
-    /// pair. At most `max` lines.
-    pub fn column_segments(&self, doc: &Document, a: &Pos, b: &Pos, left: f32, right: f32, page_hint: usize, max: usize) -> Vec<(Pos, Pos)> {
+    /// pair. At most `selection.max_lines` lines.
+    pub fn column_segments(&self, doc: &Document, selection: ColumnSelection<'_>) -> Vec<(Pos, Pos)> {
+        let ColumnSelection { start: a, end: b, left, right, page_hint, max_lines } = selection;
         let (a, b) = if a <= b { (a, b) } else { (b, a) };
         let (left, right) = if left <= right { (left, right) } else { (right, left) };
         let mut out = Vec::new();
@@ -698,7 +744,7 @@ impl DocLayout {
                     if li < first || li > last {
                         continue;
                     }
-                    if out.len() >= max {
+                    if out.len() >= max_lines {
                         return out;
                     }
                     let o0 = para.off_at_x(li, left - x);
