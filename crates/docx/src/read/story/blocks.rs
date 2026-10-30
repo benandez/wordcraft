@@ -36,6 +36,23 @@ impl Reader<'_> {
                             }
                             props.drop_cap_font = cap_font;
                         }
+                        // The same for the size: the letter carries the enlarged one the file's
+                        // writer computed, and the layout sizes a dropped letter from the text
+                        // around it — keeping it would render the enlargement twice (#3000).
+                        // A leading bookmark or comment anchor is a run of its own: sizes come from the
+                        // first run with text, in the text and in the letter's frame alike.
+                        let text_sizes = |q: &Paragraph| {
+                            q.run_ranges()
+                                .find(|(range, _)| q.text.get(range.clone()).is_some_and(|t| t.chars().any(|c| c != wordcraft_doc::para::OBJ)))
+                                .map(|(_, props)| (props.size, props.size_cs))
+                        };
+                        let (text_size, text_size_cs) = text_sizes(&p).unwrap_or((None, None));
+                        // Only runs at the letter's enlarged size: a frame run with a size of its own keeps it.
+                        let cap_size = text_sizes(&first);
+                        for r in first.runs.iter_mut().filter(|r| Some((r.props.size, r.props.size_cs)) == cap_size) {
+                            r.props.size = text_size;
+                            r.props.size_cs = text_size_cs;
+                        }
                         first.append(p);
                         first.props = props;
                         out.push(para_block(first));
