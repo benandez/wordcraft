@@ -595,3 +595,49 @@ fn a_header_row_holding_a_canvas_repeats_within_the_budget() {
     assert!(items <= MAX_HEADER_ITEMS + 2000 + 50 * l.pages.len(), "{items} items placed");
     assert!(items > 100_000, "the header still repeats on early pages: {items}");
 }
+
+/// A table with a repeating header row in a two-column section ended by a continuous break, so
+/// its columns are balanced: laid out once, then again from a snapshot for each balancing try.
+fn balanced_header_table(rows: usize) -> Document {
+    use wordcraft_doc::section::{SectionProps, SectionStart};
+    let mut d = Document::from_text("Before\nEnd of the section\nAfter the break");
+    let mut s = SectionProps::default();
+    s.columns.count = 2;
+    d.para_mut(StoryRef::Body, &Path::top(1)).unwrap().section = Some(Box::new(s));
+    d.last_section.start = SectionStart::Continuous;
+    let mut t = Table::new(rows, 1, 200.0);
+    t.rows[0].props.header = true;
+    d.insert_block(StoryRef::Body, &Path::top(1), Block::Table(t)).unwrap();
+    d
+}
+
+/// Header rows placed (each repeat of the one-column header row is one cell of row 0).
+fn header_cells(l: &DocLayout) -> usize {
+    l.pages.iter().flat_map(|p| &p.items).filter(|i| matches!(i, Placed::Cell { row: 0, .. })).count()
+}
+
+fn with_header_cap<T>(cap: usize, f: impl FnOnce() -> T) -> T {
+    headers::HEADER_ITEMS_CAP.with(|c| c.set(cap));
+    let out = f();
+    headers::HEADER_ITEMS_CAP.with(|c| c.set(MAX_HEADER_ITEMS));
+    out
+}
+
+#[test]
+fn balancing_columns_gives_back_the_header_repeats_it_throws_away() {
+    // The table runs over both columns of a page and onto a second one.
+    let d = balanced_header_table(120);
+    let full = lay(&d);
+    let shown = header_cells(&full);
+    assert!(shown >= 3, "the header repeats in each later column: {shown} header rows");
+    // What one repeat costs: the smallest cap at which a plain two-page table repeats its header.
+    let mut plain = Table::new(80, 1, 200.0);
+    plain.rows[0].props.header = true;
+    let mut p = Document::from_text("");
+    p.insert_block(StoryRef::Body, &Path::top(1), Block::Table(plain)).unwrap();
+    let cost = (1..=200).find(|cap| with_header_cap(*cap, || header_cells(&lay(&p))) >= 2).expect("a header repeat costs a few items");
+    // A budget holding exactly the repeats shown is enough: the balancing tries thrown away don't
+    // spend it.
+    let capped = with_header_cap((shown - 1) * cost, || lay(&d));
+    assert_eq!(header_cells(&capped), shown, "the final layout repeats the header as often");
+}

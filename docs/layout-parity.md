@@ -272,7 +272,7 @@ layout suite are pending; this is not a new Word/native-IME acceptance claim.
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-10-30 | trivial | Layout work bounds for hostile documents (#3692): header-row repeats budgeted per layout and counting canvas members; picture-outline decode budget charged for cached outlines too, so cold and warm layouts wrap alike; linked-box chains keep exact widths up to a work cap, not 16 widths; `gridAfter` bounded |
+| 2026-10-30 | trivial | Layout work bounds for hostile documents (#3867): header-row repeats budgeted per layout and counting canvas members; picture-outline decode budget charged for cached outlines too, so cold and warm layouts wrap alike; linked-box chains keep exact widths up to a work cap, not 16 widths; `gridAfter` bounded |
 | 2026-10-28 | trivial | Connector object lookups retain the typed column-selection inputs on current main (#3631); readiness estimates unchanged |
 | 2026-10-27 | trivial | Connector rerouting indexes laid-out object positions once per batch, preserving page hints, first-match order and same-page glue; synthetic equivalence, geometry and scaling regressions (#3631); routing policy and readiness estimates unchanged |
 | 2026-10-29 | trivial | A cell spanning columns shares its extra minimum width by the columns' preferred widths (equally in automatic tables); nested tables are measured with the same weights (#1883) |
@@ -284,6 +284,7 @@ layout suite are pending; this is not a new Word/native-IME acceptance claim.
 | 2026-10-23 | trivial | cu20we: preserve and render outline caps across DOCX/VML, screen and PDF; synthetic regressions; readiness estimates unchanged |
 | 2026-10-23 | trivial | cu20we: paragraph-relative box floats use the pre-spacing origin; header/footer/cell/text-box regressions; readiness estimates unchanged |
 | 2026-10-22 | trivial | Layout lookups linear in clipped cells, authors, sections, header paragraphs and bidi offsets (#3692, #3706) |
+| 2026-10-22 | trivial | Layout work bounds for hostile documents: linked-box chain widths, repeated header items, `gridAfter`, picture decodes (#3692) |
 | 2026-10-22 | trivial | Hostile fonts (#3692): hint-reliant fonts with huge hinting zones are drawn unhinted, and a face draws its later glyphs unhinted once at least three of its hinted draws took over 50 ms and those are at least 1/16 of its hinted draws; a colour glyph's gradient stops and clip paths share one budget |
 | 2026-10-22 | trivial | Group connector rerouting preserves displayed free and unresolved endpoints under nonuniform scaling while resolved ends keep their connection-site path; degenerate dimensions and unrepresentable fallback display spans are guarded; synthetic model/engine coverage only, readiness estimates unchanged |
 | 2026-10-21 | trivial | A word with no break opportunity in it, laid out beside a floating object, no longer lays out quadratically: every word is measured once, before the line is broken (#3412) |

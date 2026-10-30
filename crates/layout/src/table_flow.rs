@@ -2,7 +2,7 @@ use super::boxes::{BoxInput, clear_of_float_tables, layout_box};
 use super::ctx::{Ctx, with_pct_base};
 use super::floats::{WrapArea, align_in, body_wraps};
 use super::flow::again;
-use super::headers::{MAX_HEADER_ITEMS, header_table_areas, placed_cost};
+use super::headers::{header_items_cap, header_table_areas, placed_cost};
 use super::notes::table_notes;
 use super::page::{PageBuilder, PageFrame, page_frame};
 use super::placed::Placed;
@@ -129,10 +129,11 @@ pub(crate) fn place_table(ctx: &mut Ctx, pb: &mut PageBuilder, t: &wordcraft_doc
     let header_rows: Vec<usize> = (0..t.rows.len()).take_while(|r| t.rows.get(*r).is_some_and(|row| row.props.header)).collect();
     // What one more repeat of the header rows costs (see `MAX_HEADER_ITEMS`; the items repeated
     // so far are counted in the whole layout).
+    let header_cap = header_items_cap();
     let header_cost = header_rows
         .iter()
         .filter_map(|i| tl.rows.get(*i))
-        .map(|r| r.items.iter().map(|it| placed_cost(it, MAX_HEADER_ITEMS)).fold(0, usize::saturating_add).max(1))
+        .map(|r| r.items.iter().map(|it| placed_cost(it, header_cap)).fold(0, usize::saturating_add).max(1))
         .fold(0, usize::saturating_add);
     // Resolve kept chains once; nested paragraphs cannot keep their enclosing row.
     let mut kept: Vec<(usize, f32)> = (0..tl.rows.len()).map(|i| (i, 0.0)).collect();
@@ -233,7 +234,7 @@ pub(crate) fn place_table(ctx: &mut Ctx, pb: &mut PageBuilder, t: &wordcraft_doc
             }
             pb.advance(block, body_top);
             // Repeat header rows, up to the layout's cap.
-            if ri >= header_rows.len() && ctx.header_repeats.saturating_add(header_cost) <= MAX_HEADER_ITEMS {
+            if ri >= header_rows.len() && ctx.header_repeats.saturating_add(header_cost) <= header_cap {
                 ctx.header_repeats = ctx.header_repeats.saturating_add(header_cost);
                 for h in header_rows.iter().filter_map(|hr| tl.rows.get(*hr)) {
                     place(pb, h);

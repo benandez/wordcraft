@@ -114,6 +114,20 @@ impl Linked {
 /// 5 000 pages).
 pub(crate) const MAX_HEADER_ITEMS: usize = 500_000;
 
+#[cfg(test)]
+thread_local! {
+    /// A smaller [`MAX_HEADER_ITEMS`] for tests, so a short table can reach it.
+    pub(crate) static HEADER_ITEMS_CAP: std::cell::Cell<usize> = const { std::cell::Cell::new(MAX_HEADER_ITEMS) };
+}
+
+/// [`MAX_HEADER_ITEMS`], or the test cap ([`HEADER_ITEMS_CAP`]) in tests.
+pub(crate) fn header_items_cap() -> usize {
+    #[cfg(test)]
+    return HEADER_ITEMS_CAP.with(|c| c.get());
+    #[cfg(not(test))]
+    MAX_HEADER_ITEMS
+}
+
 /// What re-placing `it` costs against [`MAX_HEADER_ITEMS`] (and laying it out against
 /// [`textbox::MAX_FLOW_WORK`]): one, and for a clipped group (a floating Drawing Canvas) every
 /// member below it, nested groups included, as placing clones them all. Counted with an explicit
