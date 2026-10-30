@@ -223,7 +223,7 @@ pub(crate) fn record_para_props(s: &mut Session, story: StoryRef, path: &Path, b
     let Some(after) = s.doc.para(story, path).map(|p| p.props.clone()) else { return Ok(()) };
     let revisions = s.doc.revisions.clone();
     let mut r = Recorder { author: s.author.clone(), date: super::now_iso(), before: &revisions, revisions: &mut s.doc.revisions, rid: None };
-    if let Some(want) = r.change(before, &after, ParaProps::formatting, |p| &p.fmt_change) {
+    if let Some(Replacement(want)) = r.change(before, &after, ParaProps::formatting, |p| &p.fmt_change) {
         let p = s.doc.para_mut(story, path)?;
         p.props.fmt_change = want;
         p.touch();
