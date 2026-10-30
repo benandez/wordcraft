@@ -85,6 +85,7 @@ Labels → New Document with “One label per recipient” includes all filtered
 ## Revision history
 
 | Date | Change | Summary |
+| 2026-10-26 | trivial | Ribbon: opt-in blur under the ribbon plus animated transitions and translucent chrome, building on #3131 and #3781 (#4019) |
 |---|---|---|
 | 2026-10-29 | trivial | Comments: a long comment's card, balloon and fields stop at ten lines; the fields scroll, and a balloon that isn't selected shows the first ten lines of the comment and of each reply (#3382) |
 | 2026-10-28 | trivial | Aligned copies retain their locked document coordinate during middle-button scrolling and can start on secondary selected objects; existing Ctrl and Shift selection behavior stays (#4764) |
