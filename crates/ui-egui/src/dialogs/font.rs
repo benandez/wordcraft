@@ -1,4 +1,5 @@
 use super::{Dialog, Value, WordApp, json};
+use egui::{Ui, vec2};
 
 /// The Font dialog preview's size: the Size box's points between 6 and 72, else 12. `"NaN"` and
 /// `"inf"` parse as floats too, and a NaN font size trips epaint's glyph assertion (#3663).

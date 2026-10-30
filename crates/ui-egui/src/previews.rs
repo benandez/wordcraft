@@ -415,6 +415,7 @@ pub fn font_entry_image(name: &str, ppp: f32) -> egui::ColorImage {
 
 /// The Font dialog's sample: `text` with `props`, then `mark` (a "2" raised or
 /// lowered) when `vert` is set, drawn as the document draws text on `paper`.
+#[allow(clippy::too_many_arguments)]
 pub fn font_sample(
     text: &str,
     props: &CharProps,
@@ -434,7 +435,11 @@ pub fn font_sample(
     p.props.space_before = Some(0.0);
     p.props.space_after = Some(0.0);
     p.props.line_spacing = Some(wordcraft_doc::props::LineSpacing::Multiple(1.0));
-    snippet_blocks(&Document::new(), vec![Block::Para(p)], w, h, ppp, 2.0, Some(paper), dark)
+    snippet_blocks(
+        &Document::new(),
+        vec![Block::Para(p)],
+        SnippetOptions { width: w, height: h, pixels_per_point: ppp, margin: 2.0, paper: Some(paper), dark },
+    )
 }
 
 /// Lay out `para` (with `base`'s styles) in a `w`×`h` pt box and rasterise it.

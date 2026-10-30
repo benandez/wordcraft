@@ -882,6 +882,7 @@ fn draw_page_gridlines(app: &WordApp, painter: &egui::Painter, t: &Tokens, page:
     }
 }
 
+#[allow(clippy::cognitive_complexity)]
 fn paint_pages(pass: PagePaint<'_>) -> PagePaintOutput {
     let PagePaint { app, ui, layout, geo, t, painter, dim_body, dark_page, sepia_page, hidden, view, content_origin, ppp, max_tex, grid_story } =
         pass;
