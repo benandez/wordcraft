@@ -405,6 +405,15 @@ mod tests {
     }
 
     #[test]
+    fn a_letter_that_lowercases_to_two_chars_is_still_suggested_for() {
+        // #4501 follow-up: "İx" lowercases to three chars ("i", U+0307, "x") but has two typed
+        // letters; the one-letter edits stay in range and dropping the dot still finds "ix".
+        let d = AffixDict::from_hunspell("", "1\nix\n", &[]).unwrap();
+        let suggestions = suggest_in(&d, "İx", 4);
+        assert!(suggestions.contains(&"Ix".into()), "{suggestions:?}");
+    }
+
+    #[test]
     fn suggestions_are_fast_enough() {
         crate::cs::test_dict::install();
         let _ = suggest("město", 1);
