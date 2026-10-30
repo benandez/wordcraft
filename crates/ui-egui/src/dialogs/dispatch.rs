@@ -119,16 +119,8 @@ fn font_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
     else {
         return false;
     };
-    let sample_props = font_sample_props(
-        app,
-        sample_paper(app),
-        font,
-        size,
-        color,
-        (*bold, *italic, *underline, *strike),
-        (*small_caps, *caps, *hidden),
-        *spacing,
-    );
+    let sample_props =
+        font_sample_props(app, sample_paper(app), font, size, color, (*bold, *italic, *underline, *strike), (*small_caps, *caps, *hidden), *spacing);
     egui::Grid::new("fontdlg").num_columns(2).spacing(vec2(10.0, 6.0)).show(ui, |ui| {
         // Word's two font boxes when East Asian text is in use: the Latin text font and
         // the Asian text font, each with its own list (type to find a font).
