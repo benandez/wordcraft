@@ -1,5 +1,7 @@
 use super::*;
 
+mod note_conversion;
+
 #[test]
 fn new_document_is_valid() {
     let d = Document::new();
