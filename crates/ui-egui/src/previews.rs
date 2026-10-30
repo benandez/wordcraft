@@ -415,14 +415,11 @@ pub fn font_entry_image(name: &str, ppp: f32) -> egui::ColorImage {
 
 /// The Font dialog's sample: `text` with `props`, then `mark` (a "2" raised or
 /// lowered) when `vert` is set, drawn as the document draws text on `paper`.
-#[allow(clippy::too_many_arguments)]
 pub fn font_sample(
     text: &str,
     props: &CharProps,
     mark: Option<wordcraft_doc::props::VertAlign>,
-    w: f32,
-    h: f32,
-    ppp: f32,
+    (w, h, ppp): (f32, f32, f32),
     paper: wordcraft_doc::Rgb,
     dark: bool,
 ) -> Option<egui::ColorImage> {

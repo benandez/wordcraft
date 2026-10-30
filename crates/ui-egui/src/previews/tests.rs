@@ -386,7 +386,7 @@ fn font_menu_entries_take_the_theme_text_colour() {
 fn font_sample_shows_small_caps_and_the_script_mark() {
     let white = wordcraft_doc::Rgb(255, 255, 255);
     let plain = CharProps { size: Some(20.0), ..Default::default() };
-    let draw = |p: &CharProps, mark, dark| font_sample("AaBbYyZz", p, mark, 200.0, 40.0, 1.0, white, dark).map(|i| i.pixels);
+    let draw = |p: &CharProps, mark, dark| font_sample("AaBbYyZz", p, mark, (200.0, 40.0, 1.0), white, dark).map(|i| i.pixels);
     let small = CharProps { small_caps: Some(true), ..plain.clone() };
     assert_ne!(draw(&plain, None, false), draw(&small, None, false), "small caps change the sample");
     let sup = Some(wordcraft_doc::props::VertAlign::Superscript);
