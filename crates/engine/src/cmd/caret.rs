@@ -1,6 +1,6 @@
 //! Caret movement and selection.
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use wordcraft_doc::math_edit::MathPos;
 use wordcraft_doc::para::OBJ;
 use wordcraft_doc::{InlineObject, Pos, StoryRef};
@@ -141,9 +141,7 @@ fn into_equation(s: &mut Session, is_left: bool) -> Option<CmdResult> {
     s.sel = Selection::caret(Pos { off, ..f });
     s.goal_x = None;
     s.pending = None;
-    // `equation.edit` without a position opens at the end.
-    let at = if is_left { json!({}) } else { json!({"pos": MathPos::default()}) };
-    Some(super::equation::edit(s, &at))
+    Some(super::equation::edit_at(s, (!is_left).then(MathPos::default)))
 }
 
 /// Left/Right in bidirectional text: one caret position to the left or right on the screen.
