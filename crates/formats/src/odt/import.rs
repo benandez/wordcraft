@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use super::body::Body;
 use super::limits::{MAX_ENTRY, MAX_SECTIONS};
 use super::styles::{Styles, column_sep, columns_of};

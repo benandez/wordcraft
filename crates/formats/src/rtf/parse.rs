@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use super::reader::Reader;
 use super::state::{Dest, HeaderFooter, HfPages, MAX_PICT, PageGeom};
 use super::{Cell, Document, FBlock, Flow, Para, model};

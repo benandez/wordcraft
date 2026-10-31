@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use super::{
     AbstractNum, DocxError, El, Level, LevelSuffix, Num, NumFormat, PartFormat, Reader, Style, StyleKind, StyleSheet, TablePart, TableStyleParts,
     VAlign, flag, int, props, tw, u32_of,
