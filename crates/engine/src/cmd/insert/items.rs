@@ -1,7 +1,7 @@
 use super::header_footer::hf_part;
 use super::{
     Align, Block, CharProps, CmdError, CmdResult, InlineObject, Paragraph, Rgb, Selection, Session, StoryRef, TabAlign, TabStop, TextColor, Value,
-    delete_selection, json, p, para_block, sel_result, type_text,
+    delete_selection, json, p, para_block, sel_result, type_text, type_text_with_lang,
 };
 
 pub(super) fn page_number(s: &mut Session, v: &Value) -> CmdResult {
