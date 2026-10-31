@@ -124,4 +124,3 @@ pub(super) fn date_time_ui(app: &mut WordApp, ui: &mut Ui, f: &mut DateTimeForm)
     }
     cancel
 }
-

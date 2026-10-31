@@ -443,6 +443,4 @@ mod date_time_locale_tests {
         let InlineObject::Field { result, .. } = &p.objects[0] else { panic!("expected field") };
         assert_eq!(result, &format_date_in("d 'de' MMMM 'de' yyyy", Some("pt-BR")));
     }
-
-
 }

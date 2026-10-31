@@ -18,11 +18,11 @@ mod symbol;
 
 pub use columns::{ColumnsForm, DropCapForm};
 use columns::{columns_ui, drop_cap_ui};
-use field::field_ui;
-use date_time::date_time_ui;
 pub use date_time::DateTimeForm;
 #[cfg(test)]
 pub(crate) use date_time::date_time_preview_matches;
+use date_time::date_time_ui;
+use field::field_ui;
 pub use field::{DATE_FORMATS, FIELD_CATEGORIES, FIELDS, FieldForm, FieldKind, NUMBER_FORMATS, STYLEREF_SWITCHES, field_kind};
 use symbol::symbol_ui;
 pub use symbol::{RECENT_SYMBOLS, RecentSymbol, SPECIAL, SUBSETS, SymbolForm, remember_symbol, subset_of};

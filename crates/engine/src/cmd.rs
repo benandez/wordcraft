@@ -381,7 +381,9 @@ fn insert_text(s: &mut Session, text: &str, enter: bool, language: Option<&str>)
     if !enter {
         props = props.without_symbol();
     }
-    if let Some(language) = language { props.lang = Some(language.to_string()); }
+    if let Some(language) = language {
+        props.lang = Some(language.to_string());
+    }
     let deletion = delete_selection_effect(s)?;
     // Typed text is new: never deleted, and not a formatting change of the text around it.
     props.fmt_change = None;
