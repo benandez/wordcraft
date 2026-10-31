@@ -12123,7 +12123,7 @@ mod behind_owner {
 
     fn frame_model(kind: Kind, wrap: Option<Wrap>) -> DocLayout {
         let mut doc = Document::new();
-        doc.styles.default_chr.font = Some("Source Sans 3".into());
+        std::sync::Arc::make_mut(&mut doc.styles).default_chr.font = Some("Source Sans 3".into());
         doc.last_section.page_h = 140.0;
         doc.last_section.margin_top = 20.0;
         doc.last_section.margin_bottom = 20.0;
@@ -12450,7 +12450,7 @@ fn stacked_marks_past_the_bottom_draw_no_label() {
     use wordcraft_doc::section::{SectionProps, SectionStart};
     let marks = 100;
     let mut d = Document::from_text(&format!("Start\n{}End", "\n".repeat(marks)));
-    let id = d.numbering.add_list(ListKind::Bullet);
+    let id = std::sync::Arc::make_mut(&mut d.numbering).add_list(ListKind::Bullet);
     for i in 1..=marks {
         let p = d.para_mut(StoryRef::Body, &Path::top(i)).unwrap();
         p.section = Some(Box::new(SectionProps { start: SectionStart::Continuous, ..Default::default() }));
@@ -12513,7 +12513,7 @@ fn an_empty_bulleted_mark_after_a_bulleted_section_closer_draws_no_bullet() {
     use wordcraft_doc::section::{SectionProps, SectionStart};
     for filler in (40..140).step_by(3) {
         let mut d = Document::from_text(&format!("{}file this form\n\nFailure to comply", "Instructions\n".repeat(filler)));
-        let id = d.numbering.add_list(ListKind::Bullet);
+        let id = std::sync::Arc::make_mut(&mut d.numbering).add_list(ListKind::Bullet);
         let mut two = SectionProps { start: SectionStart::Continuous, ..Default::default() };
         two.columns.count = 2;
         for i in [filler, filler + 1] {

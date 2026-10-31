@@ -6,6 +6,7 @@ use super::{
     Block, CharProps, CmdError, CommandSpec, InlineObject, NumRef, Paragraph, Selection, StoryRef, Value, delete_selection, json, p, para_block,
     sel_result,
 };
+use std::sync::Arc;
 
 /// Builds the tools, review, file and insertion command table: Repeat and macros; AutoCorrect,
 /// keyboard and ribbon customization and search; Compare, accessibility, inspection, protection,

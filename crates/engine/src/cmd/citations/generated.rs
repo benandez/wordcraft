@@ -6,6 +6,7 @@ use super::{
     Block, CharProps, CmdError, CmdResult, Document, FieldCode, InlineObject, Paragraph, Path, Pos, Session, SortKey, StoryRef, TabAlign, TabLeader,
     TabStop, Value, delete_selection, heading_letter, p, sel_result, sort_key,
 };
+use std::sync::Arc;
 
 /// The TOC field for `references.tableOfFigures` (ECMA-376 §17.16.5.68): `\c "<label>"` lists the
 /// captions that label's SEQ field numbers, `\a "<label>"` lists them without their label and
