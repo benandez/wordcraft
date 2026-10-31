@@ -174,8 +174,8 @@ fn cluster_faces_with_alternate(text: &str, font: &str, alt: &str) -> Vec<(usize
 
 #[test]
 fn a_missing_thai_font_with_a_latin_alternate_still_draws_the_run_in_one_face() {
-    if !thai_font_installed() {
-        eprintln!("skipped: no Thai font installed");
+    if !thai_latin_font_installed() {
+        eprintln!("skipped: no Thai font with Latin letters installed");
         return;
     }
     // #2702 draws a missing font in its font table alternate. When the font is Thai and the
