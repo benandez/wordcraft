@@ -922,13 +922,6 @@ mod tests {
         assert_eq!(NumFormat::OrdinalText.format(20), "Twentieth");
         assert_eq!(NumFormat::OrdinalText.format(112), "One Hundred Twelfth");
         assert_eq!(NumFormat::DecimalZero.format(3), "03");
-        assert_eq!(NumFormat::Hex.format(10), "A");
-        assert_eq!(NumFormat::Hex.format(15), "F");
-        assert_eq!(NumFormat::Hex.format(16), "10");
-        assert_eq!(NumFormat::Hex.format(255), "FF");
-        assert_eq!(NumFormat::CardinalText.format(1_000_000), "One Million");
-        assert_eq!(NumFormat::OrdinalText.format(1_000_000), "One Millionth");
-        assert_eq!(NumFormat::CardinalText.format(2_000_000_000), "Two Billion");
         assert!(!NumFormat::UpperRoman.format(u32::MAX).is_empty());
         assert_eq!(NumFormat::LowerLetter.format(u32::MAX).len(), 30);
         assert_eq!([NumFormat::Chicago.format(1), NumFormat::Chicago.format(6)], ["*", "\u{2020}\u{2020}"]);
@@ -943,6 +936,17 @@ mod tests {
             assert!(f == NumFormat::Bullet || f == NumFormat::None || !f.format(u32::MAX).is_empty(), "{f:?}");
         }
         assert_eq!(NumFormat::from_ooxml("klingon"), NumFormat::Decimal, "unknown formats are decimal");
+    }
+
+    #[test]
+    fn hex_is_uppercase_and_text_formats_reach_millions() {
+        assert_eq!(NumFormat::Hex.format(10), "A");
+        assert_eq!(NumFormat::Hex.format(15), "F");
+        assert_eq!(NumFormat::Hex.format(16), "10");
+        assert_eq!(NumFormat::Hex.format(255), "FF");
+        assert_eq!(NumFormat::CardinalText.format(1_000_000), "One Million");
+        assert_eq!(NumFormat::OrdinalText.format(1_000_000), "One Millionth");
+        assert_eq!(NumFormat::CardinalText.format(2_000_000_000), "Two Billion");
     }
 
     #[test]
