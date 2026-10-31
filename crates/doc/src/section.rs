@@ -911,6 +911,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn hex_and_large_cardinal_formats() {
+        assert_eq!(NumFormat::Hex.format(10), "A");
+        assert_eq!(NumFormat::Hex.format(15), "F");
+        assert_eq!(NumFormat::Hex.format(16), "10");
+        assert_eq!(NumFormat::Hex.format(255), "FF");
+        assert_eq!(NumFormat::CardinalText.format(1_000_000), "One Million");
+        assert_eq!(NumFormat::OrdinalText.format(1_000_000), "One Millionth");
+        assert_eq!(NumFormat::CardinalText.format(2_000_000_000), "Two Billion");
+    }
+
+    #[test]
     fn number_formats() {
         assert_eq!(NumFormat::UpperRoman.format(1994), "MCMXCIV");
         assert_eq!(NumFormat::LowerLetter.format(27), "aa");
@@ -922,13 +933,6 @@ mod tests {
         assert_eq!(NumFormat::OrdinalText.format(20), "Twentieth");
         assert_eq!(NumFormat::OrdinalText.format(112), "One Hundred Twelfth");
         assert_eq!(NumFormat::DecimalZero.format(3), "03");
-        assert_eq!(NumFormat::Hex.format(10), "A");
-        assert_eq!(NumFormat::Hex.format(15), "F");
-        assert_eq!(NumFormat::Hex.format(16), "10");
-        assert_eq!(NumFormat::Hex.format(255), "FF");
-        assert_eq!(NumFormat::CardinalText.format(1_000_000), "One Million");
-        assert_eq!(NumFormat::OrdinalText.format(1_000_000), "One Millionth");
-        assert_eq!(NumFormat::CardinalText.format(2_000_000_000), "Two Billion");
         assert!(!NumFormat::UpperRoman.format(u32::MAX).is_empty());
         assert_eq!(NumFormat::LowerLetter.format(u32::MAX).len(), 30);
         assert_eq!([NumFormat::Chicago.format(1), NumFormat::Chicago.format(6)], ["*", "\u{2020}\u{2020}"]);
